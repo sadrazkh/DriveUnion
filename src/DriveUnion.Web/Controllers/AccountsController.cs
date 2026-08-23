@@ -25,9 +25,22 @@ namespace DriveUnion.Web.Controllers;
 public sealed class AccountsController(
     IGoogleAccountDirectory directory,
     IOptions<GoogleOAuthOptions> googleOptions,
+    IGoogleOAuthCredentials credentials,
     ILogger<AccountsController> logger) : Controller
 {
     private const string StateCookie = "du_google_oauth_state";
+
+    /// <summary>
+    /// This controller's own callback path, spelled once.
+    ///
+    /// It is a constant rather than an <c>Url.Action</c> call because the operator has to paste it
+    /// into Google Cloud before anything works, so it is rendered on a screen that must come up even
+    /// when nothing else about Google is configured — and behind a proxy the scheme and host it is
+    /// built from come from the forwarded headers, which is the address the operator actually types.
+    /// The accounts test lane fetches this path and expects something other than a 404, which is
+    /// what keeps the constant honest against the routes declared below.
+    /// </summary>
+    private const string CallbackPath = "/accounts/callback";
 
     /// <summary>
     /// What the state cookie's value starts with, ahead of the nonce.
@@ -61,7 +74,137 @@ public sealed class AccountsController(
             [.. accounts.Select(AccountCardViewModel.From)],
             TempData["Notice"] as string,
             TempData["Error"] as string,
-            Google() is not null));
+            Google() is not null,
+            GoogleSetupViewModel.From(credentials.Describe(), SuggestedRedirectUri())));
+    }
+
+    /// <summary>
+    /// The OAuth client, typed in rather than deployed.
+    ///
+    /// The owner has no terminal on this box and nothing to hand over, so <c>user-secrets</c> and an
+    /// environment variable were never going to be how this gets configured. Google still will not
+    /// take a request without a client id — that part is Google's — but needing a shell to supply
+    /// one was ours.
+    ///
+    /// A POST behind the same antiforgery token as everything else on this screen, and behind the
+    /// same operator policy the controller carries: this writes the credential that reaches the
+    /// operator's entire Drive pool.
+    /// </summary>
+    [HttpPost("google-credentials")]
+    [ValidateAntiForgeryToken]
+    public IActionResult SaveGoogleCredentials([FromForm] GoogleCredentialsForm form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        var clientId = form.ClientId?.Trim() ?? string.Empty;
+        var redirectUri = form.RedirectUri?.Trim() ?? string.Empty;
+
+        // Not trimmed away entirely: a secret is opaque and its edges are not ours to judge. But a
+        // value pasted out of Google Cloud arrives with a trailing newline often enough that
+        // trimming is right, and Google's secrets have never contained leading or trailing space.
+        var clientSecret = form.ClientSecret?.Trim();
+
+        var state = credentials.Describe();
+        var secretAlreadyStored = state.Stored is { HasClientSecret: true };
+
+        if (Validate(clientId, clientSecret, redirectUri, secretAlreadyStored) is { } complaint)
+        {
+            TempData["Error"] = complaint;
+            return RedirectToAction(nameof(Index));
+        }
+
+        try
+        {
+            credentials.Save(clientId, clientSecret, redirectUri);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The message is not shown: it carries the path of the store, and the operator cannot
+            // act on it from a browser anyway.
+            logger.LogError(exception, "Saving the Google OAuth client failed");
+            TempData["Error"] = "ذخیره‌ی اطلاعات گوگل ناموفق بود. لاگ سرور را ببینید.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Said out loud rather than left to the badge on the field: an operator who has just typed a
+        // client id and is about to wonder why Google sees a different one deserves the sentence,
+        // not a colour.
+        TempData["Notice"] = credentials.Describe().ConfigurationOutranksPanel
+            ? "اطلاعات ذخیره شد، اما پیکربندی سرور اولویت دارد و همان اعمال می‌شود."
+            : "اطلاعات OAuth گوگل ذخیره شد. حالا می‌توانید اکانت را متصل کنید.";
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("google-credentials/clear")]
+    [ValidateAntiForgeryToken]
+    public IActionResult ClearGoogleCredentials()
+    {
+        try
+        {
+            var removed = credentials.Clear();
+
+            TempData[removed ? "Notice" : "Error"] = removed
+                ? "اطلاعات OAuth ذخیره‌شده حذف شد."
+                : "چیزی برای حذف وجود نداشت.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(exception, "Removing the stored Google OAuth client failed");
+            TempData["Error"] = "حذف اطلاعات ذخیره‌شده ناموفق بود. لاگ سرور را ببینید.";
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// What the operator must register in Google Cloud, built from the address this very request
+    /// arrived on.
+    ///
+    /// Rendered rather than described because the alternative — «https://your-domain/accounts/
+    /// callback» with the domain left to the reader — is how a redirect URI ends up off by a
+    /// scheme, a port or a trailing slash. Google compares the two strings and answers a mismatch
+    /// with nothing anybody can debug from.
+    /// </summary>
+    private string SuggestedRedirectUri() =>
+        $"{Request.Scheme}://{Request.Host.ToUriComponent()}{Request.PathBase}{CallbackPath}";
+
+    /// <summary>
+    /// Refuses what Google would refuse, here, where the operator can still see the form they typed
+    /// it into. Every rule below is one of Google's own for an authorised redirect URI.
+    /// </summary>
+    private static string? Validate(
+        string clientId,
+        string? clientSecret,
+        string redirectUri,
+        bool secretAlreadyStored)
+    {
+        if (clientId.Length == 0) return "شناسه‌ی کلاینت (Client ID) را وارد کنید.";
+
+        if (clientSecret is not { Length: > 0 } && !secretAlreadyStored)
+        {
+            return "کلید محرمانه (Client Secret) را وارد کنید.";
+        }
+
+        if (redirectUri.Length == 0) return "آدرس بازگشت (Redirect URI) را وارد کنید.";
+
+        if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+        {
+            return "آدرس بازگشت باید یک نشانی کامل با http یا https باشد.";
+        }
+
+        // Google rejects a redirect URI with a fragment outright, and does it after the operator has
+        // already left the panel and reached the consent screen.
+        if (uri.Fragment.Length > 0) return "آدرس بازگشت نباید بخش # داشته باشد.";
+
+        // http is allowed only for a loopback address; anything else must be https.
+        if (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback)
+        {
+            return "گوگل http را فقط برای localhost می‌پذیرد؛ برای بقیه‌ی آدرس‌ها https لازم است.";
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -189,8 +332,12 @@ public sealed class AccountsController(
             await directory.RefreshQuotaAsync(id, cancellationToken);
             TempData["Notice"] = "فضای اکانت به‌روزرسانی شد.";
         }
-        catch (Exception exception) when (exception is DriveApiException or OptionsValidationException)
+        catch (DriveApiException exception)
         {
+            // DriveApiException alone now. Unconfigured credentials used to surface here as an
+            // OptionsValidationException out of the options pipeline; they arrive as
+            // DriveAccountUnavailableException — which is a DriveApiException — from the token
+            // service, naming the settings that are missing.
             logger.LogError(exception, "Refreshing the storage quota failed");
             TempData["Error"] = "به‌روزرسانی فضا ناموفق بود.";
         }
@@ -201,13 +348,14 @@ public sealed class AccountsController(
     /// <summary>
     /// The same refusal from either end of the flow. Naming the three settings is worth more than an
     /// apology here: this is the state a fresh deployment starts in, so it is the first thing an
-    /// operator meets, and the fix is three configuration keys away.
+    /// operator meets — and now the fix is on the screen they came from rather than in a shell they
+    /// may not have, so the sentence says that too.
     /// </summary>
     private IActionResult Unconfigured(bool popup) => Finish(
         popup,
         succeeded: false,
         title: "پیکربندی گوگل کامل نیست",
-        message: "پیکربندی OAuth گوگل کامل نیست.",
+        message: "پیکربندی OAuth گوگل کامل نیست. اطلاعات آن را در صفحه‌ی اکانت‌ها وارد کنید.",
         hint: "Google:ClientId · Google:ClientSecret · Google:RedirectUri");
 
     /// <summary>
@@ -233,23 +381,15 @@ public sealed class AccountsController(
     }
 
     /// <summary>
-    /// The OAuth client, or null when it is not configured.
+    /// The OAuth client, or null when any of its three parts is missing.
     ///
-    /// Infrastructure validates these options, so reading <c>.Value</c> is how the panel finds out
-    /// they are missing. The accounts screen has to render either way — it is the screen an operator
-    /// opens to discover that nothing is connected yet.
+    /// Resolved on every read rather than bound at startup, so a client saved on the screen below is
+    /// in force for the very next request. The accounts screen has to render either way — it is the
+    /// screen an operator opens to discover that nothing is configured yet, and now also the screen
+    /// where they fix it.
     /// </summary>
-    private GoogleOAuthOptions? Google()
-    {
-        try
-        {
-            return googleOptions.Value;
-        }
-        catch (OptionsValidationException)
-        {
-            return null;
-        }
-    }
+    private GoogleOAuthOptions? Google() =>
+        googleOptions.Value is { } options && options.IsConfigured() ? options : null;
 
     private static bool StateMatches(string? returned, string? expected)
     {

@@ -1,0 +1,262 @@
+@model SetupViewModel
+@{
+    ViewData["Title"] = "راه‌اندازی اولیه";
+    var errors = ViewData.ModelState.Values.SelectMany(v => v.Errors).ToList();
+}
+
+<div class="stack" style="gap: 16px; max-width: 460px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">این پنل هنوز اپراتور ندارد</h1>
+        <p class="page-sub">
+            اولین حسابی که اینجا ساخته شود اپراتور پنل است: صاحب اکانت‌های گوگل و همه‌ی فضاهای کاری.
+        </p>
+    </div>
+
+    <div class="card card--pad">
+        @* Literal action rather than asp-controller/asp-action, like the rest of the panel: link
+           generation throws when the pair is not registered, and a first-run form that cannot render
+           leaves the panel with no way in at all. *@
+        <form method="post"
+              action="@Url.Action("Setup", "Account", new { area = "Identity" })"
+              class="stack"
+              style="gap: 14px;"
+              autocomplete="off">
+            @Html.AntiForgeryToken()
+
+            @if (errors.Count > 0)
+            {
+                @* dir="auto" per line, because these are two different kinds of sentence. The
+                   validation messages are ours and Persian; the password refusals are Identity's own
+                   words in English, shown verbatim so the operator is told exactly what the policy
+                   wanted instead of a sentence of ours guessing at it. *@
+                <p class="page-sub" role="alert" style="color: var(--danger); margin: 0;">
+                    @foreach (var error in errors)
+                    {
+                        <span style="display: block;" dir="auto">@error.ErrorMessage</span>
+                    }
+                </p>
+            }
+
+            <div>
+                <label class="field-label" for="setup-email">ایمیل اپراتور</label>
+                @* dir="ltr" on the inputs and nowhere else: the page is Persian, the credentials are
+                   Latin, and a right-to-left password box puts the caret on the wrong side. *@
+                <span class="field">
+                    <input id="setup-email"
+                           name="Email"
+                           type="email"
+                           dir="ltr"
+                           value="@Model.Email"
+                           autocomplete="username"
+                           autofocus
+                           required />
+                </span>
+            </div>
+
+            <div>
+                <label class="field-label" for="setup-password">گذرواژه</label>
+                <span class="field">
+                    <input id="setup-password"
+                           name="Password"
+                           type="password"
+                           dir="ltr"
+                           autocomplete="new-password"
+                           required />
+                </span>
+            </div>
+
+            <div>
+                <label class="field-label" for="setup-password-repeat">تکرار گذرواژه</label>
+                <span class="field">
+                    <input id="setup-password-repeat"
+                           name="ConfirmPassword"
+                           type="password"
+                           dir="ltr"
+                           autocomplete="new-password"
+                           required />
+                </span>
+            </div>
+
+            @* Before the operator submits, not after. The list is Identity's own policy read out of
+               IdentityOptions, so it cannot drift from what the server will actually accept. *@
+            <div class="subcard">
+                <p class="field-label" style="margin-bottom: 6px;">گذرواژه باید این‌ها را داشته باشد:</p>
+                <ul class="stack" style="gap: 4px; margin: 0; padding-inline-start: 18px; font-size: 12px;">
+                    @foreach (var rule in Model.PasswordRules)
+                    {
+                        <li dir="auto">@rule</li>
+                    }
+                </ul>
+            </div>
+
+            @if (Model.OfferGeneratedPassword)
+            {
+                @*
+                    Development only, and generated in the browser rather than on the server.
+
+                    A password the server invents has been held by the server: it is in a response
+                    body, in whatever logs that response, and in the memory of a process the operator
+                    does not own. This one is drawn from the browser's own CSPRNG, never leaves the
+                    page except as the form submission the operator makes themselves, and nothing
+                    outside their machine has ever seen it.
+
+                    hidden until the script runs, so a browser without JavaScript is shown no
+                    affordance that does nothing rather than a dead box. Outside Development the
+                    controller does not set the flag and none of this — markup or script — is on the
+                    page at all.
+                *@
+                <div class="subcard stack"
+                     data-password-suggestion
+                     data-min-length="@Model.MinimumPasswordLength"
+                     hidden
+                     style="gap: 10px;">
+                    <div class="row" style="gap: 8px;">
+                        <span class="badge badge--muted">فقط در محیط توسعه</span>
+                        <span class="muted push-end" style="font-size: 11px;">ساخته‌شده در همین مرورگر</span>
+                    </div>
+
+                    <p class="page-sub" style="margin: 0; font-size: 11.5px;">
+                        این یک پیشنهاد است، نه مقدار پیش‌فرض. تا وقتی دکمه‌اش را نزنید در هیچ کادری
+                        نوشته نمی‌شود. جایی ذخیره نمی‌شود، پس اگر استفاده‌اش کردید همین حالا نگهش دارید.
+                    </p>
+
+                    <code class="field" dir="ltr" data-suggestion-value style="user-select: all;"></code>
+
+                    <div class="row" style="gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn btn--sm" data-suggestion-use>
+                            گذاشتن در کادرها
+                        </button>
+                        <button type="button" class="btn btn--sm" data-suggestion-copy>کپی</button>
+                        <button type="button" class="btn btn--sm" data-suggestion-new>پیشنهاد تازه</button>
+                        <span class="muted" style="font-size: 11px;" data-suggestion-status role="status"></span>
+                    </div>
+                </div>
+            }
+
+            <button type="submit" class="btn btn--primary btn--lg btn--block">
+                ساخت حساب اپراتور و ورود
+            </button>
+        </form>
+    </div>
+
+    @* Said plainly, because it is the whole behaviour of this screen: it exists once. *@
+    <p class="page-sub" style="font-size: 12px;">
+        این صفحه فقط تا وقتی هست که پنل هیچ اپراتوری نداشته باشد. بعد از ساخته‌شدن حساب، همین نشانی
+        دیگر باز نمی‌شود و حساب‌های بعدی را اپراتور می‌سازد. بازنشانی گذرواژه هم در پنل وجود ندارد،
+        پس گذرواژه را جایی امن نگه دارید.
+    </p>
+
+    @* The seeder can create a tenant user with no operator beside them; that person has an account
+       and nothing to set up. *@
+    <p class="page-sub" style="font-size: 12px;">
+        حساب دارید و اپراتور نیستید؟
+        <a href="@Url.Action("Login", "Account", new { area = "Identity", signIn = true })">ورود به پنل</a>
+    </p>
+</div>
+
+@section Scripts {
+    @if (Model.OfferGeneratedPassword)
+    {
+        <script>
+            (function () {
+                var box = document.querySelector('[data-password-suggestion]');
+                if (!box) return;
+
+                var rng = window.crypto;
+                if (!rng || !rng.getRandomValues) return;
+
+                var output = box.querySelector('[data-suggestion-value]');
+                var status = box.querySelector('[data-suggestion-status]');
+                var first = document.getElementById('setup-password');
+                var again = document.getElementById('setup-password-repeat');
+
+                // Look-alikes are left out on purpose. This string is read off a screen and typed by
+                // hand at least once, and an l/1 or O/0 mistake is a lockout: there is no password
+                // reset in the panel.
+                var groups = [
+                    'abcdefghijkmnpqrstuvwxyz',
+                    'ABCDEFGHJKLMNPQRSTUVWXYZ',
+                    '23456789',
+                    '!#$%*+-=?'
+                ];
+
+                // Rejection sampling. A raw draw reduced with % is biased towards the start of the
+                // alphabet whenever the range does not divide 2^32 — small, measurable, and free to
+                // avoid.
+                function index(limit) {
+                    var ceiling = Math.floor(4294967296 / limit) * limit;
+                    var draw = new Uint32Array(1);
+                    do { rng.getRandomValues(draw); } while (draw[0] >= ceiling);
+                    return draw[0] % limit;
+                }
+
+                function suggest() {
+                    var minimum = parseInt(box.getAttribute('data-min-length'), 10) || 10;
+                    var length = Math.max(minimum, 20);
+                    var chars = [];
+                    var i;
+
+                    // One character from every group first, so the suggestion satisfies the policy
+                    // the page just listed rather than satisfying it on average.
+                    for (i = 0; i < groups.length; i++) {
+                        chars.push(groups[i].charAt(index(groups[i].length)));
+                    }
+
+                    var all = groups.join('');
+                    while (chars.length < length) {
+                        chars.push(all.charAt(index(all.length)));
+                    }
+
+                    // Otherwise the first four characters are always lower, upper, digit, symbol.
+                    for (i = chars.length - 1; i > 0; i--) {
+                        var j = index(i + 1);
+                        var held = chars[i];
+                        chars[i] = chars[j];
+                        chars[j] = held;
+                    }
+
+                    return chars.join('');
+                }
+
+                function say(message) {
+                    if (status) status.textContent = message;
+                }
+
+                function refresh() {
+                    output.textContent = suggest();
+                    say('');
+                }
+
+                function selectIt() {
+                    var range = document.createRange();
+                    range.selectNodeContents(output);
+                    var selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    say('انتخاب شد؛ با Ctrl+C کپی کنید.');
+                }
+
+                box.querySelector('[data-suggestion-new]').addEventListener('click', refresh);
+
+                box.querySelector('[data-suggestion-use]').addEventListener('click', function () {
+                    first.value = output.textContent;
+                    again.value = output.textContent;
+                    say('در هر دو کادر گذاشته شد.');
+                });
+
+                box.querySelector('[data-suggestion-copy]').addEventListener('click', function () {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(output.textContent).then(
+                            function () { say('کپی شد.'); },
+                            selectIt);
+                    } else {
+                        selectIt();
+                    }
+                });
+
+                refresh();
+                box.hidden = false;
+            })();
+        </script>
+    }
+}

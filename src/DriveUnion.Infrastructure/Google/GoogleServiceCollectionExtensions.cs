@@ -4,6 +4,9 @@ using DriveUnion.Infrastructure.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DriveUnion.Infrastructure.Google;
 
@@ -23,19 +26,44 @@ public static class GoogleServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        services.AddOptions<GoogleOAuthOptions>()
-            .Bind(configuration.GetSection(GoogleOAuthOptions.SectionName))
-            .Validate(
-                o => o.IsConfigured(),
-                "Google:ClientId, Google:ClientSecret and Google:RedirectUri must all be set before "
-                + "an account can be connected or refreshed.");
-
-        // Deliberately no ValidateOnStart. The panel has to boot without Google credentials — that
-        // is the state this product is developed in, and it is also every integration test that has
-        // no business knowing Google exists. The check fires on the first request that needs them.
+        var section = configuration.GetSection(GoogleOAuthOptions.SectionName);
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ITokenProtector, DataProtectionTokenProtector>();
+
+        // Where the OAuth client the operator types into the panel is kept. Registered as a factory
+        // rather than by type so that IHostEnvironment can be optional: this same registration has
+        // to resolve inside a bare ServiceCollection in the tests, which has no host at all.
+        services.TryAddSingleton<IGoogleOAuthCredentialStore>(sp => new FileGoogleOAuthCredentialStore(
+            CredentialStorePath(sp, section),
+            sp.GetRequiredService<ITokenProtector>(),
+            sp.GetRequiredService<ILogger<FileGoogleOAuthCredentialStore>>()));
+
+        services.TryAddSingleton(sp => new GoogleOAuthCredentialResolver(
+            section,
+            sp.GetRequiredService<IGoogleOAuthCredentialStore>()));
+
+        // ────────────────────────────────────────────────────────────────────────────────────────
+        // This replaces the ordinary AddOptions().Bind() for GoogleOAuthOptions, and it is not an
+        // accident. Binding computes the options once, while the container is being built; the
+        // operator's client id arrives later, by hand, into a panel that is already running. An
+        // explicit closed-generic registration outranks the open generic IOptions<> that the
+        // options infrastructure provides, so every existing consumer — GoogleTokenService, the
+        // accounts controller — keeps asking for exactly what it asked for before and starts
+        // getting an answer that is resolved per read.
+        //
+        // Configuration still wins over the panel, field by field. See
+        // GoogleOAuthCredentialResolver for why that direction and not the other.
+        //
+        // Still no ValidateOnStart, and now no Validate at all: the resolver never throws, and the
+        // first honest complaint about missing credentials is the one GoogleTokenService makes at
+        // the request that needed them, naming the three settings.
+        // ────────────────────────────────────────────────────────────────────────────────────────
+        services.TryAddSingleton<IOptions<GoogleOAuthOptions>>(
+            sp => sp.GetRequiredService<GoogleOAuthCredentialResolver>());
+
+        services.TryAddSingleton<IGoogleOAuthCredentials>(
+            sp => sp.GetRequiredService<GoogleOAuthCredentialResolver>());
 
         services.AddTransient<DriveRetryHandler>();
 
@@ -67,6 +95,28 @@ public static class GoogleServiceCollectionExtensions
         services.AddScoped<IGoogleAccountDirectory, GoogleAccountDirectory>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Where <see cref="FileGoogleOAuthCredentialStore"/> writes.
+    ///
+    /// <c>Google:CredentialStorePath</c> overrides it, which is how a deployment puts the file on a
+    /// volume that outlives the container — worth doing, because unlike the Data Protection key
+    /// ring this file is not in the database and a redeploy that loses it costs the operator a
+    /// re-paste. The default is the content root, not <c>AppContext.BaseDirectory</c>: in
+    /// development the latter is <c>bin/Debug</c>, and <c>dotnet clean</c> would take the
+    /// credentials with it.
+    /// </summary>
+    private static string CredentialStorePath(IServiceProvider services, IConfiguration section)
+    {
+        if (section["CredentialStorePath"] is { } configured && !string.IsNullOrWhiteSpace(configured))
+        {
+            return Path.GetFullPath(configured.Trim());
+        }
+
+        var root = services.GetService<IHostEnvironment>()?.ContentRootPath ?? AppContext.BaseDirectory;
+
+        return Path.Combine(root, "App_Data", "google-oauth.json");
     }
 
     private static SocketsHttpHandler CreateGoogleHandler() => new()

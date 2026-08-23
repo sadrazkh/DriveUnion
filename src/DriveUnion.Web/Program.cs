@@ -1,5 +1,6 @@
 using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Identity;
+using DriveUnion.Infrastructure.LocalStorage;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
@@ -50,6 +51,15 @@ builder.Services.ConfigureApplicationCookie(options =>
 // The Drive client, the OAuth token service and the account directory. It has no ValidateOnStart on
 // purpose: the panel boots without Google credentials, and only connecting an account fails.
 builder.Services.AddGoogleDrive(builder.Configuration);
+
+// A development substitute for Google Drive: files on this box's disk, so the whole product —
+// upload, link, public page, streamed download — can be exercised before a Google Cloud project
+// exists. Off unless DriveUnion:LocalDisk:Enabled, and it refuses to start in Production.
+//
+// It must come after AddGoogleDrive: enabling it removes the Google registration and takes its
+// place, rather than shadowing it, so two clients and a resolution order nobody re-reads can never
+// be what decides where a customer's file went.
+builder.Services.AddLocalDiskDrive(builder.Configuration);
 
 // The application layer — file catalogue, uploads, share links, and the public reader.
 builder.Services.AddDriveUnionServices();

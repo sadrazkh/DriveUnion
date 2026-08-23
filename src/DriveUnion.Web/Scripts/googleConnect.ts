@@ -22,6 +22,8 @@ const POPUP_WIDTH = 520;
 const POPUP_HEIGHT = 680;
 
 export function mountGoogleConnect(): void {
+  mountRedirectUriCopy();
+
   const form = document.querySelector<HTMLFormElement>('[data-google-connect]');
   const flag = form?.querySelector<HTMLInputElement>('[data-google-connect-popup]');
   if (!form || !flag) return;
@@ -87,6 +89,47 @@ export function mountGoogleConnect(): void {
       // Reloading is right in both cases — it is the same GET the flow ends on either way.
       finish();
     }, 400);
+  });
+}
+
+/**
+ * One click for the redirect URI the operator has to paste into Google Cloud.
+ *
+ * The button is rendered hidden and shown here, not the other way round: `navigator.clipboard` is
+ * absent on an insecure origin and can be refused by permissions policy, and a copy button that
+ * silently does nothing is worse than no button — the operator would believe they had copied it and
+ * paste whatever was there before. Without this the `<code>` still carries `user-select: all`, so a
+ * single click selects the whole URI and Ctrl+C finishes the job.
+ */
+function mountRedirectUriCopy(): void {
+  const button = document.querySelector<HTMLButtonElement>('[data-copy]');
+  const source = document.querySelector<HTMLElement>('[data-copy-value]');
+  if (!button || !source || !navigator.clipboard) return;
+
+  const label = button.textContent ?? '';
+  let restore = 0;
+
+  button.hidden = false;
+
+  button.addEventListener('click', () => {
+    const value = source.textContent?.trim() ?? '';
+    if (value.length === 0) return;
+
+    void navigator.clipboard.writeText(value).then(
+      () => {
+        button.textContent = 'رونوشت شد';
+        window.clearTimeout(restore);
+        restore = window.setTimeout(() => {
+          button.textContent = label;
+        }, 1600);
+      },
+      () => {
+        // Denied at the browser, which is a real outcome and not an error worth a console entry.
+        // Selecting the text is the fallback the markup already supports, so say that instead of
+        // leaving a button that appears to have worked.
+        button.textContent = 'اجازه داده نشد — متن را انتخاب و کپی کنید';
+      },
+    );
   });
 }
 

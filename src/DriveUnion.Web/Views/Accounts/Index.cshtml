@@ -4,6 +4,14 @@
     ViewData["Title"] = "اکانت‌های گوگل";
 }
 
+@*
+    accounts.css carries the OAuth popup's card and this screen's setup panel. The link is here
+    rather than in the head because _Layout has no head section to extend and this is the only
+    panel view that needs the file — the browser still blocks rendering of what follows while it
+    loads, so there is nothing to flash. Every other page pays nothing for it.
+*@
+<link rel="stylesheet" href="~/css/accounts.css" asp-append-version="true" />
+
 <div class="stack" style="gap: 16px;">
     <div class="row">
         <div class="stack" style="gap: 4px;">
@@ -44,12 +52,20 @@
         <p class="page-sub" role="alert" style="color: var(--danger);">@Model.Error</p>
     }
 
+    @*
+        The setup panel, above the accounts and not below them, because with nothing configured
+        there are no accounts to be below. It is the whole answer to «چطور شروع کنم؟» and it is
+        rendered on every visit, folded, so changing a client id later is not a hunt.
+    *@
+    <partial name="_GoogleSetup" model="Model.Setup" />
+
     @if (!Model.ConsentConfigured)
     {
         <p class="page-sub" style="color: var(--danger);">
-            تا وقتی <span class="mono" dir="ltr">Google:ClientId</span>،
+            تا وقتی هر سه‌ی <span class="mono" dir="ltr">Google:ClientId</span>،
             <span class="mono" dir="ltr">Google:ClientSecret</span> و
-            <span class="mono" dir="ltr">Google:RedirectUri</span> تنظیم نشده باشند، اتصال اکانت ممکن نیست.
+            <span class="mono" dir="ltr">Google:RedirectUri</span> — از پیکربندی سرور یا از فرم بالا —
+            تأمین نشوند، اتصال اکانت ممکن نیست.
         </p>
     }
 

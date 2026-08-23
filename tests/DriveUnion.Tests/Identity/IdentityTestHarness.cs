@@ -31,6 +31,7 @@ public sealed class IdentityTestHarness : IAsyncDisposable
     private readonly SqliteConnection _connection;
     private readonly ServiceProvider _root;
     private readonly AsyncServiceScope _scope;
+    private readonly List<AsyncServiceScope> _extraScopes = [];
 
     private IdentityTestHarness(SqliteConnection connection, ServiceProvider root)
     {
@@ -86,11 +87,19 @@ public sealed class IdentityTestHarness : IAsyncDisposable
     /// A row, with no password: nothing in these tests signs in, and a credential in a fixture is a
     /// credential that ends up quoted somewhere else.
     /// </summary>
-    public async Task<AppUser> AddUserAsync(string email, Guid? tenantId = null, bool isOperator = false)
+    /// <param name="id">
+    /// Its primary key, when the test is about which key it has — see the first-run tests, where the
+    /// key is what two concurrent requests collide on.
+    /// </param>
+    public async Task<AppUser> AddUserAsync(
+        string email,
+        Guid? tenantId = null,
+        bool isOperator = false,
+        Guid? id = null)
     {
         var user = new AppUser
         {
-            Id = Guid.NewGuid(),
+            Id = id ?? Guid.NewGuid(),
             UserName = email,
             Email = email,
             EmailConfirmed = true,
@@ -103,6 +112,24 @@ public sealed class IdentityTestHarness : IAsyncDisposable
         Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(e => e.Description)));
 
         return user;
+    }
+
+    /// <summary>
+    /// A second request's worth of Identity: its own scope, and therefore its own change tracker
+    /// over the same database.
+    ///
+    /// It matters for anything about two requests at once. EF refuses a second entity with a key it
+    /// is already tracking, in memory, before a statement is sent — so a test that reuses
+    /// <see cref="Users"/> proves the change tracker's rule and never reaches the database's. Two
+    /// concurrent HTTP requests have two scoped contexts and neither knows what the other holds,
+    /// which is the arrangement this reproduces.
+    /// </summary>
+    public UserManager<AppUser> SeparateScopeUsers()
+    {
+        var scope = _root.CreateAsyncScope();
+        _extraScopes.Add(scope);
+
+        return scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
     }
 
     /// <summary>The principal the cookie would carry, built by the factory under test.</summary>
@@ -127,6 +154,8 @@ public sealed class IdentityTestHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        foreach (var scope in _extraScopes) await scope.DisposeAsync();
+
         await _scope.DisposeAsync();
         await _root.DisposeAsync();
         await _connection.DisposeAsync();

@@ -33,16 +33,30 @@ namespace DriveUnion.Tests.Accounts;
 public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
 {
     public const string ClientId = "connect-test.apps.googleusercontent.com";
+    public const string ClientSecret = "not-a-real-secret";
     public const string RedirectUri = "https://panel.example.test/accounts/callback";
     public const string StateCookie = "du_google_oauth_state";
+
+    /// <summary>
+    /// The redirect URI this app derives from the address TestServer serves it on. The panel shows
+    /// it as the value to register in Google Cloud when nothing else supplies one.
+    /// </summary>
+    public const string OriginRedirectUri = "http://localhost/accounts/callback";
 
     private const string TestScheme = "DriveUnion.TestOperator";
 
     private readonly SqliteConnection _connection;
 
-    public OperatorPanelHarness(bool googleConfigured = true)
+    public OperatorPanelHarness(bool googleConfigured = true, bool isOperator = true)
     {
         GoogleConfigured = googleConfigured;
+        IsOperator = isOperator;
+
+        // Its own file per harness, because the panel's stored credentials are a file on disk and
+        // two tests sharing one would be two tests sharing a client id. Removed on Dispose.
+        CredentialStorePath = Path.Combine(
+            Path.GetTempPath(),
+            $"driveunion-oauth-{Guid.NewGuid():N}.json");
 
         // A :memory: database belongs to its connection; held open for the harness's life, and
         // created here so the schema exists before the seeder runs at boot.
@@ -56,6 +70,44 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
 
     /// <summary>False leaves <c>Google:*</c> unset, which is this machine and any fresh deployment.</summary>
     public bool GoogleConfigured { get; }
+
+    /// <summary>
+    /// False signs in a customer instead — authenticated, with a tenant, and without the one claim
+    /// <c>DriveUnionPolicies.Operator</c> asks for. That is the caller every operator-only surface
+    /// has to refuse.
+    /// </summary>
+    public bool IsOperator { get; }
+
+    /// <summary>Where the panel writes the OAuth client the operator types in.</summary>
+    public string CredentialStorePath { get; }
+
+    /// <summary>The store file exactly as it sits on disk, or null when nothing has been saved.</summary>
+    public string? CredentialStoreText() =>
+        File.Exists(CredentialStorePath) ? File.ReadAllText(CredentialStorePath) : null;
+
+    /// <summary>
+    /// Saves an OAuth client the way the operator does: a form post from the accounts screen, with
+    /// that screen's antiforgery token.
+    /// </summary>
+    public static async Task<HttpResponseMessage> SaveCredentialsAsync(
+        HttpClient client,
+        string clientId,
+        string? clientSecret,
+        string redirectUri)
+    {
+        var token = await AntiforgeryTokenAsync(client);
+
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["__RequestVerificationToken"] = token,
+            ["ClientId"] = clientId,
+            ["RedirectUri"] = redirectUri,
+        };
+
+        if (clientSecret is not null) fields["ClientSecret"] = clientSecret;
+
+        return await client.PostAsync("/accounts/google-credentials", new FormUrlEncodedContent(fields));
+    }
 
     /// <summary>
     /// Keeps a cookie jar and follows nothing. The jar is the point: the antiforgery cookie, the
@@ -104,10 +156,14 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
         // while the host is still being built. The registration it produces is replaced below.
         builder.UseSetting("ConnectionStrings:Default", "Host=unreachable.invalid;Database=unused");
 
+        // Always set, configured or not: the store is where the panel writes what the operator
+        // types, and a harness that let it default would write into the test host's content root.
+        builder.UseSetting("Google:CredentialStorePath", CredentialStorePath);
+
         if (GoogleConfigured)
         {
             builder.UseSetting("Google:ClientId", ClientId);
-            builder.UseSetting("Google:ClientSecret", "not-a-real-secret");
+            builder.UseSetting("Google:ClientSecret", ClientSecret);
             builder.UseSetting("Google:RedirectUri", RedirectUri);
         }
 
@@ -129,6 +185,7 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
             // Identity's cookie is the app's default scheme; this replaces it wholesale rather than
             // forging a signed cookie, because what these tests need is an operator principal and
             // the real DriveUnionPolicies.Operator judging it.
+            var isOperator = IsOperator;
             services
                 .AddAuthentication(options =>
                 {
@@ -136,7 +193,9 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
                     options.DefaultChallengeScheme = TestScheme;
                     options.DefaultScheme = TestScheme;
                 })
-                .AddScheme<AuthenticationSchemeOptions, TestOperatorHandler>(TestScheme, _ => { });
+                .AddScheme<TestPrincipalOptions, TestPrincipalHandler>(
+                    TestScheme,
+                    options => options.IsOperator = isOperator);
         });
     }
 
@@ -144,7 +203,12 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
     {
         base.Dispose(disposing);
 
-        if (disposing) _connection.Dispose();
+        if (!disposing) return;
+
+        _connection.Dispose();
+
+        // The credential store outlives the host: it is a file, which is the whole point of it.
+        if (File.Exists(CredentialStorePath)) File.Delete(CredentialStorePath);
     }
 
     private void ReplaceNpgsqlWithSqlite(IServiceCollection services)
@@ -165,20 +229,39 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
         services.AddDbContext<DriveUnionDbContext>(options => options.UseSqlite(_connection));
     }
 
-    /// <summary>An operator, on every request, with the claim the real policy authorises on.</summary>
-    private sealed class TestOperatorHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options,
+    private sealed class TestPrincipalOptions : AuthenticationSchemeOptions
+    {
+        public bool IsOperator { get; set; } = true;
+    }
+
+    /// <summary>
+    /// The signed-in caller, on every request: an operator with the claim the real policy authorises
+    /// on, or — when the harness asks for one — an ordinary customer with a tenant and without it.
+    ///
+    /// The customer is authenticated on purpose. An anonymous request would be refused by
+    /// <c>RequireAuthenticatedUser</c> and would prove nothing about the operator claim, which is
+    /// the only thing standing between a paying customer and the operator's Google credentials.
+    /// </summary>
+    private sealed class TestPrincipalHandler(
+        IOptionsMonitor<TestPrincipalOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+        UrlEncoder encoder) : AuthenticationHandler<TestPrincipalOptions>(options, logger, encoder)
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            var identity = new ClaimsIdentity(
+            List<Claim> claims = Options.IsOperator
+                ?
                 [
                     new Claim(ClaimTypes.Name, "operator@driveunion.test"),
                     new Claim(DriveUnionClaimTypes.Operator, DriveUnionClaimTypes.OperatorValue),
-                ],
-                TestScheme);
+                ]
+                :
+                [
+                    new Claim(ClaimTypes.Name, "customer@driveunion.test"),
+                    new Claim(DriveUnionClaimTypes.TenantId, Guid.CreateVersion7().ToString()),
+                ];
+
+            var identity = new ClaimsIdentity(claims, TestScheme);
 
             return Task.FromResult(AuthenticateResult.Success(
                 new AuthenticationTicket(new ClaimsPrincipal(identity), TestScheme)));

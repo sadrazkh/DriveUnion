@@ -201,7 +201,7 @@ public class GoogleConnectStateTests
         var result = harness.Controller.Connect(popup: false);
 
         harness.IssuedCookie().Should().BeNull("there is no consent to protect");
-        harness.TempData["Error"].Should().Be("پیکربندی OAuth گوگل کامل نیست.");
+        harness.TempData["Error"].Should().Be("پیکربندی OAuth گوگل کامل نیست. اطلاعات آن را در صفحه‌ی اکانت‌ها وارد کنید.");
         result.Should().BeOfType<RedirectToActionResult>();
     }
 
@@ -218,6 +218,6 @@ public class GoogleConnectStateTests
             CancellationToken.None);
 
         harness.Directory.ConnectCalls.Should().Be(0);
-        harness.TempData["Error"].Should().Be("پیکربندی OAuth گوگل کامل نیست.");
+        harness.TempData["Error"].Should().Be("پیکربندی OAuth گوگل کامل نیست. اطلاعات آن را در صفحه‌ی اکانت‌ها وارد کنید.");
     }
 }

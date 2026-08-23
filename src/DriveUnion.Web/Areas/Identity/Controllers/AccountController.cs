@@ -1,10 +1,12 @@
 using DriveUnion.Infrastructure.Identity;
+using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Web.Areas.Identity.Models;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace DriveUnion.Web.Areas.Identity.Controllers;
 
@@ -18,15 +20,37 @@ namespace DriveUnion.Web.Areas.Identity.Controllers;
 /// There is no sign-up. Tenant creation is M5 (spec §12); in M1 an operator is seeded and everybody
 /// else is attached to a tenant by hand, so a registration form here would only be able to make
 /// accounts that cannot open a single page.
+///
+/// The one exception is <see cref="Setup"/>, which is not a sign-up: it exists only while the panel
+/// has no operator at all, it can create exactly one account, and it is gone the moment it has.
 /// </summary>
 [Area("Identity")]
 public sealed class AccountController(
     SignInManager<AppUser> signInManager,
+    IOptions<IdentityOptions> identityOptions,
+    IWebHostEnvironment environment,
+    TimeProvider clock,
     ILogger<AccountController> logger) : Controller
 {
+    /// <summary>
+    /// Rendered by two actions — <see cref="Setup"/> at its own address, and <see cref="Login"/>
+    /// when there is nobody to sign in as.
+    /// </summary>
+    private const string SetupViewName = "Setup";
+
+    /// <param name="signIn">
+    /// Asks for the sign-in form even when the panel has no operator. The seeder can create a tenant
+    /// user without one (<c>DriveUnion:Seed:TenantSlug</c> and <c>TenantUserEmail</c> with no
+    /// <c>OperatorEmail</c>), and that person must not be walled out by a setup screen that is not
+    /// theirs to complete. It suppresses nothing but this redirection — the setup route is gated on
+    /// the database, not on this.
+    /// </param>
     [HttpGet]
     [AllowAnonymous]
-    public IActionResult Login(string? returnUrl)
+    public async Task<IActionResult> Login(
+        string? returnUrl,
+        bool signIn,
+        CancellationToken cancellationToken)
     {
         // A signed-in visitor asking for the sign-in form is asking for the panel. Home is the
         // signpost that knows which half of it they belong to.
@@ -38,7 +62,111 @@ public sealed class AccountController(
         SetShell();
         ViewData["ReturnUrl"] = returnUrl;
 
+        // Every challenge in the panel lands here, so this is where "there is nobody to be" has to
+        // be answered. A sign-in form on an empty database is a locked door with no key cut for it.
+        //
+        // Rendered rather than redirected to /Identity/Account/Setup: this address is what the cookie
+        // handler names and what the whole product links to, and a 302 on it would break callers
+        // that reasonably expect the sign-in address to answer with a page.
+        if (!signIn && !await FirstOperator.ExistsAsync(signInManager.UserManager, cancellationToken))
+        {
+            return View(SetupViewName, NewSetupModel());
+        }
+
         return View(new LoginViewModel());
+    }
+
+    /// <summary>
+    /// The first-run screen, at its own address so the form has somewhere to post to.
+    ///
+    /// Anonymous, and it creates an administrator — so the check that matters is the one on the
+    /// request that writes, not the one on the request that drew the form. Both ask the database,
+    /// and both answer 404 once there is an operator: the route is gone, not disabled.
+    /// </summary>
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<IActionResult> Setup(CancellationToken cancellationToken)
+    {
+        if (await FirstOperator.ExistsAsync(signInManager.UserManager, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        SetShell();
+
+        return View(NewSetupModel());
+    }
+
+    [HttpPost]
+    [AllowAnonymous]
+    [ActionName(nameof(Setup))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetupConfirmed(
+        SetupViewModel model,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        // Asked again, on this request, before anything is read out of the body. A form saved from
+        // an earlier visit, a second browser tab and a hand-written POST all arrive here and are all
+        // answered by the same query.
+        if (await FirstOperator.ExistsAsync(signInManager.UserManager, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        SetShell();
+        Describe(model);
+
+        if (!ModelState.IsValid)
+        {
+            return SetupAgain(model);
+        }
+
+        var result = await FirstOperator.CreateAsync(
+            signInManager.UserManager,
+            model.Email.Trim(),
+            model.Password,
+            clock.GetUtcNow(),
+            cancellationToken);
+
+        switch (result.Outcome)
+        {
+            case FirstOperatorOutcome.AlreadyProvisioned:
+                // Two setup requests overlapped and this is the one that lost — the database refused
+                // the duplicate key rather than this code refusing the request, which is why the
+                // window between the check above and the insert is not a window at all. Nothing was
+                // written here, so the honest answer is the same 404 a late visitor gets.
+                logger.LogWarning(
+                    "A first-run setup arrived after the operator already existed; nothing was created.");
+
+                return NotFound();
+
+            case FirstOperatorOutcome.Refused:
+                // Identity's own descriptions — "Passwords must be at least 10 characters." — and not
+                // a sentence of ours saying the password was no good. A first screen that refuses
+                // without saying what it wants is worse than the command line it replaces.
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+
+                return SetupAgain(model);
+
+            default:
+                break;
+        }
+
+        var user = result.User!;
+
+        await signInManager.SignInAsync(user, isPersistent: false);
+
+        logger.LogInformation("The first operator {Email} was created from the setup screen.", user.Email);
+
+        // The pool is what an operator came for, and the panel's own screens would refuse them:
+        // operator staff have no tenant. area = "" leaves this area, without which the redirect
+        // resolves to nothing.
+        return RedirectToAction("Index", "Accounts", new { area = "" });
     }
 
     [HttpPost]
@@ -147,6 +275,69 @@ public sealed class AccountController(
         model.Password = string.Empty;
 
         return View(model);
+    }
+
+    private SetupViewModel NewSetupModel()
+    {
+        var model = new SetupViewModel();
+        Describe(model);
+
+        return model;
+    }
+
+    /// <summary>
+    /// Fills in what the page says about the password, over anything the request supplied. These
+    /// three values are not the visitor's to choose, and on a POST they arrive from a body that
+    /// anybody can write.
+    /// </summary>
+    private void Describe(SetupViewModel model)
+    {
+        var password = identityOptions.Value.Password;
+
+        model.MinimumPasswordLength = password.RequiredLength;
+        model.PasswordRules = Rules(password);
+
+        // Development only, and the check is the environment rather than a configuration flag: a
+        // flag can be set in production by whoever edits appsettings, and this decides whether an
+        // unauthenticated page offers a credential.
+        model.OfferGeneratedPassword = environment.IsDevelopment();
+    }
+
+    /// <summary>
+    /// Identity's policy in Persian prose. Read from the options rather than transcribed, so the
+    /// screen keeps telling the truth if Program.cs changes what it requires.
+    /// </summary>
+    private static List<string> Rules(PasswordOptions password)
+    {
+        var rules = new List<string>
+        {
+            $"دست‌کم {PersianDigits.Plain(password.RequiredLength)} نویسه",
+        };
+
+        if (password.RequireUppercase) rules.Add("دست‌کم یک حرف بزرگ لاتین (A تا Z)");
+        if (password.RequireLowercase) rules.Add("دست‌کم یک حرف کوچک لاتین (a تا z)");
+        if (password.RequireDigit) rules.Add("دست‌کم یک رقم (۰ تا ۹)");
+        if (password.RequireNonAlphanumeric) rules.Add("دست‌کم یک نشانه، مانند ! یا # یا ?");
+
+        if (password.RequiredUniqueChars > 1)
+        {
+            rules.Add($"دست‌کم {PersianDigits.Plain(password.RequiredUniqueChars)} نویسه‌ی متفاوت");
+        }
+
+        return rules;
+    }
+
+    /// <summary>
+    /// The setup form again, with both password boxes emptied. A refused password that is rendered
+    /// back into the HTML is a credential in the page source, in the browser's back-forward cache
+    /// and in anything between here and the browser that keeps response bodies.
+    /// </summary>
+    private IActionResult SetupAgain(SetupViewModel model)
+    {
+        model.Password = string.Empty;
+        model.ConfirmPassword = string.Empty;
+
+        return View(SetupViewName, model);
     }
 
     /// <summary>

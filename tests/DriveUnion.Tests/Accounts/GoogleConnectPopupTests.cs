@@ -184,7 +184,7 @@ public class GoogleConnectPopupTests
             .Model.Should().BeOfType<ConnectPopupViewModel>().Subject;
 
         model.Succeeded.Should().BeFalse();
-        model.Message.Should().Be("پیکربندی OAuth گوگل کامل نیست.");
+        model.Message.Should().Be("پیکربندی OAuth گوگل کامل نیست. اطلاعات آن را در صفحه‌ی اکانت‌ها وارد کنید.");
         model.Hint.Should().Contain("Google:ClientId").And.Contain("Google:ClientSecret")
             .And.Contain("Google:RedirectUri");
 

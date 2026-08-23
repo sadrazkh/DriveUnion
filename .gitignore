@@ -17,6 +17,9 @@ src/DriveUnion.Web/wwwroot/fonts/
 .env
 *.log
 appsettings.*.local.json
+# Where the Google OAuth client the operator types into the panel is written. The secret in it is
+# encrypted, the client id is not, and neither belongs in the repository.
+src/DriveUnion.Web/App_Data/
 
 # OS / IDE
 .vs/

@@ -1,0 +1,199 @@
+@using DriveUnion.Infrastructure.Google
+@using DriveUnion.Web.Models
+@model GoogleSetupViewModel
+@{
+    // Open when there is nothing in force. This is the first screen a new operator meets and it has
+    // to read as instructions; once a client is configured it folds away, because after that the
+    // page is about the accounts and not about how to make accounts possible.
+    var expanded = !Model.IsComplete;
+
+    string SourceClass(GoogleCredentialSource source) => source switch
+    {
+        GoogleCredentialSource.None => "badge badge--warn",
+        GoogleCredentialSource.Configuration => "badge badge--muted",
+        _ => "badge",
+    };
+}
+
+<details class="setup" @(expanded ? "open" : null)>
+    <summary class="setup-summary">
+        <span class="setup-summary-text">
+            <span class="setup-summary-title">راه‌اندازی اتصال به گوگل</span>
+            <span class="setup-summary-sub">
+                @if (Model.IsComplete)
+                {
+                    <text>کلاینت OAuth تنظیم شده است. برای تغییر یا بررسی، باز کنید.</text>
+                }
+                else
+                {
+                    <text>برای اتصال اکانت، ابتدا باید یک کلاینت OAuth در Google Cloud بسازید.</text>
+                }
+            </span>
+        </span>
+        <span class="@(Model.IsComplete ? "badge" : "badge badge--warn")">
+            @(Model.IsComplete ? "آماده" : "ناقص")
+        </span>
+    </summary>
+
+    <div class="setup-body">
+        @*
+            The steps, in the order Google Cloud actually presents them. Written out rather than
+            linked to Google's documentation because that documentation is in English, changes
+            without notice, and does not know what this panel's redirect URI is.
+        *@
+        <ol class="setup-steps">
+            <li>
+                در <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener noreferrer">Google Cloud Console</a>
+                یک پروژه‌ی جدید بسازید.
+            </li>
+            <li>
+                از بخش <span class="mono" dir="ltr">APIs &amp; Services → Library</span> سرویس
+                <span class="mono" dir="ltr">Google Drive API</span> را فعال کنید.
+            </li>
+            <li>
+                در <span class="mono" dir="ltr">Credentials → Create credentials → OAuth client ID</span>
+                نوع <span class="mono" dir="ltr">Web application</span> را انتخاب کنید — نه Desktop و نه TV.
+            </li>
+            <li>
+                در همان صفحه، این نشانی را دقیقاً در
+                <span class="mono" dir="ltr">Authorised redirect URIs</span> اضافه کنید:
+
+                @*
+                    Rendered from this request's own scheme, host and port. Google compares the two
+                    strings byte for byte and answers a mismatch with redirect_uri_mismatch and
+                    nothing else, so the operator must not be assembling this by hand.
+                *@
+                <span class="setup-copy">
+                    <code class="setup-uri mono" dir="ltr" data-copy-value>@Model.SuggestedRedirectUri</code>
+                    <button type="button" class="btn btn--sm" data-copy hidden>رونوشت</button>
+                </span>
+
+                @if (Model.RedirectUriSource is not GoogleCredentialSource.None
+                     && !string.Equals(Model.RedirectUri, Model.SuggestedRedirectUri, StringComparison.Ordinal))
+                {
+                    <span class="setup-note">
+                        توجه: آدرس بازگشتی که هم‌اکنون اعمال می‌شود با نشانی بالا فرق دارد. همان که اعمال
+                        می‌شود باید در گوگل ثبت شده باشد:
+                        <span class="mono" dir="ltr">@Model.RedirectUri</span>
+                    </span>
+                }
+            </li>
+            <li>
+                <strong>صفحه‌ی رضایت (OAuth consent screen) را از حالت
+                <span class="mono" dir="ltr">Testing</span> به
+                <span class="mono" dir="ltr">In production</span> ببرید.</strong>
+                تا وقتی در حالت Testing باشد، گوگل توکن تازه‌سازی را بعد از هفت روز باطل می‌کند و اتصال
+                اکانت درست یک هفته بعد از کار می‌افتد — بدون آنکه چیزی در پنل تغییر کرده باشد.
+            </li>
+            <li>
+                دسترسی درخواستی <span class="mono" dir="ltr">@GoogleSetupViewModel.Scope</span> است و
+                گوگل آن را «restricted» می‌داند. چون فقط اکانت‌های خودِ شما وصل می‌شوند، یک‌بار هشدار
+                «unverified app» را می‌بینید و رد می‌کنید؛ مشتری‌ها هرگز این صفحه را نمی‌بینند.
+            </li>
+        </ol>
+
+        @* What is in force right now, and why. Three rows, because the operator's next question
+           after "it does not work" is always "which of the three is missing". *@
+        <div class="setup-state" role="group" aria-label="وضعیت فعلی">
+            <div class="setup-state-row">
+                <span class="setup-state-label">Client ID</span>
+                <span class="setup-state-value mono" dir="ltr">@(Model.ClientId.Length > 0 ? Model.ClientId : "—")</span>
+                <span class="@SourceClass(Model.ClientIdSource)">@GoogleSetupViewModel.SourceText(Model.ClientIdSource)</span>
+            </div>
+            <div class="setup-state-row">
+                <span class="setup-state-label">Client Secret</span>
+                @* Never the value. «ذخیره شده» is the whole of what a browser is ever told. *@
+                <span class="setup-state-value">@(Model.SecretIsSet ? "ذخیره شده" : "—")</span>
+                <span class="@SourceClass(Model.SecretSource)">@GoogleSetupViewModel.SourceText(Model.SecretSource)</span>
+            </div>
+            <div class="setup-state-row">
+                <span class="setup-state-label">Redirect URI</span>
+                @* The attribute names which element carries the value in force. A test reads it and
+                   compares it with the redirect_uri the authorization request actually sends — a
+                   mismatch between those two is the classic hour-long debugging session, and Google
+                   reports it as nothing more than «redirect_uri_mismatch». *@
+                <span class="setup-state-value mono" dir="ltr" data-effective-redirect-uri>@Model.RedirectUri</span>
+                <span class="@SourceClass(Model.RedirectUriSource)">@GoogleSetupViewModel.SourceText(Model.RedirectUriSource)</span>
+            </div>
+        </div>
+
+        @if (Model.ConfigurationOutranksPanel)
+        {
+            <p class="setup-note setup-note--warn" role="status">
+                مقداری که در این فرم ذخیره کرده‌اید توسط پیکربندی سرور
+                (<span class="mono" dir="ltr">Google:ClientId</span>،
+                <span class="mono" dir="ltr">Google:ClientSecret</span>،
+                <span class="mono" dir="ltr">Google:RedirectUri</span>)
+                بازنویسی شده است. پیکربندی سرور همیشه اولویت دارد؛ برای اعمال مقدار این فرم باید آن
+                متغیر را از سرور بردارید.
+            </p>
+        }
+
+        <form class="setup-form" method="post" action="@Url.Action("SaveGoogleCredentials", "Accounts")">
+            @Html.AntiForgeryToken()
+
+            <div class="stack" style="gap: 4px;">
+                <label class="field-label" for="setup-client-id">Client ID</label>
+                <span class="field">
+                    <input id="setup-client-id"
+                           name="ClientId"
+                           dir="ltr"
+                           autocomplete="off"
+                           spellcheck="false"
+                           placeholder="123456789-abc.apps.googleusercontent.com"
+                           value="@Model.FormClientId" />
+                </span>
+            </div>
+
+            <div class="stack" style="gap: 4px;">
+                <label class="field-label" for="setup-client-secret">Client Secret</label>
+                @*
+                    type=password so a shoulder or a screen share does not read it, and no value
+                    attribute ever — the secret leaves this server exactly once, on its way to
+                    Google. Blank means «unchanged», which the placeholder says.
+                *@
+                <span class="field">
+                    <input id="setup-client-secret"
+                           name="ClientSecret"
+                           type="password"
+                           dir="ltr"
+                           autocomplete="off"
+                           spellcheck="false"
+                           placeholder="@(Model.StoredSecretIsSet ? "ذخیره شده — برای تغییر مقدار تازه وارد کنید" : "GOCSPX-…")" />
+                </span>
+            </div>
+
+            <div class="stack" style="gap: 4px;">
+                <label class="field-label" for="setup-redirect-uri">Redirect URI</label>
+                <span class="field">
+                    <input id="setup-redirect-uri"
+                           name="RedirectUri"
+                           dir="ltr"
+                           autocomplete="off"
+                           spellcheck="false"
+                           value="@Model.FormRedirectUri" />
+                </span>
+                <span class="setup-hint">باید مو‌به‌مو با آنچه در گوگل ثبت کرده‌اید یکی باشد.</span>
+            </div>
+
+            <div class="row" style="gap: 8px;">
+                <button type="submit" class="btn btn--primary">ذخیره</button>
+
+                @if (Model.HasStoredClient)
+                {
+                    <span class="setup-hint push-end">آخرین تغییر: @Model.StoredUpdatedText</span>
+                }
+            </div>
+        </form>
+
+        @if (Model.HasStoredClient)
+        {
+            @* A separate form, because a delete inside the save form is one stray Enter away from
+               being the button that submits. *@
+            <form method="post" action="@Url.Action("ClearGoogleCredentials", "Accounts")">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn--danger btn--sm">حذف اطلاعات ذخیره‌شده</button>
+            </form>
+        }
+    </div>
+</details>

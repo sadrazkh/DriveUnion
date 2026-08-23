@@ -1,10 +1,13 @@
 /*
- * The Google consent popup's own page. Loaded by Views/Accounts/ConnectPopup.cshtml alone.
+ * The two surfaces «اکانت‌های گوگل» owns beyond the panel's primitives: the Google consent popup's
+ * own page (Views/Accounts/ConnectPopup.cshtml) and the setup panel on the accounts screen
+ * (Views/Accounts/_GoogleSetup.cshtml).
  *
- * Separate from app.css because nothing in the panel is 520px wide with no shell around it, and
- * these rules would be dead weight on every other page. Everything here reads tokens.css and reuses
- * app.css's .btn — the popup has to look like it belongs to the panel that opened it, in either
- * theme, and a second button style is how that stops being true.
+ * Separate from app.css because nothing else in the panel is a 520px window with no shell around
+ * it, and nothing else is a page of instructions; these rules would be dead weight on every other
+ * page. Everything here reads tokens.css and reuses app.css's .btn, .badge and .field — both
+ * surfaces have to look like they belong to the panel that opened them, in either theme, and a
+ * second button style is how that stops being true.
  */
 
 .oauth-popup {
@@ -118,4 +121,183 @@
   .oauth-card {
     animation: none;
   }
+}
+
+/* ------------------------------------------------------- the setup panel on /accounts */
+
+/*
+ * A <details>, not a card with a JavaScript toggle. It has to work on a page whose whole reason for
+ * existing is that Google is not configured yet — including with no bundle at all — and the browser
+ * already owns this behaviour.
+ */
+.setup {
+  max-width: 900px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+/* Open, it stops being one row and starts being a document; the rule separates the two. */
+.setup[open] > .setup-summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.setup-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+/* Safari draws its own triangle through ::-webkit-details-marker and ignores list-style. */
+.setup-summary::-webkit-details-marker {
+  display: none;
+}
+
+.setup-summary:hover {
+  background: var(--surface2);
+  border-radius: 14px 14px 0 0;
+}
+
+.setup-summary-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.setup-summary-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.setup-summary-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 16px 20px;
+}
+
+/*
+ * The steps. The indent is `padding-inline-start` and not `padding-left`: the markers sit on the
+ * right in this RTL page, and a physical property would hang the numbers off the card's edge.
+ */
+.setup-steps {
+  margin: 0;
+  padding-inline-start: 20px;
+  font-size: 13px;
+  line-height: 2.1;
+  color: var(--text);
+}
+
+.setup-steps li + li {
+  margin-top: 10px;
+}
+
+.setup-steps strong {
+  font-weight: 700;
+}
+
+.setup-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/*
+ * The redirect URI is the one string on this page that has to be copied character-perfect, so it is
+ * a target: user-select: all makes a single click select the whole thing for the operator who does
+ * not have the copy button, and overflow-wrap keeps a long host from widening the card.
+ */
+.setup-uri {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface2);
+  font-size: 12px;
+  line-height: 1.7;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.setup-state {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.setup-state-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 12px;
+}
+
+.setup-state-row + .setup-state-row {
+  border-top: 1px solid var(--line);
+}
+
+/* Fixed, so the three values start on one line however long their labels render. */
+.setup-state-label {
+  flex: 0 0 96px;
+  color: var(--muted);
+}
+
+.setup-state-value {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.setup-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.setup-note--warn {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--danger-soft);
+  color: var(--text);
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-hint {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/*
+ * `hidden` has to mean hidden here, for the same reason it does on the popup card: the copy button
+ * is rendered hidden and shown only once a script has confirmed there is a clipboard to write to,
+ * and .btn's display: inline-flex outranks the user-agent's [hidden] rule.
+ */
+.setup [hidden] {
+  display: none;
 }
