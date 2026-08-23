@@ -41,3 +41,6 @@ tests/**/obj/
 # annotations.json paints those regions out, belong in the repository.
 docs/tutorial/img/*.png
 !docs/tutorial/img/*.annotated.png
+
+# Per-agent isolated build outputs (dotnet build --artifacts-path)
+/.artifacts/
