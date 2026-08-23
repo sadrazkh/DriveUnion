@@ -163,6 +163,7 @@ public sealed class UploadCoordinator(
 
             db.StoredFiles.Add(stored);
             session.Status = UploadSessionStatus.Completed;
+            session.StoredFileId = stored.Id;
             storedFileId = stored.Id;
         }
 
@@ -254,37 +255,20 @@ public sealed class UploadCoordinator(
         UploadSession session,
         CancellationToken cancellationToken)
     {
-        var storedFileId = session.Status == UploadSessionStatus.Completed
-            ? await FindStoredFileIdAsync(session, cancellationToken)
-            : null;
+        // A completed session names its file directly. It used to be recovered by matching tenant,
+        // account, name and byte count, which was a guess that two uploads of the same file made
+        // ambiguous; UploadSession.StoredFileId replaced it.
+        if (session.StoredFileId is not { } storedFileId) return Describe(session, null);
 
-        return Describe(session, storedFileId);
-    }
-
-    /// <summary>
-    /// Recovers the file a finished session produced.
-    ///
-    /// <see cref="UploadSession"/> carries no StoredFileId and <see cref="StoredFile"/> carries no
-    /// session id, so the only handle left is the shape of what was uploaded. Tenant, account, name
-    /// and exact byte count together are ambiguous only between two uploads of the very same file,
-    /// where either answer names the same bytes.
-    /// </summary>
-    private async Task<Guid?> FindStoredFileIdAsync(
-        UploadSession session,
-        CancellationToken cancellationToken)
-    {
-        var candidates = await db.StoredFiles
+        // Confirm it still exists: a customer can delete a file and then poll the finished session
+        // that made it, and naming a soft-deleted row would have the panel offer a file it will
+        // refuse to serve.
+        var alive = await db.StoredFiles
             .AsNoTracking()
-            .Where(f => f.TenantId == session.TenantId
-                        && f.GoogleAccountId == session.GoogleAccountId
-                        && f.Name == session.FileName
-                        && f.SizeBytes == session.SizeBytes
-                        && f.DeletedAt == null)
-            .Select(f => new { f.Id, f.CreatedAt })
-            .ToListAsync(cancellationToken);
+            .AnyAsync(
+                f => f.Id == storedFileId && f.TenantId == session.TenantId && f.DeletedAt == null,
+                cancellationToken);
 
-        // Newest wins, chosen in memory because SQLite will not ORDER BY a DateTimeOffset — see
-        // FileCatalog.ListAsync. There is normally exactly one row here.
-        return candidates.Count == 0 ? null : candidates.MaxBy(f => f.CreatedAt)!.Id;
+        return Describe(session, alive ? storedFileId : null);
     }
 }

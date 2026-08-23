@@ -4,7 +4,9 @@ using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
+using System.Net;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -46,9 +48,34 @@ builder.Services.AddDriveUnionWeb();
 // and every view @injects it — without this registration every page throws before it renders a byte.
 builder.Services.AddSingleton<ViteManifest>();
 
+// Behind the OVH proxy every visitor arrives from the proxy's address. Untreated, that collapses the
+// /d/* rate limiter into one partition and makes every download event look like the same party — the
+// limiter would throttle the world together and the owner's analytics would read "400 pulls, one
+// visitor" for a link that went out to four hundred people.
+//
+// Trust is opt-in through DriveUnion:TrustedProxies. With nothing configured the framework's default
+// stands (loopback only), because a box reachable directly must not let a caller pick its own
+// X-Forwarded-For and step around the limiter it was rate-limited by.
+var trustedProxies = builder.Configuration
+    .GetSection("DriveUnion:TrustedProxies")
+    .Get<string[]>() ?? [];
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    foreach (var proxy in trustedProxies.Where(p => !string.IsNullOrWhiteSpace(p)))
+    {
+        options.KnownProxies.Add(IPAddress.Parse(proxy.Trim()));
+    }
+});
+
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
+
+// Before everything that reads an address — routing, the rate limiter, and the download recorder.
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -67,6 +94,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapControllerRoute("areas", "{area:exists}/{controller=Home}/{action=Index}/{id?}");
 app.MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();

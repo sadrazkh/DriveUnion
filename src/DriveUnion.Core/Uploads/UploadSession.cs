@@ -50,6 +50,15 @@ public sealed class UploadSession
 
     public string? FailureReason { get; set; }
 
+    /// <summary>
+    /// The file this session produced, set on the chunk that completed it.
+    ///
+    /// Without it the only way to answer "which file did this upload become?" on a later request is
+    /// to match tenant, account, name and byte count — which is a guess, and an ambiguous one for a
+    /// customer who uploads the same file twice.
+    /// </summary>
+    public Guid? StoredFileId { get; set; }
+
     public bool IsResumable(DateTimeOffset now) =>
         Status == UploadSessionStatus.InProgress && now < ExpiresAt;
 }
