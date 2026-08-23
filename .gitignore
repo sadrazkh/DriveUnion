@@ -1,0 +1,43 @@
+# .NET
+bin/
+obj/
+*.user
+[Dd]ebug/
+[Rr]elease/
+
+# Frontend
+node_modules/
+src/Harbora.Web/wwwroot/build/
+
+# Secrets / local
+.env
+*.log
+.runtime/
+deploy/**/.env
+appsettings.*.local.json
+
+# Node channel: both are generated per install from traefik/node-agent.yml.template and the panel's
+# own CA. They name one server's domain and one server's trust anchor, and the installer rewrites
+# them on every run — committing either would put someone else's install in the repository.
+deploy/traefik/dynamic/node-agent.yml
+deploy/traefik/dynamic/node-ca.pem
+# And where the installer moves an orphaned router when the CA it verifies against has gone. It is
+# untracked by construction, and fetch_source updates with `git reset --hard`, which leaves
+# untracked files exactly where they are — so nothing would ever clean it up or explain it.
+deploy/traefik/node-agent.yml.disabled
+
+# OS / IDE
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Overhaul: local dev artifacts
+tests/**/bin/
+tests/**/obj/
+
+# Tutorial captures: the raw screenshots come straight off the running panel and hold live
+# values (webhook secrets, object-storage keys, account emails). Only the annotated copies, whose
+# annotations.json paints those regions out, belong in the repository.
+docs/tutorial/img/*.png
+!docs/tutorial/img/*.annotated.png

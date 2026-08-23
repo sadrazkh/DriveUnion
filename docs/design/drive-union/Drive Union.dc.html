@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="app">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@33.003/Vazirmatn-font-face.css">
+<style>
+  html,body{margin:0;padding:0;background:#F4F6F5;}
+  *{box-sizing:border-box;}
+  body{font-family:Vazirmatn,"Segoe UI",system-ui,sans-serif;}
+  a{color:#0F9D77;text-decoration:none;}
+  a:hover{color:#0B7A5C;text-decoration:underline;}
+  :root{
+    --bg:oklch(0.975 0.005 160);--surface:#ffffff;--surface2:oklch(0.985 0.004 160);
+    --line:oklch(0.915 0.006 160);--text:oklch(0.25 0.012 160);--muted:oklch(0.56 0.012 160);
+    --accent:#0F9D77;--accent-ink:#0B7A5C;--soft:oklch(0.955 0.028 165);
+    --warn:oklch(0.72 0.13 70);--warn-soft:oklch(0.96 0.04 80);
+    --danger:oklch(0.57 0.16 27);--danger-soft:oklch(0.96 0.03 27);
+    --shadow:0 1px 2px rgba(16,40,32,.05), 0 8px 24px -12px rgba(16,40,32,.18);
+    --row-pad:11px 14px;
+  }
+  [data-theme="dark"]{
+    --bg:oklch(0.185 0.008 165);--surface:oklch(0.225 0.010 165);--surface2:oklch(0.255 0.010 165);
+    --line:oklch(0.315 0.012 165);--text:oklch(0.955 0.005 160);--muted:oklch(0.70 0.010 160);
+    --accent:oklch(0.78 0.12 168);--accent-ink:oklch(0.86 0.10 168);--soft:oklch(0.30 0.045 168);
+    --warn:oklch(0.80 0.12 75);--warn-soft:oklch(0.31 0.05 75);
+    --danger:oklch(0.70 0.14 27);--danger-soft:oklch(0.30 0.06 27);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6);
+  }
+  [data-density="compact"]{--row-pad:7px 14px;}
+  [data-sc]{display:none;}
+  [data-sc="dash"]{display:block;}
+  [data-screen="files"] [data-sc="dash"],[data-screen="accounts"] [data-sc="dash"],[data-screen="queue"] [data-sc="dash"],[data-screen="links"] [data-sc="dash"],[data-screen="settings"] [data-sc="dash"],[data-screen="public"] [data-sc="dash"]{display:none;}
+  [data-screen="files"] [data-sc="files"],[data-screen="accounts"] [data-sc="accounts"],[data-screen="queue"] [data-sc="queue"],[data-screen="links"] [data-sc="links"],[data-screen="settings"] [data-sc="settings"],[data-screen="public"] [data-sc="public"]{display:block;}
+  [data-screen="public"] [data-shell]{display:none;}
+  [data-nav]{color:var(--muted);background:transparent;}
+  [data-screen="dash"] [data-nav="dash"],[data-screen="files"] [data-nav="files"],[data-screen="accounts"] [data-nav="accounts"],[data-screen="queue"] [data-nav="queue"],[data-screen="links"] [data-nav="links"],[data-screen="settings"] [data-nav="settings"]{color:var(--accent-ink);background:var(--soft);font-weight:700;}
+  [data-lang="fa"] [data-t="en"]{display:none;}
+  [data-lang="en"] [data-t="fa"]{display:none;}
+  [data-lang="en"] [data-pub]{direction:ltr;text-align:left;}
+  .ph{background-image:repeating-linear-gradient(135deg,var(--line) 0 1px,transparent 1px 9px);}
+</style>
+</helmet>
+<div dir="rtl" data-screen="{{ screen }}" data-theme="{{ theme }}" data-density="{{ density }}" style="display:flex;min-height:100vh;background:var(--bg);color:var(--text);font-family:Vazirmatn,system-ui,sans-serif;">
+
+  <nav data-shell="nav" style="width:232px;flex:0 0 232px;border-inline-end:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;gap:4px;padding:18px 12px;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:center;gap:10px;padding:4px 8px 18px;">
+      <div style="width:30px;height:30px;border-radius:9px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;">د</div>
+      <div style="display:flex;flex-direction:column;line-height:1.25;">
+        <span style="font-weight:800;font-size:15px;">درایو یونیون</span>
+        <span style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;">2 accounts · 10 TB</span>
+      </div>
+    </div>
+
+    <button data-nav="dash" onClick="{{ goDash }}" style="display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;cursor:pointer;text-align:start;">
+      <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>داشبورد
+    </button>
+    <button data-nav="files" onClick="{{ goFiles }}" style="display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;cursor:pointer;text-align:start;">
+      <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>فایل‌ها
+    </button>
+    <button data-nav="queue" onClick="{{ goQueue }}" style="display:flex;align-items:center;justify-content:space-between;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;cursor:pointer;text-align:start;">
+      <span style="display:flex;align-items:center;gap:10px;"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>صف انتقال</span>
+      <span style="font-family:ui-monospace,monospace;font-size:11px;background:var(--accent);color:#fff;border-radius:20px;padding:1px 7px;">3</span>
+    </button>
+    <button data-nav="links" onClick="{{ goLinks }}" style="display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;cursor:pointer;text-align:start;">
+      <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>لینک‌های اشتراک
+    </button>
+    <button data-nav="accounts" onClick="{{ goAccounts }}" style="display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;cursor:pointer;text-align:start;">
+      <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>اکانت‌های گوگل
+    </button>
+    <button data-nav="settings" onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:10px 12px;font:inherit;font-size:13.5px;cursor:pointer;text-align:start;">
+      <span style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>تنظیمات
+    </button>
+
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;">
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface2);">
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:7px;">
+          <span>سهمیه آپلود امروز</span><span style="font-family:ui-monospace,monospace;">918 / 1500 GB</span>
+        </div>
+        <div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:61%;height:100%;background:var(--accent);"></div></div>
+      </div>
+      <button onClick="{{ goPublic }}" style="border:1px dashed var(--line);background:transparent;color:var(--muted);border-radius:10px;padding:9px;font:inherit;font-size:12px;cursor:pointer;">پیش‌نمایش صفحه عمومی ↗</button>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 4px;">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">ر.م</div>
+        <div style="line-height:1.3;">
+          <div style="font-size:12.5px;font-weight:600;">رضا مرادی</div>
+          <div style="font-size:10.5px;color:var(--muted);">مدیر کل</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;">
+    <header data-shell="top" style="display:flex;align-items:center;gap:14px;padding:14px 26px;border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:5;">
+      <div style="flex:1;max-width:420px;display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:8px 12px;">
+        <span style="color:var(--muted);font-size:13px;">⌕</span>
+        <input placeholder="جست‌وجو در همه‌ی اکانت‌ها…" style="flex:1;border:0;outline:none;background:transparent;font:inherit;font-size:13px;color:var(--text);">
+        <span style="font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 5px;">⌘K</span>
+      </div>
+      <div style="margin-inline-start:auto;display:flex;align-items:center;gap:8px;">
+        <button onClick="{{ toggleTheme }}" style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:9px;padding:7px 12px;font:inherit;font-size:12.5px;cursor:pointer;">تیره / روشن</button>
+        <button style="border:0;background:var(--accent);color:#fff;border-radius:9px;padding:8px 16px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;">آپلود فایل</button>
+      </div>
+    </header>
+
+    <div style="flex:1;padding:24px 26px 40px;">
+
+      <section data-sc="dash" data-screen-label="داشبورد">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:18px;">
+          <h1 style="margin:0;font-size:22px;font-weight:800;">داشبورد</h1>
+          <span style="font-size:12px;color:var(--muted);font-family:ui-monospace,monospace;">آخرین همگام‌سازی ۲ دقیقه پیش</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:14px;">
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <div style="width:34px;height:34px;border-radius:10px;background:var(--soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">A1</div>
+              <div style="line-height:1.35;">
+                <div style="font-size:13.5px;font-weight:700;">archive.main@gmail.com</div>
+                <div style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;">Workspace · متصل از ۱۲ خرداد</div>
+              </div>
+              <span style="margin-inline-start:auto;font-size:11px;color:var(--accent-ink);background:var(--soft);border-radius:20px;padding:3px 10px;">سالم</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px;"><span>فضای مصرفی</span><span style="font-family:ui-monospace,monospace;color:var(--text);">3.42 / 5 TB</span></div>
+            <div style="height:8px;border-radius:8px;background:var(--line);overflow:hidden;margin-bottom:14px;"><div style="width:68%;height:100%;background:var(--accent);"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px;"><span>آپلود امروز</span><span style="font-family:ui-monospace,monospace;color:var(--text);">612 / 750 GB</span></div>
+            <div style="height:8px;border-radius:8px;background:var(--line);overflow:hidden;"><div style="width:81.6%;height:100%;background:var(--warn);"></div></div>
+          </div>
+
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <div style="width:34px;height:34px;border-radius:10px;background:var(--soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">A2</div>
+              <div style="line-height:1.35;">
+                <div style="font-size:13.5px;font-weight:700;">archive.cold@gmail.com</div>
+                <div style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;">Workspace · متصل از ۲ مرداد</div>
+              </div>
+              <span style="margin-inline-start:auto;font-size:11px;color:var(--accent-ink);background:var(--soft);border-radius:20px;padding:3px 10px;">سالم</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px;"><span>فضای مصرفی</span><span style="font-family:ui-monospace,monospace;color:var(--text);">1.08 / 5 TB</span></div>
+            <div style="height:8px;border-radius:8px;background:var(--line);overflow:hidden;margin-bottom:14px;"><div style="width:21.6%;height:100%;background:var(--accent);"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px;"><span>آپلود امروز</span><span style="font-family:ui-monospace,monospace;color:var(--text);">306 / 750 GB</span></div>
+            <div style="height:8px;border-radius:8px;background:var(--line);overflow:hidden;"><div style="width:40.8%;height:100%;background:var(--accent);"></div></div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:14px;">
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);">
+                <h2 style="margin:0;font-size:14px;font-weight:700;">کارهای فعال</h2>
+                <a href="#" onClick="{{ goQueue }}" style="font-size:12px;">همه‌ی صف ←</a>
+              </div>
+              <div style="display:flex;flex-direction:column;">
+                <div style="padding:14px 18px;border-bottom:1px solid var(--line);">
+                  <div style="display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:8px;">
+                    <span style="font-weight:600;">Season-04-Master.mkv</span>
+                    <span style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;">A1 → A2 · files.copy</span>
+                    <span style="margin-inline-start:auto;font-family:ui-monospace,monospace;font-size:12px;">73%</span>
+                  </div>
+                  <div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:73%;height:100%;background:var(--accent);"></div></div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:6px;font-family:ui-monospace,monospace;">کپی سمت گوگل · بدون مصرف پهنای باند سرور</div>
+                </div>
+                <div style="padding:14px 18px;border-bottom:1px solid var(--line);">
+                  <div style="display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:8px;">
+                    <span style="font-weight:600;">backup-2026-08.tar.zst</span>
+                    <span style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;">آپلود موازی · ۸ chunk</span>
+                    <span style="margin-inline-start:auto;font-family:ui-monospace,monospace;font-size:12px;">41%</span>
+                  </div>
+                  <div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:41%;height:100%;background:var(--accent);"></div></div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:6px;font-family:ui-monospace,monospace;">218 MB/s · باقی‌مانده ۰۰:۱۹:۲۴</div>
+                </div>
+                <div style="padding:14px 18px;">
+                  <div style="display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:8px;">
+                    <span style="font-weight:600;">raw-photos-2026.zip</span>
+                    <span style="font-size:11px;color:var(--muted);font-family:ui-monospace,monospace;">در انتظار سهمیه A1</span>
+                    <span style="margin-inline-start:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--warn);">صف</span>
+                  </div>
+                  <div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:0%;height:100%;background:var(--accent);"></div></div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:6px;font-family:ui-monospace,monospace;">شروع خودکار ساعت ۰۰:۰۰ بعد از ریست سهمیه</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);">
+                <h2 style="margin:0;font-size:14px;font-weight:700;">لینک‌های پر‌بازدید امروز</h2>
+                <a href="#" onClick="{{ goLinks }}" style="font-size:12px;">مدیریت لینک‌ها ←</a>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr auto auto;gap:0;">
+                <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-size:13px;">Q3-Report-Final.pdf</div>
+                <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);">/d/kx91mz</div>
+                <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:12px;">۲۴۱ دانلود</div>
+                <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-size:13px;">promo-reel-4k.mp4</div>
+                <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);">/d/8vaq2c</div>
+                <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:12px;">۱۸۹ دانلود</div>
+                <div style="padding:var(--row-pad);font-size:13px;">دفترچه-راهنما-نسخه۳.pdf</div>
+                <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);">/d/rt40ab</div>
+                <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:12px;">۷۶ دانلود</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);">
+              <h2 style="margin:0 0 14px;font-size:14px;font-weight:700;">ترافیک خروجی سرور OVH</h2>
+              <div style="display:flex;align-items:flex-end;gap:5px;height:96px;">
+                <div style="flex:1;height:38%;background:var(--soft);border-radius:4px 4px 0 0;"></div>
+                <div style="flex:1;height:52%;background:var(--soft);border-radius:4px 4px 0 0;"></div>
+                <div style="flex:1;height:44%;background:var(--soft);border-radius:4px 4px 0 0;"></div>
+                <div style="flex:1;height:71%;background:var(--soft);border-radius:4px 4px 0 0;"></div>
+                <div style="flex:1;height:63%;background:var(--soft);border-radius:4px 4px 0 0;"></div>
+                <div style="flex:1;height:88%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+                <div style="flex:1;height:100%;background:var(--accent);border-radius:4px 4px 0 0;"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:8px;font-family:ui-monospace,monospace;"><span>۷ روز اخیر</span><span>اوج ۴.۱ Gb/s</span></div>
+            </div>
+
+            <sc-if value="{{ showErrorPanel }}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;">
+                <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;">
+                  <span style="width:8px;height:8px;border-radius:50%;background:var(--danger);"></span>
+                  <h2 style="margin:0;font-size:14px;font-weight:700;">کارهای ناموفق</h2>
+                  <span style="margin-inline-start:auto;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);">۲ مورد</span>
+                </div>
+                <div style="padding:14px 18px;border-bottom:1px solid var(--line);">
+                  <div style="font-size:13px;font-weight:600;margin-bottom:4px;">dataset-full.img · 812 GB</div>
+                  <div style="font-size:11.5px;color:var(--muted);line-height:1.7;">بزرگ‌تر از سقف ۷۵۰GB برای files.copy — نیاز به آپلود مستقیم دارد.</div>
+                  <button style="margin-top:9px;border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;">آپلود مستقیم به‌جای کپی</button>
+                </div>
+                <div style="padding:14px 18px;">
+                  <div style="font-size:13px;font-weight:600;margin-bottom:4px;">nightly-sync #4471</div>
+                  <div style="font-size:11.5px;color:var(--muted);line-height:1.7;">خطای ۴۰۳ userRateLimitExceeded — عبور از ۱۲٬۰۰۰ کوئری در ۶۰ ثانیه.</div>
+                  <button style="margin-top:9px;border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;">تلاش مجدد با backoff</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </section>
+
+      <section data-sc="files" data-screen-label="فایل‌ها">
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
+          <h1 style="margin:0;font-size:22px;font-weight:800;">فایل‌ها</h1>
+          <span style="font-size:12.5px;color:var(--muted);">نمای یکپارچه از ۲ اکانت · ۱۴٬۲۸۶ آیتم</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+          <span style="font-size:12px;border:1px solid var(--accent);color:var(--accent-ink);background:var(--soft);border-radius:20px;padding:5px 12px;">همه اکانت‌ها</span>
+          <span style="font-size:12px;border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:5px 12px;">A1 archive.main</span>
+          <span style="font-size:12px;border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:5px 12px;">A2 archive.cold</span>
+          <span style="font-size:12px;border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:5px 12px;">فقط لینک‌دار</span>
+          <span style="font-size:12px;border:1px solid var(--line);color:var(--muted);border-radius:20px;padding:5px 12px;">بزرگ‌تر از ۱۰GB</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start;">
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;">
+            <div style="display:grid;grid-template-columns:28px minmax(0,2.4fr) 84px 92px 110px 118px 96px;align-items:center;background:var(--surface2);border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted);font-weight:600;">
+              <div style="padding:var(--row-pad);"></div>
+              <div style="padding:var(--row-pad);">نام</div>
+              <div style="padding:var(--row-pad);">اکانت</div>
+              <div style="padding:var(--row-pad);">حجم</div>
+              <div style="padding:var(--row-pad);">تغییر</div>
+              <div style="padding:var(--row-pad);">لینک</div>
+              <div style="padding:var(--row-pad);">دانلود</div>
+            </div>
+            <div style="display:grid;grid-template-columns:28px minmax(0,2.4fr) 84px 92px 110px 118px 96px;align-items:center;font-size:12.5px;">
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);"><span style="display:block;width:11px;height:11px;border-radius:3px;background:var(--accent);"></span></div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Q3-Report-Final.pdf</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-family:ui-monospace,monospace;font-size:11.5px;">A1</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-family:ui-monospace,monospace;font-size:11.5px;">18.4 MB</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);color:var(--muted);">امروز ۱۰:۲۲</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-family:ui-monospace,monospace;font-size:11px;color:var(--accent-ink);">/d/kx91mz</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-family:ui-monospace,monospace;font-size:11.5px;">۲۴۱</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><span style="display:block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);"></span></div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Season-04-Master.mkv</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A1</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">214 GB</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);">دیروز</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">—</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">۰</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><span style="display:block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);"></span></div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">promo-reel-4k.mp4</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A2</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">4.7 GB</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);">۳ روز پیش</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;color:var(--accent-ink);">/d/8vaq2c</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">۱۸۹</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><span style="display:block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);"></span></div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">دفترچه-راهنما-نسخه۳.pdf</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A2</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">6.2 MB</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);">۵ روز پیش</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;color:var(--accent-ink);">/d/rt40ab</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">۷۶</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><span style="display:block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);"></span></div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">dataset-full.img</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A1</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">812 GB</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);">۱ هفته پیش</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">—</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">۰</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><span style="display:block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);"></span></div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">backup-2026-08.tar.zst</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A2</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">96 GB</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);">در حال آپلود</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">—</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">۰</div>
+
+              <div style="padding:var(--row-pad);"><span style="display:block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);"></span></div>
+              <div style="padding:var(--row-pad);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">client-assets-2026/</div>
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11.5px;">A1</div>
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11.5px;">28.9 GB</div>
+              <div style="padding:var(--row-pad);color:var(--muted);">۲ هفته پیش</div>
+              <div style="padding:var(--row-pad);color:var(--muted);font-size:11.5px;">—</div>
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11.5px;">۰</div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--line);background:var(--surface2);font-size:12px;color:var(--muted);">
+              <span>۱ فایل انتخاب شده</span>
+              <div style="display:flex;gap:8px;">
+                <button style="border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;">انتقال به A2</button>
+                <button style="border:0;background:var(--accent);color:#fff;border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;">ساخت لینک</button>
+              </div>
+            </div>
+          </div>
+
+          <aside style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;position:sticky;top:88px;">
+            <div class="ph" style="height:150px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center;">
+              <span style="font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);background:var(--surface);padding:4px 10px;border-radius:6px;">پیش‌نمایش صفحه اول PDF</span>
+            </div>
+            <div style="padding:16px;">
+              <h3 style="margin:0 0 3px;font-size:14.5px;font-weight:700;">Q3-Report-Final.pdf</h3>
+              <div style="font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);margin-bottom:14px;">18.4 MB · PDF · 42 صفحه</div>
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:12.5px;margin-bottom:16px;">
+                <span style="color:var(--muted);">اکانت</span><span>archive.main@gmail.com</span>
+                <span style="color:var(--muted);">مسیر</span><span style="font-family:ui-monospace,monospace;font-size:11.5px;">/reports/2026/Q3</span>
+                <span style="color:var(--muted);">شناسه درایو</span><span style="font-family:ui-monospace,monospace;font-size:11.5px;">1aB…9Zk</span>
+                <span style="color:var(--muted);">ساخته شده</span><span>۱۴۰۵/۰۵/۳۱ — ۱۰:۲۲</span>
+              </div>
+              <div style="border:1px solid var(--line);border-radius:11px;padding:12px;background:var(--surface2);margin-bottom:14px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;">
+                  <span style="font-size:12.5px;font-weight:700;">لینک فعال</span>
+                  <span style="font-size:11px;color:var(--accent-ink);background:var(--soft);border-radius:20px;padding:2px 9px;">عمومی</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 10px;">
+                  <span dir="ltr" style="flex:1;font-family:ui-monospace,monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">yourdomain.com/d/kx91mz</span>
+                  <span style="font-size:11px;color:var(--accent-ink);cursor:pointer;">کپی</span>
+                </div>
+                <div style="display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:9px;font-family:ui-monospace,monospace;">
+                  <span>۲۴۱ / ۵۰۰ دانلود</span><span>انقضا ۱۲ روز</span><span>رمزدار</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button onClick="{{ goLinks }}" style="flex:1;border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:9px;padding:9px;font:inherit;font-size:12.5px;cursor:pointer;">تنظیمات لینک</button>
+                <button onClick="{{ goPublic }}" style="flex:1;border:0;background:var(--accent);color:#fff;border-radius:9px;padding:9px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;">دیدن صفحه عمومی</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section data-sc="queue" data-screen-label="صف انتقال">
+        <h1 style="margin:0 0 4px;font-size:22px;font-weight:800;">صف انتقال و آپلود</h1>
+        <p style="margin:0 0 18px;font-size:13px;color:var(--muted);">کپی بین درایوها سمت گوگل انجام می‌شود؛ آپلود از سرور OVH با chunkهای موازی.</p>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+          <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:14px;box-shadow:var(--shadow);">
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">در حال اجرا</div>
+            <div style="font-size:22px;font-weight:800;font-family:ui-monospace,monospace;">2</div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:14px;box-shadow:var(--shadow);">
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">در صف</div>
+            <div style="font-size:22px;font-weight:800;font-family:ui-monospace,monospace;">7</div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:14px;box-shadow:var(--shadow);">
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">سرعت کل</div>
+            <div style="font-size:22px;font-weight:800;font-family:ui-monospace,monospace;">341 <span style="font-size:12px;font-weight:500;color:var(--muted);">MB/s</span></div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:12px;background:var(--surface);padding:14px;box-shadow:var(--shadow);">
+            <div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">ناموفق ۲۴ ساعت</div>
+            <div style="font-size:22px;font-weight:800;font-family:ui-monospace,monospace;color:var(--danger);">2</div>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;">
+          <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 110px 1fr 90px;background:var(--surface2);border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted);font-weight:600;">
+            <div style="padding:var(--row-pad);">کار</div>
+            <div style="padding:var(--row-pad);">نوع</div>
+            <div style="padding:var(--row-pad);">مقصد</div>
+            <div style="padding:var(--row-pad);">پیشرفت</div>
+            <div style="padding:var(--row-pad);">وضعیت</div>
+          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 110px 1fr 90px;align-items:center;font-size:12.5px;">
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-weight:600;">Season-04-Master.mkv</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);">files.copy</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A1 → A2</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:73%;height:100%;background:var(--accent);"></div></div></div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--accent-ink);font-size:12px;">در حال کپی</div>
+
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-weight:600;">backup-2026-08.tar.zst</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);">resumable ×8</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">→ A2</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:41%;height:100%;background:var(--accent);"></div></div></div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--accent-ink);font-size:12px;">آپلود</div>
+
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-weight:600;">raw-photos-2026.zip</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);">resumable ×4</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">→ A1</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:0%;height:100%;background:var(--accent);"></div></div></div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--warn);font-size:12px;">صبر سهمیه</div>
+
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-weight:600;">dataset-full.img</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);">files.copy</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A1 → A2</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted);">سقف ۷۵۰GB رد شد</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--danger);font-size:12px;">ناموفق</div>
+
+            <div style="padding:var(--row-pad);font-weight:600;">invoices-2025.7z</div>
+            <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);">S3 export</div>
+            <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11.5px;">A2 → S3</div>
+            <div style="padding:var(--row-pad);"><div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:100%;height:100%;background:var(--accent);"></div></div></div>
+            <div style="padding:var(--row-pad);color:var(--muted);font-size:12px;">تمام شد</div>
+          </div>
+        </div>
+      </section>
+
+      <section data-sc="links" data-screen-label="تنظیمات لینک">
+        <h1 style="margin:0 0 18px;font-size:22px;font-weight:800;">لینک‌های اشتراک</h1>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:14px;align-items:start;">
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;">
+            <div style="display:grid;grid-template-columns:minmax(0,1.8fr) 118px 100px 96px 90px;background:var(--surface2);border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted);font-weight:600;">
+              <div style="padding:var(--row-pad);">فایل</div>
+              <div style="padding:var(--row-pad);">آدرس</div>
+              <div style="padding:var(--row-pad);">دانلود</div>
+              <div style="padding:var(--row-pad);">انقضا</div>
+              <div style="padding:var(--row-pad);">وضعیت</div>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1.8fr) 118px 100px 96px 90px;align-items:center;font-size:12.5px;">
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-weight:600;">Q3-Report-Final.pdf</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-family:ui-monospace,monospace;font-size:11px;">/d/kx91mz</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-family:ui-monospace,monospace;font-size:11.5px;">۲۴۱/۵۰۰</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);font-size:12px;">۱۲ روز</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);background:var(--soft);color:var(--accent-ink);font-size:12px;">فعال</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-weight:600;">promo-reel-4k.mp4</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;">/d/8vaq2c</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">۱۸۹/∞</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-size:12px;">بدون</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--accent-ink);font-size:12px;">فعال</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-weight:600;">دفترچه-راهنما-نسخه۳.pdf</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11px;">/d/rt40ab</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">۷۶/۱۰۰</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-size:12px;">۳ روز</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--warn);font-size:12px;">نزدیک سقف</div>
+
+              <div style="padding:var(--row-pad);font-weight:600;">contract-v7.docx</div>
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11px;">/d/we12nn</div>
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11.5px;">۵/۵</div>
+              <div style="padding:var(--row-pad);font-size:12px;">منقضی</div>
+              <div style="padding:var(--row-pad);color:var(--muted);font-size:12px;">غیرفعال</div>
+            </div>
+          </div>
+
+          <aside style="border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);padding:18px;position:sticky;top:88px;">
+            <h2 style="margin:0 0 3px;font-size:15px;font-weight:800;">تنظیمات لینک</h2>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Q3-Report-Final.pdf</div>
+
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">آدرس اختصاصی</label>
+            <div dir="ltr" style="display:flex;align-items:center;border:1px solid var(--line);border-radius:9px;background:var(--surface2);padding:8px 11px;margin-bottom:16px;font-family:ui-monospace,monospace;font-size:12px;">
+              <span style="color:var(--muted);">yourdomain.com/d/</span><span style="color:var(--text);">kx91mz</span>
+            </div>
+
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">تاریخ انقضا</label>
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+              <span style="flex:1;text-align:center;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--muted);">۲۴ ساعت</span>
+              <span style="flex:1;text-align:center;font-size:12px;border:1px solid var(--accent);background:var(--soft);color:var(--accent-ink);border-radius:8px;padding:7px;font-weight:700;">۱۴ روز</span>
+              <span style="flex:1;text-align:center;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:7px;color:var(--muted);">بدون</span>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line);">
+              <div style="line-height:1.4;">
+                <div style="font-size:13px;font-weight:600;">محافظت با رمز</div>
+                <div style="font-size:11px;color:var(--muted);">قبل از دیدن پیش‌نمایش پرسیده می‌شود</div>
+              </div>
+              <div style="width:38px;height:22px;border-radius:20px;background:var(--accent);position:relative;flex:0 0 38px;"><span style="position:absolute;inset-inline-start:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;"></span></div>
+            </div>
+            <div dir="ltr" style="border:1px solid var(--line);border-radius:9px;background:var(--surface2);padding:8px 11px;margin-bottom:14px;font-family:ui-monospace,monospace;font-size:12px;color:var(--muted);">••••••••••</div>
+
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px;">سقف تعداد دانلود</label>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+              <div style="flex:1;height:6px;border-radius:6px;background:var(--line);position:relative;"><div style="width:48%;height:100%;background:var(--accent);border-radius:6px;"></div><span style="position:absolute;inset-inline-start:48%;top:-5px;width:16px;height:16px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);"></span></div>
+              <span style="font-family:ui-monospace,monospace;font-size:12.5px;">500</span>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line);">
+              <div style="line-height:1.4;">
+                <div style="font-size:13px;font-weight:600;">صفحه پیش‌نمایش</div>
+                <div style="font-size:11px;color:var(--muted);">به‌جای دانلود مستقیم</div>
+              </div>
+              <div style="width:38px;height:22px;border-radius:20px;background:var(--accent);position:relative;flex:0 0 38px;"><span style="position:absolute;inset-inline-start:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;"></span></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:16px;">
+              <div style="line-height:1.4;">
+                <div style="font-size:13px;font-weight:600;">پنهان‌کردن نام اصلی فایل</div>
+                <div style="font-size:11px;color:var(--muted);">نمایش نام مستعار به گیرنده</div>
+              </div>
+              <div style="width:38px;height:22px;border-radius:20px;background:var(--line);position:relative;flex:0 0 38px;"><span style="position:absolute;inset-inline-end:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--surface);"></span></div>
+            </div>
+
+            <div style="display:flex;gap:8px;">
+              <button style="flex:1;border:1px solid var(--line);background:var(--surface2);color:var(--danger);border-radius:9px;padding:10px;font:inherit;font-size:12.5px;cursor:pointer;">ابطال لینک</button>
+              <button style="flex:2;border:0;background:var(--accent);color:#fff;border-radius:9px;padding:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;">ذخیره تغییرات</button>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section data-sc="accounts" data-screen-label="اکانت‌های گوگل">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+          <div>
+            <h1 style="margin:0 0 4px;font-size:22px;font-weight:800;">اکانت‌های گوگل</h1>
+            <p style="margin:0;font-size:13px;color:var(--muted);">توکن‌ها رمزنگاری‌شده روی سرور OVH ذخیره می‌شوند.</p>
+          </div>
+          <button style="border:0;background:var(--accent);color:#fff;border-radius:10px;padding:10px 18px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;">+ افزودن اکانت با OAuth</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:900px;">
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);display:grid;grid-template-columns:44px minmax(0,1fr) 200px auto;gap:16px;align-items:center;">
+            <div style="width:44px;height:44px;border-radius:12px;background:var(--soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-weight:800;">A1</div>
+            <div style="line-height:1.5;min-width:0;">
+              <div style="font-size:14px;font-weight:700;">archive.main@gmail.com</div>
+              <div style="font-size:11.5px;color:var(--muted);font-family:ui-monospace,monospace;">scope: drive · توکن معتبر تا ۵۹ دقیقه دیگر</div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px;"><span>3.42 TB</span><span>68٪</span></div>
+              <div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:68%;height:100%;background:var(--accent);"></div></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;">تازه‌سازی توکن</button>
+              <button style="border:1px solid var(--line);background:var(--surface2);color:var(--danger);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;">قطع اتصال</button>
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);display:grid;grid-template-columns:44px minmax(0,1fr) 200px auto;gap:16px;align-items:center;">
+            <div style="width:44px;height:44px;border-radius:12px;background:var(--soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-weight:800;">A2</div>
+            <div style="line-height:1.5;min-width:0;">
+              <div style="font-size:14px;font-weight:700;">archive.cold@gmail.com</div>
+              <div style="font-size:11.5px;color:var(--muted);font-family:ui-monospace,monospace;">scope: drive · توکن معتبر تا ۴۱ دقیقه دیگر</div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:5px;"><span>1.08 TB</span><span>22٪</span></div>
+              <div style="height:6px;border-radius:6px;background:var(--line);overflow:hidden;"><div style="width:22%;height:100%;background:var(--accent);"></div></div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;">تازه‌سازی توکن</button>
+              <button style="border:1px solid var(--line);background:var(--surface2);color:var(--danger);border-radius:8px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer;">قطع اتصال</button>
+            </div>
+          </div>
+
+          <button style="border:1px dashed var(--line);border-radius:14px;background:transparent;color:var(--muted);padding:22px;font:inherit;font-size:13px;cursor:pointer;">افزودن اکانت سوم — ظرفیت کل به ۱۵TB و سهمیه روزانه به ۲.۲۵TB می‌رسد</button>
+        </div>
+
+        <div style="margin-top:22px;border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);max-width:900px;">
+          <h2 style="margin:0 0 12px;font-size:14px;font-weight:700;">دسترسی کاربران پنل</h2>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 150px 130px auto;font-size:12.5px;align-items:center;">
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">کاربر</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">نقش</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">اکانت‌ها</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"></div>
+
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);">رضا مرادی</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);">مدیر کل</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A1, A2</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:12px;">شما</div>
+
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);">سارا کاظمی</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);">آپلودر</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;font-size:11.5px;">A2</div>
+            <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);"><span style="color:var(--accent-ink);font-size:12px;cursor:pointer;">ویرایش دسترسی</span></div>
+
+            <div style="padding:var(--row-pad);">امیر ن.</div>
+            <div style="padding:var(--row-pad);">فقط مشاهده</div>
+            <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;font-size:11.5px;">A1, A2</div>
+            <div style="padding:var(--row-pad);"><span style="color:var(--accent-ink);font-size:12px;cursor:pointer;">ویرایش دسترسی</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section data-sc="settings" data-screen-label="تنظیمات">
+        <h1 style="margin:0 0 18px;font-size:22px;font-weight:800;">تنظیمات</h1>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;max-width:1000px;align-items:start;">
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);">
+            <h2 style="margin:0 0 4px;font-size:14.5px;font-weight:700;">سیاست آپلود</h2>
+            <p style="margin:0 0 14px;font-size:12px;color:var(--muted);">فایل جدید روی کدام اکانت بنشیند.</p>
+            <div style="display:flex;flex-direction:column;gap:9px;">
+              <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--accent);background:var(--soft);border-radius:10px;padding:12px;">
+                <span style="width:14px;height:14px;border-radius:50%;border:4px solid var(--accent);background:var(--surface);"></span>
+                <div style="line-height:1.45;"><div style="font-size:13px;font-weight:700;">بیشترین فضای خالی</div><div style="font-size:11.5px;color:var(--muted);">اکانتی با فضای آزاد بیشتر اول پر می‌شود</div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:12px;">
+                <span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--line);"></span>
+                <div style="line-height:1.45;"><div style="font-size:13px;font-weight:600;">round-robin</div><div style="font-size:11.5px;color:var(--muted);">پخش متناوب بین اکانت‌ها</div></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:12px;">
+                <span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--line);"></span>
+                <div style="line-height:1.45;"><div style="font-size:13px;font-weight:600;">ترتیب اولویت دستی</div><div style="font-size:11.5px;color:var(--muted);">اول A1 تا پر شود، بعد A2</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);">
+            <h2 style="margin:0 0 14px;font-size:14.5px;font-weight:700;">کارایی انتقال</h2>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:7px;"><span>تعداد chunk هم‌زمان</span><span style="font-family:ui-monospace,monospace;">8</span></div>
+            <div style="height:6px;border-radius:6px;background:var(--line);margin-bottom:16px;"><div style="width:50%;height:100%;background:var(--accent);border-radius:6px;"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:7px;"><span>اندازه هر chunk</span><span style="font-family:ui-monospace,monospace;">64 MB</span></div>
+            <div style="height:6px;border-radius:6px;background:var(--line);margin-bottom:16px;"><div style="width:35%;height:100%;background:var(--accent);border-radius:6px;"></div></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--line);">
+              <div style="line-height:1.45;"><div style="font-size:13px;font-weight:600;">توقف خودکار نزدیک سهمیه</div><div style="font-size:11.5px;color:var(--muted);">در ۷۲۰GB از ۷۵۰GB روزانه</div></div>
+              <div style="width:38px;height:22px;border-radius:20px;background:var(--accent);position:relative;flex:0 0 38px;"><span style="position:absolute;inset-inline-start:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;"></span></div>
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px;box-shadow:var(--shadow);grid-column:span 2;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div>
+                <h2 style="margin:0 0 3px;font-size:14.5px;font-weight:700;">IPهای واسط و پروکسی</h2>
+                <p style="margin:0;font-size:12px;color:var(--muted);">فقط برای دور زدن throttling مسیر شبکه — سهمیه ۷۵۰GB به ازای اکانت است، نه IP.</p>
+              </div>
+              <button style="border:1px solid var(--line);background:var(--surface2);color:var(--text);border-radius:9px;padding:8px 14px;font:inherit;font-size:12.5px;cursor:pointer;">+ افزودن IP</button>
+            </div>
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 120px 110px 90px;font-size:12.5px;align-items:center;">
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">آدرس</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">محل</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">تأخیر تا گوگل</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">سهم ترافیک</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px;">وضعیت</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;" dir="ltr">51.xx.xx.14 (OVH GRA)</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);">فرانسه</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;">6 ms</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;">۶۰٪</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--accent-ink);">فعال</div>
+
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;" dir="ltr">148.xx.xx.7 (OVH FRA)</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);">آلمان</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;">3 ms</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);font-family:ui-monospace,monospace;">۴۰٪</div>
+              <div style="padding:var(--row-pad);border-bottom:1px solid var(--line);color:var(--accent-ink);">فعال</div>
+
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;" dir="ltr">185.xx.xx.92</div>
+              <div style="padding:var(--row-pad);">هلند</div>
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;">11 ms</div>
+              <div style="padding:var(--row-pad);font-family:ui-monospace,monospace;">۰٪</div>
+              <div style="padding:var(--row-pad);color:var(--muted);">غیرفعال</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-sc="public" data-screen-label="صفحه عمومی دانلود" data-lang="{{ lang }}" style="margin:-24px -26px -40px;min-height:100vh;background:var(--bg);">
+        <div data-pub="1" style="max-width:760px;margin:0 auto;padding:26px 22px 60px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0 28px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="width:30px;height:30px;border-radius:9px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;">د</div>
+              <span style="font-weight:800;font-size:15px;">درایو یونیون</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button onClick="{{ toggleLang }}" style="border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;">FA / EN</button>
+              <button onClick="{{ toggleTheme }}" style="border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;">◑</button>
+              <button onClick="{{ goFiles }}" style="border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;">← بازگشت به پنل</button>
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--line);border-radius:18px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden;">
+            <div class="ph" style="height:230px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--line);">
+              <span style="font-family:ui-monospace,monospace;font-size:11.5px;color:var(--muted);background:var(--surface);padding:6px 12px;border-radius:8px;">پیش‌نمایش صفحه اول PDF</span>
+            </div>
+            <div style="padding:26px 26px 24px;">
+              <div style="font-size:11.5px;color:var(--accent-ink);background:var(--soft);border-radius:20px;padding:4px 11px;display:inline-block;margin-bottom:12px;">
+                <span data-t="fa">فایل به اشتراک گذاشته‌شده</span><span data-t="en">Shared file</span>
+              </div>
+              <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;line-height:1.35;">Q3-Report-Final.pdf</h1>
+              <p style="margin:0 0 20px;font-size:13.5px;color:var(--muted);line-height:1.9;max-width:56ch;text-wrap:pretty;">
+                <span data-t="fa">گزارش مالی سه‌ماهه سوم ۱۴۰۵ همراه با پیوست‌های تحلیلی. لطفاً پیش از انتشار بیرونی با واحد مالی هماهنگ کنید.</span>
+                <span data-t="en">Q3 1405 financial report with analytical appendices. Please coordinate with finance before external distribution.</span>
+              </p>
+
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:22px;">
+                <div style="background:var(--surface);padding:13px 15px;">
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:4px;"><span data-t="fa">حجم</span><span data-t="en">Size</span></div>
+                  <div style="font-size:13.5px;font-weight:700;font-family:ui-monospace,monospace;">18.4 MB</div>
+                </div>
+                <div style="background:var(--surface);padding:13px 15px;">
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:4px;"><span data-t="fa">نوع</span><span data-t="en">Type</span></div>
+                  <div style="font-size:13.5px;font-weight:700;font-family:ui-monospace,monospace;">PDF</div>
+                </div>
+                <div style="background:var(--surface);padding:13px 15px;">
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:4px;"><span data-t="fa">تاریخ</span><span data-t="en">Date</span></div>
+                  <div style="font-size:13.5px;font-weight:700;">۱۴۰۵/۰۵/۳۱</div>
+                </div>
+                <div style="background:var(--surface);padding:13px 15px;">
+                  <div style="font-size:11px;color:var(--muted);margin-bottom:4px;"><span data-t="fa">اعتبار لینک</span><span data-t="en">Expires in</span></div>
+                  <div style="font-size:13.5px;font-weight:700;"><span data-t="fa">۱۲ روز</span><span data-t="en">12 days</span></div>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+                <button style="border:0;background:var(--accent);color:#fff;border-radius:12px;padding:15px 34px;font:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 8px 20px -10px var(--accent);">
+                  <span data-t="fa">دانلود فایل</span><span data-t="en">Download file</span>
+                </button>
+                <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+                  <span data-t="fa">دانلود مستقیم و استریم‌شده از سرور ما · بدون تبلیغ، بدون انتظار</span>
+                  <span data-t="en">Streamed directly from our server · no ads, no waiting</span>
+                </div>
+              </div>
+            </div>
+            <div style="border-top:1px solid var(--line);background:var(--surface2);padding:13px 26px;display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);">
+              <span style="font-family:ui-monospace,monospace;" dir="ltr">yourdomain.com/d/kx91mz</span>
+              <span><span data-t="fa">۲۴۱ بار دانلود شده</span><span data-t="en">Downloaded 241 times</span></span>
+            </div>
+          </div>
+
+          <div style="text-align:center;font-size:11.5px;color:var(--muted);margin-top:26px;line-height:1.9;">
+            <span data-t="fa">این لینک اختصاصی است و ممکن است منقضی شود. گزارش سوءاستفاده: abuse@yourdomain.com</span>
+            <span data-t="en">This is a private link and may expire. Report abuse: abuse@yourdomain.com</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;comfortable&quot;,&quot;compact&quot;],&quot;default&quot;:&quot;comfortable&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;نمایش&quot;},&quot;defaultTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;نمایش&quot;},&quot;showErrorPanel&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;داشبورد&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { screen: "dash", theme: props.defaultTheme || "light", lang: "fa" };
+  }
+  go(s) { return () => this.setState({ screen: s }); }
+  renderVals() {
+    return {
+      screen: this.state.screen,
+      theme: this.state.theme,
+      lang: this.state.lang,
+      density: this.props.density ?? "comfortable",
+      showErrorPanel: this.props.showErrorPanel ?? true,
+      goDash: this.go("dash"),
+      goFiles: this.go("files"),
+      goQueue: this.go("queue"),
+      goLinks: this.go("links"),
+      goAccounts: this.go("accounts"),
+      goSettings: this.go("settings"),
+      goPublic: this.go("public"),
+      toggleTheme: () => this.setState(s => ({ theme: s.theme === "dark" ? "light" : "dark" })),
+      toggleLang: () => this.setState(s => ({ lang: s.lang === "fa" ? "en" : "fa" }))
+    };
+  }
+}
+</script>
+</body>
+</html>
