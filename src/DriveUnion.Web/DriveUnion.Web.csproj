@@ -1,4 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup>  <UserSecretsId>e40bef44-41b0-42f8-b5ca-cb425fd40bb7</UserSecretsId>
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!--
+      Where the Postgres password and the Google client secret live in development. They are held
+      outside the repository on purpose; production reads the same keys from the environment.
+    -->
+    <UserSecretsId>e40bef44-41b0-42f8-b5ca-cb425fd40bb7</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
