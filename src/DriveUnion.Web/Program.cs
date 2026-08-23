@@ -4,6 +4,7 @@ using DriveUnion.Infrastructure.LocalStorage;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
+using DriveUnion.Infrastructure.Telegram;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Security;
@@ -63,6 +64,11 @@ builder.Services.AddLocalDiskDrive(builder.Configuration);
 
 // The application layer — file catalogue, uploads, share links, and the public reader.
 builder.Services.AddDriveUnionServices();
+
+// Telegram identity, account linking and the operator's bot settings. After AddGoogleDrive, which
+// registers the ITokenProtector the bot token is encrypted with. No transport yet: the gateway
+// registered here reports that nothing was delivered, which is the truth rather than a placeholder.
+builder.Services.AddDriveUnionTelegram();
 
 // Authorization policies and the rate limiter for /d/*.
 builder.Services.AddDriveUnionWeb();

@@ -156,6 +156,11 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.Property(t => t.TokenHash).HasMaxLength(64);
             e.Property(t => t.ConfirmationCodeHash).HasMaxLength(64);
 
+            // The same widths as the columns these are copied into when the binding is written.
+            e.Property(t => t.PresentedUsername).HasMaxLength(32);
+            e.Property(t => t.PresentedDisplayName).HasMaxLength(256);
+            e.Property(t => t.PresentedLanguageCode).HasMaxLength(16);
+
             // The bot's leg looks a token up by its hash and by nothing else, so this is the index
             // that has to exist. Unique because two rows sharing a hash would be two rows sharing a
             // token, and the conditional consumption could then bind twice.

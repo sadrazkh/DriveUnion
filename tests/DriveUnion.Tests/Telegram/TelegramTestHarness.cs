@@ -140,7 +140,12 @@ public sealed class TelegramTestHarness : IAsyncDisposable
     /// Walks the whole two-leg flow and returns the bound Telegram id, for the tests that are about
     /// what happens afterwards rather than about the flow itself.
     /// </summary>
-    public async Task<long> LinkAsync(Guid appUserId, long telegramUserId)
+    public async Task<long> LinkAsync(
+        Guid appUserId,
+        long telegramUserId,
+        string? username = null,
+        string? displayName = null,
+        string? languageCode = null)
     {
         var links = Links();
 
@@ -150,7 +155,13 @@ public sealed class TelegramTestHarness : IAsyncDisposable
         var token = TokenOf(start.DeepLink!);
 
         var presented = await links.PresentAsync(
-            new TelegramStartRequest(token, telegramUserId, telegramUserId, null, null, null),
+            new TelegramStartRequest(
+                token,
+                telegramUserId,
+                telegramUserId,
+                username,
+                displayName,
+                languageCode),
             CancellationToken.None);
 
         Assert.Equal(TelegramStartStatus.CodeIssued, presented.Status);
@@ -210,16 +221,30 @@ public sealed class TelegramTestHarness : IAsyncDisposable
         await _connection.DisposeAsync();
     }
 
-    /// <summary>Reversible, and visibly not the plaintext.</summary>
+    /// <summary>
+    /// Reversible, and deliberately not encryption — what the tests need is a wrapper that does not
+    /// contain its own input, so "the bot token is not sitting in the column" is a real assertion
+    /// rather than a tautology about ciphertext.
+    ///
+    /// <see cref="Broken"/> makes every stored value undecryptable, which is what a lost Data
+    /// Protection key looks like from here.
+    /// </summary>
     public sealed class ReversibleProtector : ITokenProtector
     {
-        public const string Prefix = "protected:";
+        private const string Prefix = "wrapped:";
 
-        public string Protect(string plaintext) => Prefix + plaintext;
+        /// <summary>Set to true to simulate a key that no longer exists.</summary>
+        public bool Broken { get; set; }
 
-        public string? Unprotect(string protectedValue) =>
-            protectedValue.StartsWith(Prefix, StringComparison.Ordinal)
-                ? protectedValue[Prefix.Length..]
-                : null;
+        public string Protect(string plaintext) =>
+            Prefix + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(plaintext));
+
+        public string? Unprotect(string protectedValue)
+        {
+            if (Broken || !protectedValue.StartsWith(Prefix, StringComparison.Ordinal)) return null;
+
+            return System.Text.Encoding.UTF8.GetString(
+                Convert.FromBase64String(protectedValue[Prefix.Length..]));
+        }
     }
 }

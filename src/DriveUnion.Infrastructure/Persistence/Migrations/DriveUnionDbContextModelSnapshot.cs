@@ -307,8 +307,20 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                     b.Property<long?>("PresentedChatId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("PresentedDisplayName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("PresentedLanguageCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<long?>("PresentedTelegramUserId")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("PresentedUsername")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()

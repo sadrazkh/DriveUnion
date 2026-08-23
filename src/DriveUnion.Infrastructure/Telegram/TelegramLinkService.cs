@@ -178,6 +178,14 @@ public sealed class TelegramLinkService(
         row.ConfirmationCodeHash = TelegramLinkSecrets.HashConfirmationCode(row.Id, code);
         row.PresentedTelegramUserId = request.TelegramUserId;
         row.PresentedChatId = request.ChatId;
+
+        // Parked here for the panel's leg to pick up. This is the only moment in the whole flow when
+        // anything has heard from Telegram, and the row that will carry the name onto the customer's
+        // card is written minutes later by a request that never will.
+        row.PresentedUsername = Trim(request.Username?.TrimStart('@'), 32);
+        row.PresentedDisplayName = Trim(request.DisplayName, 256);
+        row.PresentedLanguageCode = Trim(request.LanguageCode, 16);
+
         row.PresentedAt = now;
 
         // Attempts is deliberately not reset. Re-opening the deep link must not refresh the budget,
@@ -193,6 +201,20 @@ public sealed class TelegramLinkService(
             TelegramStartStatus.TokenNotUsable,
             TelegramMessages.TokenNotUsable,
             null);
+    }
+
+    /// <summary>
+    /// Clipped to the column's width rather than trusted. These three strings come from a third
+    /// party, and a display name longer than the column is a failed insert on the one request in the
+    /// flow that a customer is watching.
+    /// </summary>
+    private static string? Trim(string? value, int maxLength)
+    {
+        var trimmed = value?.Trim();
+
+        if (string.IsNullOrEmpty(trimmed)) return null;
+
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     public async Task<TelegramConfirmOutcome> ConfirmAsync(
@@ -364,6 +386,14 @@ public sealed class TelegramLinkService(
                 AppUserId = row.AppUserId,
                 TelegramUserId = telegramUserId,
                 ChatId = chatId,
+
+                // Carried across from the bot's leg. Nothing in this request has spoken to Telegram,
+                // so these are the only values there are — and without them the card that is about
+                // to be rendered has a blank name on it.
+                Username = row.PresentedUsername,
+                DisplayName = row.PresentedDisplayName,
+                LanguageCode = row.PresentedLanguageCode,
+
                 LinkedAt = now,
                 LastSeenAt = now,
                 DeliveryStatus = TelegramDeliveryStatus.Active,
@@ -377,14 +407,25 @@ public sealed class TelegramLinkService(
         }
         catch (DbUpdateException)
         {
-            // One of the two unique indexes. Both directions are enforced above as well; this is
-            // what holds when two requests pass those checks at the same moment, and it is the
-            // reason the checks above are convenience rather than control.
+            // One of the two unique indexes refused the insert, and they are the only control over
+            // "one Telegram account per panel user, and one panel user per Telegram account" —
+            // nothing was read beforehand to decide it, because a read that precedes a write cannot.
             if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
 
             db.ChangeTracker.Clear();
 
-            return new TelegramConfirmOutcome(TelegramConfirmStatus.TelegramAccountTaken, 0);
+            // Which index lost is worth telling apart: one means this customer is already linked
+            // and the other means somebody else holds that Telegram account, and the two have
+            // different next actions.
+            var alreadyMine = await db.TelegramAccounts
+                .AsNoTracking()
+                .AnyAsync(a => a.AppUserId == row.AppUserId, cancellationToken);
+
+            return new TelegramConfirmOutcome(
+                alreadyMine
+                    ? TelegramConfirmStatus.AlreadyLinked
+                    : TelegramConfirmStatus.TelegramAccountTaken,
+                0);
         }
         finally
         {
@@ -392,18 +433,28 @@ public sealed class TelegramLinkService(
         }
     }
 
-    private Task<TelegramLinkToken?> PendingAsync(
+    private async Task<TelegramLinkToken?> PendingAsync(
         Guid appUserId,
         bool tracked,
         CancellationToken cancellationToken)
     {
         var query = tracked ? db.TelegramLinkTokens : db.TelegramLinkTokens.AsNoTracking();
 
-        // No ordering, because there is at most one: StartAsync removes the user's previous
-        // unconsumed rows before it writes a new one. Ordering here would also have to be done in
-        // memory — SQLite will not ORDER BY a DateTimeOffset — for a set that cannot exceed one row.
-        return query
-            .Where(t => t.AppUserId == appUserId && t.ConsumedAt == null)
-            .FirstOrDefaultAsync(cancellationToken);
+        // Looked up by user and judged here, rather than filtered with `ConsumedAt IS NULL` in the
+        // WHERE clause. Two reasons, and the second is the one that matters:
+        //
+        // There is at most one live row per user — StartAsync deletes the previous ones — so the
+        // narrower predicate would buy nothing. And putting consumption in the lookup would make a
+        // refusal look as though the lookup decided it, when the thing that actually decides is the
+        // conditional UPDATE in BindAsync. A caller that read this row a moment before somebody else
+        // consumed it must reach that statement and be turned away by it; a lookup that quietly
+        // returned null instead would hide the only guard there is behind one that cannot be relied
+        // on. No ordering, for the same "at most one" reason — and because SQLite will not ORDER BY
+        // a DateTimeOffset anyway.
+        var rows = await query
+            .Where(t => t.AppUserId == appUserId)
+            .ToListAsync(cancellationToken);
+
+        return rows.Find(t => t.ConsumedAt is null);
     }
 }

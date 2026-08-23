@@ -45,6 +45,22 @@ public sealed class TelegramLinkToken
 
     public long? PresentedChatId { get; set; }
 
+    /// <summary>
+    /// What Telegram said about the sender when they opened the deep link.
+    ///
+    /// <para>These are carried rather than re-read because of where the two legs sit: the values
+    /// arrive on the <em>bot's</em> leg, and <see cref="TelegramAccount"/> is written minutes later
+    /// on the <em>panel's</em>, which has no contact with Telegram at all. Without somewhere to
+    /// park them the binding lands with a blank name — so the customer's card has nothing to show —
+    /// and with no <c>language_code</c>, so the bot has nothing to pick a language from the first
+    /// time it speaks.</para>
+    /// </summary>
+    public string? PresentedUsername { get; set; }
+
+    public string? PresentedDisplayName { get; set; }
+
+    public string? PresentedLanguageCode { get; set; }
+
     public DateTimeOffset? PresentedAt { get; set; }
 
     public DateTimeOffset? ConsumedAt { get; set; }
