@@ -461,14 +461,55 @@ HTTP framing, retransmits, and anything else on the box. The card keeps the desi
 is written to say what is counted.
 
 **Collection.** A `CountingStream` decorator increments an `Interlocked` counter on every read and
-write, wrapped around four places: M3's resumable writer, M3's `Relay` reads, M1 §7's copy into
-`Response.Body` on `/d/{slug}/file`, and both legs of §9's export. A hosted service flushes per-minute
-buckets to `EgressSample` once a minute.
+write, wrapped around five places: M3's resumable writer, M3's `Relay` reads, M1 §7's copy into
+`Response.Body` on `/d/{slug}/file`, both legs of §9's export, and the outbound leg of a Telegram
+document send (`Direction = ToTelegram`, §11) — with the caveat below, which is not a small one. A hosted
+service flushes per-minute buckets to `EgressSample` once a minute.
 
 That flush is **sessionless background work with no `HttpContext`**, so it goes through the operator
 repository, exactly as M3 §5 requires of `IJobStore`. M1 §8 already decided against a global query
 filter, which is what makes this safe; it is recorded here because a sampler that silently writes
 nothing looks precisely like a sampler that had nothing to write.
+
+**Telegram, where self-hosting moved the bytes out from under this counter.** The Telegram slice decided
+to run its own `telegram-bot-api --local` on this box (Telegram §2.3), and the consequence for M6 is
+specific rather than atmospheric: **our `CountingStream` is no longer on the socket that carries these
+bytes off the box.** It is on a multipart upload to `127.0.0.1`, and the real send to Telegram happens
+afterwards, inside a process M6 does not own, cannot decorate and does not instrument. The two directions
+come out of that differently and must not be given the same treatment.
+
+- **Outbound — count it, and keep this sentence beside the code.** Every byte we write to loopback is a
+  byte the Bot API server then sends on to Telegram, so the figure is a faithful **1:1 proxy** for the
+  uplink bytes even though it is measured on loopback. That holds only because the server is acting as a
+  proxy — it is a coincidence of the arrangement rather than a property of the counter — which is exactly
+  why it is written down here rather than left to be inferred. The number is *right* and it is measured
+  somewhere that looks *wrong*, and the obvious repair, "this is loopback traffic, exclude it", deletes a
+  real figure and leaves a zero in its place. A cached `file_id` re-send contributes nothing at all
+  because no bytes leave the box (Telegram §3.2); that is the point of the cache and it will read as an
+  accounting bug to whoever sees the chart first.
+- **Inbound — there is no proxy, and the honest report is `unmeasured`, not `0`.** A file a customer
+  sends to the bot is fetched from Telegram by the `telegram-bot-api` process and handed to us as a path
+  on disk (Telegram §2.1, §3.3). Those bytes cross the box's uplink and never cross a socket this process
+  owns, so there is nothing for a `CountingStream` to wrap — not an approximate counter, not a partial
+  one, none. **This is not the undercount admitted above and must not be folded into it.** That caveat is
+  about TLS framing and retransmits: a few per cent around a number that exists. This is an entire
+  direction of real traffic with no number behind it at all, and reporting the second as though it were
+  the first would turn a stated gap into a hidden one.
+
+**So the chart renders inbound-from-Telegram as unmeasured, and never as a bar of height zero.** A zero
+is a claim that nothing moved, and we do not know that. The absent figure carries its reason instead,
+which is the same standard the table above applied when it rejected host NIC counters for being
+attributable to nothing. Two things could later replace it and neither is invented here: the Bot API server's own
+statistics port, **if it has one — Telegram §14.10 asks `--help` and the answer is not yet known**, or an
+interface counter, which brings back every objection this section raised against NIC counters and adds
+nothing to compare it against.
+
+**One further thing §4 cannot do here, named so it is not discovered as a bug.** Egress-route selection
+is per outbound connection *this process* opens (§4), and the connection that carries these bytes to
+Telegram is opened by the Bot API server. No `LocalSourceIp` binding and no proxy route applies to it in
+either direction, so a `ToTelegram` sample's `EgressRouteId` is always null and the configured traffic
+share is silently not honoured over this path. That is a limit of the arrangement, not a defect to fix in
+the selector.
 
 **Rendering.** Bar height is `dayBytes / max(dayBytes over the seven days) × 100%`, so the tallest bar
 is always 100% as in the mock; the two most recent take `--accent` and the rest `--soft`. The peak
@@ -490,7 +531,7 @@ EgressRoute   { Id, Kind (Direct|LocalSourceIp|HttpProxy|Socks5Proxy), Label, Ad
                 WeightPercent, IsEnabled, Health, LastLatencyMs, LastCheckedAt,
                 ConsecutiveFailures, CreatedAt }
 
-EgressSample  { Id, MinuteUtc, EgressRouteId?, Direction (ToGoogle|ToClient|ToS3), Bytes }
+EgressSample  { Id, MinuteUtc, EgressRouteId?, Direction (ToGoogle|ToClient|ToS3|ToTelegram), Bytes }
 
 S3Destination { Id, Label, ServiceUrl, Region, Bucket, KeyPrefix, AccessKeyIdProtected,
                 SecretAccessKeyProtected, UsePathStyle, CreatedAt }
@@ -500,7 +541,14 @@ S3Destination { Id, Label, ServiceUrl, Region, Bucket, KeyPrefix, AccessKeyIdPro
   `PoolSettings` (M2 §4), they describe the operator's infrastructure, and under M1 §1.4 a customer
   must never learn one exists. Both are covered by M5's operator-only route test.
 - `EgressSample.EgressRouteId` is nullable — bytes sent to a downloading client did not leave through a
-  chosen route unless one was in force.
+  chosen route unless one was in force, and a `ToTelegram` sample never has one, because the connection
+  that carries those bytes is opened by another process entirely (§10).
+- **`Direction` has four values, not three, and the fourth is only half a measurement.** `ToTelegram`
+  records the outbound leg of a document send, counted on loopback as a 1:1 proxy for the real send.
+  There is deliberately **no** inbound counterpart: bytes arriving from Telegram never pass through this
+  process, so there is no row to write and §10 renders that direction as unmeasured rather than as zero.
+  Adding an inbound value later without a real source behind it would put a fabricated zero in the
+  database rather than only on the chart.
 - Proxy credentials and S3 keys use the same `ITokenProtector` as the Google tokens.
 - **Changed:** M2's `PoolSettings` singleton gains `ConcurrentChunks` and `ChunkSizeMiB`, seeded from
   M3's `Transfer:*` config values. M6 adds nothing else to it; `AutoStopNearQuota` and `SoftStopBytes`

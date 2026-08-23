@@ -170,7 +170,7 @@ can disagree about what a new customer gets is a bug waiting for the day they do
 |---|---|---|---|---|
 | Storage | before bytes move | `POST /api/uploads`, M5 §7 unchanged | yes — reserve / settle / release | `409 tenant_quota_exceeded` |
 | Per-file size | before bytes move | `IUploadCoordinator.BeginAsync` | no — see §5 | `409 file_too_large_for_plan` |
-| Traffic | only as bytes move | admission at `/d/{slug}/file` and at the bot's send; counted during | **impossible** — see below | the identical 404 card, or `409 tenant_traffic_exceeded` on `/api/*` |
+| Traffic | only as bytes move, **except at the bot's send, where the size is known first** | admission at `/d/{slug}/file`; at the bot, a reservation taken at the drainer's claim; counted during, both | **impossible on the download path; taken at the bot's send** — see below | the identical 404 card, or `409 tenant_traffic_exceeded` on `/api/*` |
 | Seats | before anything happens | invitation creation | one conditional statement | `409 member_limit_reached` |
 
 ### 4.1 Storage — nothing new
@@ -197,9 +197,39 @@ inherits that for free, because it is enforced by refusing to *reserve* more tha
 mid-stream mechanism that stops a 100 GB body declared as 1 MB is the same one M5 already specified. One
 new comparison, no new machinery.
 
-Telegram inbound is bounded by Telegram's own 20 MB ceiling (Telegram §3.3), which is below any plausible
-per-file limit — but the check still runs, because the ceiling is Telegram's number and not ours, and
-Telegram §3.3 already refuses to trust a third party's `file_size`.
+**Telegram inbound is no longer bounded below this limit, and the sentence that said it was has been
+withdrawn.** It read: *"Telegram inbound is bounded by Telegram's own 20 MB ceiling (Telegram §3.3),
+which is below any plausible per-file limit"*, and it was correct when the bot spoke to
+`api.telegram.org`. Telegram §2.3 has since decided on a self-hosted Bot API server, which moves the
+inbound ceiling to **2000 MB** (Telegram §2.1). At any plausible per-file tier the plan's limit is now the
+*lower* of the two, which inverts the conclusion: the check on the inbound bridge is not a formality that
+runs for completeness, it is **the check that actually refuses**, and its refusal is a message customers
+will see routinely rather than never.
+
+**Where the check lives does not change, and is now doing real work.** It stays in
+`IUploadCoordinator.BeginAsync` for exactly the reason given above — the bridge is one of the callers a
+controller-level check would have missed, and it turns out to be the caller that trips the limit most
+often. Telegram §3.3's refusal to trust a third party's `file_size` also stands, and matters more below.
+
+**What does change is that one path now has two refusals, and they need different words and a defined
+order.** «برای تلگرام بزرگ است» and «پلن شما فایلی به این اندازه را نمی‌پذیرد» are different statements
+with different next actions: the first points the customer at the panel's chunked uploader, which carries
+96 GB files; the second means nothing in the product will accept this file, and sending that customer to
+an uploader that refuses them again is the dead end Telegram §8.2 forbids.
+
+**So the plan's per-file limit is evaluated first**, and the order is chosen by which refusal is true
+regardless of route. Over `Tenant.MaxFileBytes`, no path accepts the file — that is the sentence, and it
+carries no uploader link. Within `MaxFileBytes` but over `Telegram:MaxReceiveBytes`, Telegram is the only
+thing refusing — that is the other sentence, and its uploader link is honest. Both comparisons can sit
+where the ordering needs them: the declared `document.file_size` arrives on the update, and the tenant's
+`MaxFileBytes` is a column on the row the resolver already produced (§8), so both numbers are in hand
+before `getFile` is called and before a byte is fetched.
+
+**That early comparison chooses the message; it does not become the enforcement.** The declared size is a
+claim from a third party, so the authoritative check remains the one in `BeginAsync`, against the reserve,
+backed by M5 §7's mid-stream abort on bytes actually forwarded. Two evaluations of one number with two
+different jobs: the early one picks a sentence, the later one holds the line. Collapsing them into the
+early one would put the limit back in a caller, which is the mistake this section exists to prevent.
 
 Refusal is `409`, not `413`. Same argument M5 §7 made: 413 is about this request's entity being too large
 for the endpoint, and `POST /api/uploads` carries a sixty-byte JSON body. The condition is about state,
@@ -209,8 +239,19 @@ not about this request's size.
 
 **What counts: bytes this box sent to a client on the tenant's behalf.** Concretely — the copy into
 `Response.Body` on `/d/{slug}/file` (M1 §7), the same copy on the panel's authenticated
-`GET /api/files/{id}/download`, and the outbound leg of a Telegram document send (Telegram §13's
-`EgressSample.Direction = ToTelegram`).
+`GET /api/files/{id}/download`, and the outbound leg of a Telegram document send
+(`EgressSample.Direction = ToTelegram`, M6 §10 and §11).
+
+**That third site is measured on loopback now, and the comment saying why has to travel with it.** Since
+Telegram §2.3 the bot uploads to a Bot API server on this same box, so our counting stream wraps a write
+to `127.0.0.1` and the real send to Telegram happens inside a process we do not instrument. The figure is
+still right — it is a faithful 1:1 proxy for what that process then sends — but it is right by virtue of
+the server being a proxy rather than by anything about the counter, and a reader who "fixes" it by
+excluding loopback traffic deletes a real number. M6 §10 carries the full argument and the inbound half of
+it, which is worse: bytes arriving *from* Telegram never touch this process and are unmeasured rather than
+zero. The traffic limit is unaffected by that hole — this section meters what the tenant *sends*, and an inbound
+file is priced by the storage dimension — but the two must not be confused when the chart and the meter
+are read side by side.
 
 **What does not count, and why each will look like a bug to somebody:**
 
@@ -270,6 +311,36 @@ card on resume. That is exactly what already happens when a link is revoked mid-
 revocation takes effect on the next request and accepted this. The traffic refusal inherits an accepted
 behaviour instead of inventing one.
 
+**The bot's «ارسال فایل» is the one traffic-spending site (b) does not describe, and self-hosting is what
+made that matter.** Everything in (b) is about the download path, where the amount is genuinely unknown
+until it has been spent — a range, a resume, a visitor who closes the tab. A Telegram document send is not
+that shape: `StoredFile.SizeBytes` is known before a byte moves, which is what Telegram §3.1 renders the
+button out of, and the send is all-or-nothing with no ranges and no partial result the recipient keeps.
+**And since Telegram §2.3 one press can spend 2 GB where it used to spend 50 MB**, which makes «ارسال
+فایل» the cheapest way in the product to exhaust a traffic allowance.
+
+**So this site reserves, and the reservation is taken at the drainer's claim rather than at the button
+press.** That distinction is the whole of it. An outbox item can sit queued for a long time behind another
+tenant's backlog and two transfer slots (Telegram §11.2, §11.5), and the allowance available when the
+customer tapped is not the allowance available when the bytes finally move. A check at the press
+authorises a spend against a number something else has since spent.
+
+**Claim time already runs two pre-flights and this is the third.** Telegram §2.4.2's free-space check and
+Telegram §11.5's transfer slot are both taken at the moment the drainer claims a byte-moving item; the
+traffic reservation joins them there. **Three checks, one place, before anything is read out of Drive** —
+which is also the only place all three can be true simultaneously. Over the limit, the item does not run
+and the customer gets §9.4's reply, whose wording is unchanged; what moves is only the moment it is sent,
+which is later than a reader of §9.4 alone would assume.
+
+**The shape is M5 §7's, and it settles instead of overshooting.** Reserve `SizeBytes` at the claim, commit
+what the counting stream observed once the send returns, release the remainder. A send that fails part-way
+commits what moved and releases the rest, so the meter holds a number no byte matched only for the
+duration of the transfer — which is the objection §5 raises against reserving on the *download* path, and
+it does not bite here because there is no partial delivery that the recipient keeps and no ranged
+continuation to arrive later. One consequence in the right direction: **a reserved send contributes
+nothing to (b)'s overshoot.** `MaxFileBytes × transfers admitted in the same instant` remains the bound on
+the download path, and `Telegram:MaxConcurrentTransfers` bounds the other one by construction.
+
 **The traffic meter and the download counter are different questions and must not be merged.**
 `DownloadCounting.CountsAsDownload` exists so that one viewer scrubbing a video does not burn twenty of
 a customer's five hundred downloads — it answers "was this a person taking the file". The traffic meter
@@ -300,17 +371,34 @@ reasoning better than a restatement would. Every limit added here either follows
 | Storage | **Yes**, M5's | Two concurrent uploads can spend the same free bytes, and the amount is known at reserve time. |
 | Per-file size | **No** | It is a predicate on one immutable declared value, not a claim on a shared counter. Nothing another request does can make a 3 GB file bigger. There is no slot to race for. |
 | Seats | **No — one conditional statement** | Two requests *can* race, but the amount is always exactly one and the commit is the same write as the check. A reservation would add a second state (a held seat) with nothing to release it. |
-| Traffic | **Cannot** | The amount is unknown until it is spent. |
+| Traffic, on a download | **Cannot** | The amount is unknown until it is spent. |
+| Traffic, at the bot's send | **Yes**, taken at the drainer's claim | The amount *is* known first — `SizeBytes`, and the send is all-or-nothing. |
 
-The traffic row deserves its sentence. Reserving `SizeBytes` up front and refunding the difference is the
-obvious repair and it is worse than the threshold test: it refuses a customer with ample allowance
-because one large file is in flight, and it makes the meter briefly hold a number that no byte ever
-matched — which is the number the panel is showing and the number a dispute would be about. So the
-traffic limit does not reserve, and §4.3(b) states the overshoot instead of hiding it behind machinery.
+The traffic rows deserve their sentences, and the split between them is the rule working rather than an
+exception to it.
 
-**The rule for whoever adds a fifth dimension:** if two concurrent requests can spend the same unit, it
-needs a reservation. If the amount is unknown until it has been spent, it cannot have one — and the
-spec must state the overshoot bound rather than imply a check that is not there.
+**On a download, reserving is worse than the threshold test.** Reserving `SizeBytes` up front and
+refunding the difference is the obvious repair: it refuses a customer with ample allowance because one
+large file is in flight, and it makes the meter briefly hold a number that no byte ever matched — which
+is the number the panel is showing and the number a dispute would be about. So the download path does not
+reserve, and §4.3(b) states the overshoot instead of hiding it behind machinery.
+
+**At the bot's send, the same rule points the other way, and this is a correction rather than a
+softening.** The rule below was always keyed on whether the amount is *knowable*, never on the dimension's
+name; the traffic row said "cannot" because the only metered site at the time was a download. Telegram
+§2.3's self-hosted server turned «ارسال فایل» into a spend of up to 2 GB whose size is known before a byte
+moves and which cannot half-succeed, so the rule's own test now returns the opposite answer there. Both
+objections above also fall: nothing is refunded, because the difference between reserved and committed is
+zero on success and is settled at the failure on the only other outcome; and the window in which the meter
+holds an unmatched number is the transfer itself rather than an open-ended one, because there is no ranged
+continuation that might arrive tomorrow. §4.3 has the mechanism and the reason the reservation is taken at
+the *claim* and not at the press.
+
+**The rule for whoever adds a fifth dimension, unchanged:** if two concurrent requests can spend the same
+unit, it needs a reservation. If the amount is unknown until it has been spent, it cannot have one — and
+the spec must state the overshoot bound rather than imply a check that is not there. **What the traffic
+rows now demonstrate is that this test is applied per *site*, not per dimension**, and that a site can
+change category when the design underneath it changes.
 
 ## 6. Counters, windows, and resetting without a job
 
@@ -710,7 +798,7 @@ answered here:
 | # | Slice | Contents | Depends on |
 |---|---|---|---|
 | **P1** | **Plans, and the two limits that are simply true** | `Plan`, the tenant's effective columns, `TenantQuotaChange`, `SetTenantPlan` / `SetTenantQuotaOverride`, the operator's assignment and downgrade-preview screens, per-file size enforced in `IUploadCoordinator.BeginAsync`, storage's number sourced from the plan, the «پلن و مصرف» card, the four `409` bodies | M5 |
-| P2 | Traffic | `TenantEgressDay`, the denormalised window counter and its one-statement reset, the counting-stream wrap on the three copy sites, the admission check on `/d/{slug}/file` and in the bot, the flusher and its retention, reconciliation, the links-table banner and the reset date | P1 |
+| P2 | Traffic | `TenantEgressDay`, the denormalised window counter and its one-statement reset, the counting-stream wrap on the three copy sites, the admission check on `/d/{slug}/file`, the reserve-then-commit taken at the bot drainer's claim (§4.3), the flusher and its retention, reconciliation, the links-table banner and the reset date | P1 |
 | P3 | Seats and the operator's cross-tenant view | `MaxMembers` and its conditional insert at invitation creation, the seat meter, `IOperatorTenantReader`'s new figures, actual-versus-sold egress, the plan catalogue screen with retirement | P1 |
 
 **P1 is the only slice worth shipping alone**, in M1's sense: it turns M5's single unexplained number
@@ -762,6 +850,25 @@ In the spirit of M1 §8's two and M5 §5's suite. Every one runs against the fak
     bucket, asserted non-empty; the 400-day sweep over seeded old rows returns a non-zero delete count.
 14. **The new endpoints are classified.** M5 §5's generated endpoint test must place every route added
     here on the explicit allow-list or cover it with a cross-tenant case, or turn red.
+
+Three more arrived with §4.2's and §4.3's corrections, appended rather than inserted so the numbers above
+keep meaning what they meant:
+
+15. **The traffic reservation is taken at the claim, not at the press** (§4.3). Queue a send while the
+    tenant is under the limit, spend the allowance elsewhere, then let the drainer claim: the item does
+    not run, the fake `IDriveClient` is never read from, and the reply names the traffic limit. The
+    inverse is the same test the other way — a tenant who was over at the press and is under by the claim
+    gets their file. The bug guarded against is a check that ran once, early, against a number something
+    else has since changed.
+16. **A reservation that is not fully spent is released.** A send that fails part-way commits the bytes
+    the counting stream observed and releases the remainder, leaving `TrafficUsedBytes` equal to what
+    moved rather than to `SizeBytes` (§4.3, §5). Asserted on the counter, because a reservation that
+    never releases is invisible until a tenant is inexplicably exhausted.
+17. **The two inbound refusals are distinct and correctly ordered** (§4.2). A file over
+    `Telegram:MaxReceiveBytes` *and* over `Tenant.MaxFileBytes` produces the plan refusal and its message
+    contains no link to the panel's uploader; a file over the Telegram ceiling but within `MaxFileBytes`
+    produces the Telegram refusal and its message does. Asserted on the raw outbound string, per M2 §12.4,
+    because the bug being guarded against is two branches converging on one sentence.
 
 ## 15. Before implementation starts
 

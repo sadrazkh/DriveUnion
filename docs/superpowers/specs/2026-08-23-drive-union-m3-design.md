@@ -650,7 +650,7 @@ showing a centred `13px` `--muted` line with the «آپلود فایل» button.
 | `Transfer:Concurrency` | `8` | The comp's «تعداد chunk هم‌زمان: 8». |
 | `Transfer:WindowChunks` | `8` | Equal to concurrency: no connection can run further ahead than the pool allows. |
 | `Transfer:MaxConcurrentJobs` | `3` | Two running plus headroom, matching the comp's steady state. |
-| `Transfer:SpoolPath` | — | §13.7. Worst case `MaxConcurrentJobs × (WindowChunks − 1) × ChunkSize` ≈ **1.31 GiB**; startup refuses to run with less than 2× that free. |
+| `Transfer:SpoolPath` | — | §13.7. Worst case `MaxConcurrentJobs × (WindowChunks − 1) × ChunkSize` ≈ **1.31 GiB**, and the reservation is 2× that ≈ **2.62 GiB**. **The startup check that used to enforce this on its own has been replaced by the combined check in Telegram §2.4.2** — see below. |
 | `Drive:QueriesPerMinute` | `6_000` | Half the stated 12,000/60s. §8.2. |
 | `Drive:CopySizeCeilingBytes` | `750_000_000_000` | Decimal GB. §8.1. |
 | `Quota:SoftCeilingBytes` | `720_000_000_000` | The comp's «در ۷۲۰GB از ۷۵۰GB روزانه». |
@@ -660,6 +660,40 @@ showing a centred `13px` `--muted` line with the «آپلود فایل» button.
 
 **Spool files hold customer file contents.** Mode `0600`, a directory outside `wwwroot` served by no
 middleware, excluded from backups, swept on boot.
+
+**The startup free-space check is no longer M3's to make alone, and this is a correction rather than a
+change of mind.** The rule as first written — refuse to start with less than 2 × 1.31 GiB ≈ 2.62 GiB free
+on the spool volume — was arithmetic over the only thing that then wrote gigabytes to that volume, which
+was this spool. That stopped being true when the Telegram slice decided to run its own
+`telegram-bot-api --local` on the same box (Telegram §2.3). The Bot API server writes every file it
+handles, in both directions, into its own working directory **on the same volume**, and documents no
+automatic deletion; at its defaults that directory holds
+`MaxConcurrentTransfers × (MaxSendBytes + MaxReceiveBytes)` — **8 GB**, per Telegram §2.4.2, which also
+notes it is **16 GB** if the server turns out to stage uploads on disk rather than stream them through.
+**That second figure is not yet known**: whether an upload is staged is one of the questions Telegram
+§14.10 leaves open, so the requirement inherits that uncertainty rather than resolving it.
+
+**The failure this creates is the kind that passes every test, so it is worth stating in full.** Two
+independent checks over one volume **each pass while their sum does not**: M3 asks for 2.62 GiB, finds it,
+and starts; the Bot API server asks for nothing at all and starts; and then the first pair of concurrent
+2 GB transfers fills the volume that this spool and Postgres are both on. A reservation written on the
+assumption that it is the only writer is worse than no reservation, because it reports success. It is not
+a weaker guarantee — it is a false one.
+
+**So M3 does not keep a check of its own.** Telegram §2.4.2 replaces both with a single check over both
+reservations: the app refuses to start unless free space covers M3's spool reservation **plus**
+`MaxConcurrentTransfers × (MaxSendBytes + MaxReceiveBytes) + Telegram:WorkDirHeadroomBytes`. That one
+check is the authority; M3's contribution to it is the 1.31 GiB arithmetic in the table above and nothing
+else. Where the Telegram slice is not deployed its terms are zero and the combined check reduces to
+exactly what this row always demanded, so there is no configuration in which the two disagree — which is
+the property that makes replacing the check cheaper than reconciling two of them.
+
+**And the reason this is urgent rather than tidy.** The owner's words about this box are «من جا نداره
+سرورم» — there is no room on my server. Telegram §2.4.2 puts the two reservations together at **11–19 GB**
+and is written around that sentence; its answer when the arithmetic does not fit is a smaller
+`Telegram:MaxSendBytes`, not a smaller sweep and not a smaller spool. §13.7 asked for the box's real free
+space against 2.62 GiB and was answerable at leisure. Against this number it is not, and Telegram §14.9
+restates it as the same question with the larger figure attached.
 
 ## 12. Tests that hold this design
 
@@ -717,6 +751,12 @@ Docker and tests must never reach Google (M1 §4).
 7. **The OVH box's spool disk and NIC.** Free space on the target volume and the link speed to Google.
    The §11 defaults assume ~3 GiB of spool headroom and an egress path that is not the constraint;
    both are guesses until someone reads the box.
+   **The disk half of this question got much larger, and it is now a blocker rather than a merge item.**
+   Since Telegram §2.3 that volume also carries the self-hosted Bot API server's working directory, so
+   the number to check against is M3's 2.62 GiB **plus** Telegram §2.4.2's 8 GB at its defaults — 11–19 GB
+   together, per that section's own arithmetic, the upper end depending on an unresolved question about
+   whether uploads are staged (Telegram §14.10). §11 explains why the two reservations are now one check.
+   Telegram §14.9 asks for the same measurement; it is one question and one answer, not two.
 
 Items 1 and 2 block the first commit. The rest block the merge.
 
