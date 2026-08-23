@@ -7,6 +7,7 @@ using DriveUnion.Infrastructure.Services;
 using DriveUnion.Infrastructure.Telegram;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Localization;
 using DriveUnion.Web.Security;
 using System.Net;
 using Microsoft.AspNetCore.DataProtection;
@@ -36,6 +37,10 @@ builder.Services
         options.Password.RequiredLength = 10;
     })
     .AddEntityFrameworkStores<DriveUnionDbContext>()
+    // Identity writes its own refusals — "must be at least 10 characters" — and they were the only
+    // English left inside a Persian page. The describer translates them and takes every error Code
+    // from base so the two cannot drift apart.
+    .AddErrorDescriber<DriveUnionIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
 
 // Projects TenantId and IsOperator onto the signed-in principal, and registers the first-operator
@@ -108,6 +113,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     }
 });
 
+// Persian by default, English on request. Only CurrentUICulture ever varies: letting fa-IR onto the
+// thread would swap the decimal point in every byte size and quota figure an operator copies into a
+// support ticket.
+builder.Services.AddDriveUnionLocalization();
+
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
@@ -127,6 +137,11 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
+// Before routing, so every endpoint — including the anonymous ones — runs with a culture already
+// resolved rather than whatever the thread happened to carry.
+app.UseRequestLocalization();
+
 app.UseRouting();
 
 // After UseRouting, so the limiter can see which endpoint — and therefore which policy — a request

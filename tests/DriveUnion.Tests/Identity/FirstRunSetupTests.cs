@@ -163,9 +163,15 @@ public class FirstRunSetupTests
 
         var html = await refused.Content.ReadAsStringAsync();
 
-        // The rule that was broken, in the words of the thing that broke it. RequiredLength = 10
-        // lives in Program.cs, and this is the sentence Identity writes about it.
-        html.Should().Contain("must be at least 10 characters");
+        // The rule that was broken, named to the person who broke it. RequiredLength = 10 lives in
+        // Program.cs; Identity writes the sentence and DriveUnionIdentityErrorDescriber translates
+        // it, which is why this asserts on the Persian now — that describer is the only reason a
+        // refusal is not the one patch of English left inside a Persian page.
+        //
+        // Decoded first: Razor writes Persian as numeric character references, so asserting on the
+        // raw HTML would pass against a page that never said this at all.
+        var text = System.Net.WebUtility.HtmlDecode(html);
+        text.Should().Contain("۱۰");
 
         // Never rendered back into the page: a refused password in the HTML is a password in the
         // browser's back-forward cache and in anything that keeps a response body.

@@ -1,14 +1,14 @@
 @model LoginViewModel
 @{
-    ViewData["Title"] = "ورود";
+    ViewData["Title"] = UiText.Identity.SignInTitle;
     var returnUrl = ViewData["ReturnUrl"] as string;
     var errors = ViewData.ModelState.Values.SelectMany(v => v.Errors).ToList();
 }
 
 <div class="stack" style="gap: 16px; max-width: 420px;">
     <div class="stack" style="gap: 4px;">
-        <h1 class="page-title">ورود به پنل</h1>
-        <p class="page-sub">حساب‌ها را اپراتور می‌سازد؛ ثبت‌نام عمومی وجود ندارد.</p>
+        <h1 class="page-title">@UiText.Identity.SignInHeading</h1>
+        <p class="page-sub">@UiText.Identity.SignInSubtitle</p>
     </div>
 
     <div class="card card--pad">
@@ -24,18 +24,22 @@
 
             @if (errors.Count > 0)
             {
+                @* dir="auto" per line: these sentences follow the panel's language, but an error
+                   that names an address or a value the visitor typed can be Latin inside a Persian
+                   page, and the line should sit the way its own text reads. *@
                 <p class="page-sub" role="alert" style="color: var(--danger); margin: 0;">
                     @foreach (var error in errors)
                     {
-                        <span style="display: block;">@error.ErrorMessage</span>
+                        <span style="display: block;" dir="auto">@error.ErrorMessage</span>
                     }
                 </p>
             }
 
             <div>
-                <label class="field-label" for="login-email">ایمیل</label>
-                @* dir="ltr" on the inputs and nowhere else: the page is Persian, the credentials
-                   are Latin, and a right-to-left password box puts the caret on the wrong side. *@
+                <label class="field-label" for="login-email">@UiText.Identity.Email</label>
+                @* dir="ltr" on the inputs and nowhere else: the credentials are Latin whatever the
+                   page's language, and a right-to-left password box puts the caret on the wrong
+                   side. In English the attribute is simply what the document already does. *@
                 <span class="field">
                     <input id="login-email"
                            name="Email"
@@ -49,7 +53,7 @@
             </div>
 
             <div>
-                <label class="field-label" for="login-password">گذرواژه</label>
+                <label class="field-label" for="login-password">@UiText.Identity.Password</label>
                 <span class="field">
                     <input id="login-password"
                            name="Password"
@@ -62,16 +66,16 @@
 
             <label class="row" style="gap: 8px; font-size: 12.5px;">
                 <input type="checkbox" name="RememberMe" value="true" @(Model.RememberMe ? "checked" : null) />
-                <span>مرا به خاطر بسپار</span>
+                <span>@UiText.Identity.RememberMe</span>
             </label>
 
-            <button type="submit" class="btn btn--primary btn--lg btn--block">ورود</button>
+            <button type="submit" class="btn btn--primary btn--lg btn--block">@UiText.Identity.SignInTitle</button>
         </form>
     </div>
 
     @* True as of M1: there is no mail sender and no reset flow, so pointing at a "forgot password"
        link nobody built would be worse than saying what actually has to happen. *@
     <p class="page-sub" style="font-size: 12px;">
-        بازنشانی گذرواژه از داخل پنل ممکن نیست. اگر گذرواژه‌تان را ندارید، از اپراتور بخواهید.
+        @UiText.Identity.NoPasswordReset
     </p>
 </div>

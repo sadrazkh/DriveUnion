@@ -17,9 +17,19 @@
     // form that can only 401.
     var isSignedIn = User.Identity?.IsAuthenticated == true;
 
+    // Asked of the principal for the same reason isOperator is, and the same way AccessDenied asks
+    // it: it is the fact DriveUnionPolicies.Tenant authorises on, so what the sidebar draws and what
+    // the route allows cannot disagree.
+    var hasWorkspace = User.GetTenantId() is not null;
+
     // The comp's «جست‌وجو در همه‌ی اکانت‌ها…» is the operator reading the union of the pool. A
     // customer has one library and must not be told it is spread across accounts.
-    var searchLabel = isOperator ? "جست‌وجو در همه‌ی اکانت‌ها" : "جست‌وجو در فایل‌ها";
+    var searchLabel = isOperator ? UiText.Shell.SearchEveryAccount : UiText.Shell.SearchFiles;
+
+    // Where the language switch sends the visitor back to — this page, query string and all, so a
+    // filtered file list or a search survives the switch. The controller only follows it if it is
+    // local.
+    var here = Context.Request.Path + Context.Request.QueryString;
 
     string NavClass(string name) =>
         string.Equals(controller, name, StringComparison.OrdinalIgnoreCase)
@@ -28,11 +38,15 @@
 }
 @*
     The panel shell: fixed sidebar (232px, inline-end in RTL), sticky header, content at
-    24px 26px 40px. Persian RTL throughout — the public download page has its own layout because
-    it is chrome-less and bilingual, not because it needs different tokens.
+    24px 26px 40px. The public download page has its own layout because it is chrome-less, not
+    because it needs different tokens.
 
-    Nothing here says left or right. The same primitives set the LTR public page; a single
-    `padding-left` would mean a second stylesheet for English.
+    Nothing here says left or right. The same primitives set the LTR public page and the LTR
+    English panel; a single `padding-left` would mean a second stylesheet.
+
+    Every string is an entry in UiText and every reading of the language is PanelCulture — see
+    Localization/README.md. A literal Persian word in this file is a word the English panel cannot
+    say, and a `dir="rtl"` hard-coded on the document is an English panel laid out backwards.
 
     Navigation uses literal hrefs rather than asp-controller/asp-action deliberately. Link
     generation is endpoint-based: the anchor tag helper throws when no controller is registered for
@@ -44,22 +58,22 @@
     Not hidden — absent: a customer must not be able to tell from this markup that a pool exists.
 *@
 <!DOCTYPE html>
-<html dir="rtl" lang="fa" data-theme="light">
+<html dir="@PanelCulture.Direction" lang="@PanelCulture.Code" data-theme="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>@(string.IsNullOrEmpty(title) ? "درایو یونیون" : $"{title} · درایو یونیون")</title>
+    <title>@(string.IsNullOrEmpty(title) ? UiText.Brand.Name : UiText.Brand.PageTitle(title))</title>
     <partial name="_HeadAssets" />
 </head>
 <body>
 <div class="app-shell" data-shell>
     <div class="nav-scrim" data-nav-scrim></div>
 
-    <nav class="app-sidebar" aria-label="ناوبری اصلی">
+    <nav class="app-sidebar" aria-label="@UiText.Shell.NavigationLabel">
         <div class="brand">
-            <span class="brand-mark" aria-hidden="true">د</span>
+            <span class="brand-mark" aria-hidden="true">@UiText.Brand.Mark</span>
             <span class="brand-text">
-                <span class="brand-name">درایو یونیون</span>
+                <span class="brand-name">@UiText.Brand.Name</span>
                 @if (isOperator)
                 {
                     @* «2 accounts · 10 TB» is a count of the pool. The skeleton is no safer: an
@@ -77,33 +91,61 @@
         </div>
 
         <a class="@NavClass("Home")" href="/">
-            <span class="nav-dot" aria-hidden="true"></span>داشبورد
+            <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Dashboard
         </a>
         <a class="@NavClass("Files")" href="/Files">
-            <span class="nav-dot" aria-hidden="true"></span>فایل‌ها
+            <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Files
         </a>
         @*
             Queue and Settings are M3 and M6 (spec §12) and have no controller. Rendered so the
             shell is the comp's, marked so a click is not a 404 — a dead primary nav item teaches
             an operator to distrust the whole menu.
         *@
-        <span class="nav-item nav-item--split" aria-disabled="true" title="در نسخه‌ی بعدی">
-            <span class="row"><span class="nav-dot" aria-hidden="true"></span>صف انتقال</span>
+        <span class="nav-item nav-item--split" aria-disabled="true" title="@UiText.Shell.NextRelease">
+            <span class="row"><span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TransferQueue</span>
         </span>
         <a class="@NavClass("Links")" href="/Links">
-            <span class="nav-dot" aria-hidden="true"></span>لینک‌های اشتراک
+            <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.ShareLinks
         </a>
         @if (isOperator)
         {
             @* AccountsController already answers a customer with 403; this keeps the words
                «اکانت‌های گوگل» out of their markup, which is the half a policy cannot do. *@
             <a class="@NavClass("Accounts")" href="/Accounts">
-                <span class="nav-dot" aria-hidden="true"></span>اکانت‌های گوگل
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.GoogleAccounts
             </a>
         }
-        <span class="nav-item" aria-disabled="true" title="در نسخه‌ی بعدی">
-            <span class="nav-dot" aria-hidden="true"></span>تنظیمات
-        </span>
+        @*
+            The comp's last slot is «تنظیمات» and M6 owns that screen. Until it exists, the slot
+            carries the only settings a signed-in caller actually has — Telegram (Telegram design
+            §9.1 for the operator's bot, §9.2 for the customer's own link, which lives at its own
+            address until the settings screen is built to hold its card).
+
+            Two audiences, two addresses, one slot. TelegramController authorises both ends itself,
+            so this decides what is drawn and not what is allowed: an operator following the
+            customer's address is still refused by the policy, and a customer who guesses
+            /telegram still gets a 403 rather than the operator's bot token screen.
+        *@
+        @if (isOperator)
+        {
+            <a class="@NavClass("Telegram")" href="/telegram">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TelegramBot
+            </a>
+        }
+        else if (hasWorkspace)
+        {
+            <a class="@NavClass("Telegram")" href="/telegram/link">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Telegram
+            </a>
+        }
+        else
+        {
+            @* Nobody is signed in — the sign-in page wears this shell too, and a nav item that can
+               only challenge is a control that does nothing. *@
+            <span class="nav-item" aria-disabled="true" title="@UiText.Shell.NextRelease">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Settings
+            </span>
+        }
 
         <div class="sidebar-foot">
             @if (isOperator)
@@ -114,9 +156,12 @@
                    a panel page, so the whole card is absent — label, bar and skeleton. *@
                 <div class="subcard">
                     <div class="bar-label" style="font-size: 11.5px; margin-bottom: 7px;">
-                        <span>سهمیه آپلود امروز</span>
+                        <span>@UiText.Shell.TodaysUploadQuota</span>
                         @if (shell.HasQuota)
                         {
+                            @* Latin in both languages, and dir="ltr" says so: a quota readout is a
+                               technical figure an operator compares against Google's own console,
+                               not a number set in prose. *@
                             <span class="mono" dir="ltr">@shell.DailyQuotaUsedGb / @shell.DailyQuotaLimitGb GB</span>
                         }
                     </div>
@@ -143,11 +188,11 @@
                    comp's account filter, its «اکانت» column and the daily-quota rule, so a
                    customer's shell must not point at it. The page itself is still anonymous; only
                    DesignController can close that, and it is not this file's to change. *@
-                <a class="btn btn--dashed" href="/Design">راهنمای طراحی ↗</a>
+                <a class="btn btn--dashed" href="/Design">@UiText.Shell.DesignGuide</a>
             }
 
             <div class="row" style="padding: 6px 4px;">
-                <span class="avatar" aria-hidden="true">@(shell.UserName is { Length: > 0 } n ? n[..1] : "؟")</span>
+                <span class="avatar" aria-hidden="true">@(shell.UserName is { Length: > 0 } n ? n[..1] : UiText.Shell.UnknownInitial)</span>
                 <span style="line-height: 1.3;">
                     <span style="display: block; font-size: 12.5px; font-weight: 600;">@(shell.UserName ?? "—")</span>
                     <span style="display: block; font-size: 10.5px;" class="muted">@(shell.UserRole ?? "—")</span>
@@ -172,7 +217,7 @@
                         <button type="submit"
                                 class="nav-item"
                                 style="padding: 6px 10px; font-size: 12px;"
-                                title="خروج از حساب">خروج</button>
+                                title="@UiText.Shell.SignOutTitle">@UiText.Shell.SignOut</button>
                     </form>
                 }
             </div>
@@ -183,7 +228,7 @@
         <header class="app-header">
             <button type="button" class="btn btn--sm nav-toggle" data-nav-toggle aria-expanded="false">
                 <span aria-hidden="true">☰</span>
-                <span class="visually-hidden">منو</span>
+                <span class="visually-hidden">@UiText.Shell.Menu</span>
             </button>
 
             <form class="search" method="get" action="/Files" role="search">
@@ -194,12 +239,34 @@
             </form>
 
             <div class="row push-end" style="gap: 8px;">
+                @*
+                    The language switch, beside the theme control and not inside it: the island's
+                    mount point is replaced wholesale by Vue, so anything server-rendered in there is
+                    gone the moment the bundle loads.
+
+                    A form and not a link because it writes a cookie that outlives the request, and
+                    a plain form because the panel has to be usable with JavaScript off — which is
+                    the entire reason the language is resolved on the server. The label is the other
+                    language's own name, so somebody who cannot read this page can still find it.
+                *@
+                <form method="post" action="/Culture/Set" class="row">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="culture" value="@PanelCulture.OtherCode" />
+                    <input type="hidden" name="returnUrl" value="@here" />
+                    <button type="submit"
+                            class="btn btn--sm"
+                            lang="@PanelCulture.OtherCode"
+                            title="@UiText.Shell.LanguageSwitchTitle">@UiText.Shell.LanguageSwitch</button>
+                </form>
+
                 @* The island. Server-rendered fallback inside the mount point: Vue replaces it, and
-                   if the bundle never loads the page is short one control rather than broken. *@
-                <span data-island="theme-language" data-lang="fa">
-                    <noscript>تم تیره نیاز به جاوااسکریپت دارد</noscript>
+                   if the bundle never loads the page is short one control rather than broken.
+                   data-lang is the resolved culture, so the theme button labels itself in the
+                   language the rest of the page is in. *@
+                <span data-island="theme-language" data-lang="@PanelCulture.Code">
+                    <noscript>@UiText.Shell.ThemeNeedsScript</noscript>
                 </span>
-                <a class="btn btn--primary btn--lg" href="/Files/Upload">آپلود فایل</a>
+                <a class="btn btn--primary btn--lg" href="/Files/Upload">@UiText.Shell.Upload</a>
             </div>
         </header>
 

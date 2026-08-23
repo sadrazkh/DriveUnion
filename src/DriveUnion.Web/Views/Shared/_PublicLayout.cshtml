@@ -5,7 +5,14 @@
     @* The controller decides the language from Accept-Language / ?lang= before the HTML leaves the
        server (M1 spec §7) and puts it here. The prototype's client-side [data-t] show/hide is
        deliberately not reproduced: it ships both languages in every response, which is worse for
-       SEO, worse for caching, and unreadable with JavaScript off. *@
+       SEO, worse for caching, and unreadable with JavaScript off.
+
+       This page does NOT go through UiText / PanelCulture, and that is on purpose rather than an
+       oversight — Localization/README.md, "The public download page", says what the two mechanisms
+       are to each other and exactly what folding this one in costs. The short version: its strings
+       are on the controller and in Views/Public, both outside this change's scope, and the panel's
+       culture cookie is already written at Path=/ so the resolver here can be taught to read it in
+       one line whenever that change is made. *@
     var lang = ViewData["Lang"] as string == "en" ? "en" : "fa";
     var isFa = lang == "fa";
     var dir = isFa ? "rtl" : "ltr";

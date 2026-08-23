@@ -1,15 +1,21 @@
 using System.ComponentModel.DataAnnotations;
+using DriveUnion.Web.Localization;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace DriveUnion.Web.Areas.Identity.Models;
 
+/// <summary>
+/// The refusals name a catalogue entry rather than carrying a sentence, because an attribute
+/// argument is a compile-time constant and cannot know which language the request is in. See
+/// <see cref="LocalizedRequiredAttribute"/>.
+/// </summary>
 public sealed class LoginViewModel
 {
-    [Required(ErrorMessage = "ایمیل را وارد کنید.")]
-    [EmailAddress(ErrorMessage = "این نشانی ایمیل معتبر نیست.")]
+    [LocalizedRequired(ValidationText.EmailRequired)]
+    [LocalizedEmailAddress(ValidationText.EmailInvalid)]
     public string Email { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "گذرواژه را وارد کنید.")]
+    [LocalizedRequired(ValidationText.PasswordRequired)]
     [DataType(DataType.Password)]
     public string Password { get; set; } = string.Empty;
 
@@ -27,11 +33,11 @@ public sealed class LoginViewModel
 /// </summary>
 public sealed class SetupViewModel
 {
-    [Required(ErrorMessage = "ایمیل را وارد کنید.")]
-    [EmailAddress(ErrorMessage = "این نشانی ایمیل معتبر نیست.")]
+    [LocalizedRequired(ValidationText.EmailRequired)]
+    [LocalizedEmailAddress(ValidationText.EmailInvalid)]
     public string Email { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "گذرواژه را وارد کنید.")]
+    [LocalizedRequired(ValidationText.PasswordRequired)]
     [DataType(DataType.Password)]
     public string Password { get; set; } = string.Empty;
 
@@ -39,9 +45,9 @@ public sealed class SetupViewModel
     /// The second box. There is no password reset in M1 and no mail sender behind one, so a typo
     /// here locks the owner out of their own panel with no way back except the database.
     /// </summary>
-    [Required(ErrorMessage = "گذرواژه را دوباره وارد کنید.")]
+    [LocalizedRequired(ValidationText.PasswordRepeatRequired)]
     [DataType(DataType.Password)]
-    [Compare(nameof(Password), ErrorMessage = "دو گذرواژه یکسان نیستند.")]
+    [LocalizedCompare(nameof(Password), ValidationText.PasswordsDoNotMatch)]
     public string ConfirmPassword { get; set; } = string.Empty;
 
     /// <summary>

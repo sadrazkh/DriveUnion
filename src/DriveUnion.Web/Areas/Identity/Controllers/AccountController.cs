@@ -2,6 +2,7 @@ using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Web.Areas.Identity.Models;
 using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Localization;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -190,7 +191,7 @@ public sealed class AccountController(
 
         if (user is null)
         {
-            return Refuse(model, "ایمیل یا گذرواژه درست نیست.");
+            return Refuse(model, UiText.Identity.BadCredentials);
         }
 
         var result = await signInManager.PasswordSignInAsync(
@@ -198,16 +199,14 @@ public sealed class AccountController(
 
         if (result.IsLockedOut)
         {
-            return Refuse(
-                model,
-                "به دلیل تلاش‌های ناموفق پیاپی، این حساب موقتاً قفل شده است. کمی بعد دوباره تلاش کنید.");
+            return Refuse(model, UiText.Identity.LockedOut);
         }
 
         if (!result.Succeeded)
         {
             // One sentence for a wrong password and for an address with no account. The difference
             // between the two answers is a list of who has an account here.
-            return Refuse(model, "ایمیل یا گذرواژه درست نیست.");
+            return Refuse(model, UiText.Identity.BadCredentials);
         }
 
         // The cookie carries the claims now, but User on *this* request is still the anonymous
@@ -304,24 +303,27 @@ public sealed class AccountController(
     }
 
     /// <summary>
-    /// Identity's policy in Persian prose. Read from the options rather than transcribed, so the
-    /// screen keeps telling the truth if Program.cs changes what it requires.
+    /// Identity's policy in the panel's own prose. Read from the options rather than transcribed, so
+    /// the screen keeps telling the truth if Program.cs changes what it requires.
+    ///
+    /// The counts go through <see cref="Numerals"/> and not <c>PersianDigits</c> directly: they are
+    /// figures set in a sentence, so they are Persian digits in Persian and Latin in English.
     /// </summary>
     private static List<string> Rules(PasswordOptions password)
     {
         var rules = new List<string>
         {
-            $"دست‌کم {PersianDigits.Plain(password.RequiredLength)} نویسه",
+            UiText.Identity.PasswordMinimumLength(password.RequiredLength),
         };
 
-        if (password.RequireUppercase) rules.Add("دست‌کم یک حرف بزرگ لاتین (A تا Z)");
-        if (password.RequireLowercase) rules.Add("دست‌کم یک حرف کوچک لاتین (a تا z)");
-        if (password.RequireDigit) rules.Add("دست‌کم یک رقم (۰ تا ۹)");
-        if (password.RequireNonAlphanumeric) rules.Add("دست‌کم یک نشانه، مانند ! یا # یا ?");
+        if (password.RequireUppercase) rules.Add(UiText.Identity.PasswordUppercase);
+        if (password.RequireLowercase) rules.Add(UiText.Identity.PasswordLowercase);
+        if (password.RequireDigit) rules.Add(UiText.Identity.PasswordDigit);
+        if (password.RequireNonAlphanumeric) rules.Add(UiText.Identity.PasswordSymbol);
 
         if (password.RequiredUniqueChars > 1)
         {
-            rules.Add($"دست‌کم {PersianDigits.Plain(password.RequiredUniqueChars)} نویسه‌ی متفاوت");
+            rules.Add(UiText.Identity.PasswordDistinctCharacters(password.RequiredUniqueChars));
         }
 
         return rules;
@@ -357,7 +359,7 @@ public sealed class AccountController(
     {
         UserName = User.Identity?.Name,
         UserRole = User.Identity?.IsAuthenticated == true
-            ? (User.IsOperator() ? "اپراتور" : "کاربر")
+            ? (User.IsOperator() ? UiText.Shell.RoleOperator : UiText.Shell.RoleUser)
             : null,
     };
 }
