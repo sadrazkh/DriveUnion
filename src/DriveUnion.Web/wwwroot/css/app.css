@@ -106,6 +106,17 @@ a:hover {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
+
+  /*
+    The closed drawer is pushed off the edge with translateX and visibility: hidden. Neither takes a
+    box out of the scrollable overflow region, so on a phone the sidebar parks 260px past the inline
+    edge and every panel page scrolls sideways into empty space — 430px of scrollWidth in a 375px
+    viewport, in RTL where the overshoot lands on the right.
+
+    `clip` rather than `hidden`: `overflow: hidden` on an ancestor makes `position: sticky` resolve
+    against this box instead of the viewport, which would unstick the header and the sidebar.
+  */
+  overflow-x: clip;
 }
 
 .app-sidebar {

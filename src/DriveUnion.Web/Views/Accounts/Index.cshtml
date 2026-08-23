@@ -2,6 +2,11 @@
 @model AccountsPageViewModel
 @{
     ViewData["Title"] = "اکانت‌های گوگل";
+
+    // The setup panel's fragment, spelled once. Three things have to name the same element or the
+    // primary action becomes a link that appears to do nothing: this href, the <details> the
+    // partial renders, and the script that opens it and puts the caret in the first field.
+    const string SetupPanel = "google-setup";
 }
 
 @*
@@ -13,34 +18,67 @@
 <link rel="stylesheet" href="~/css/accounts.css" asp-append-version="true" />
 
 <div class="stack" style="gap: 16px;">
-    <div class="row">
+    <div class="accounts-head">
         <div class="stack" style="gap: 4px;">
             <h1 class="page-title">اکانت‌های گوگل</h1>
             <p class="page-sub">توکن‌ها رمزنگاری‌شده روی سرور ذخیره می‌شوند.</p>
         </div>
 
-        <form class="push-end" method="post" action="@Url.Action("Connect", "Accounts")" data-google-connect>
-            @Html.AntiForgeryToken()
-            @*
-                Scripts/googleConnect.ts flips this to "true" only after window.open has actually
-                handed it a window, and points the form's target at that window. Posted in the body
-                of the request antiforgery already protects — never a query parameter — because the
-                controller carries this flag through Google and back to decide whether the callback
-                answers with a page that talks to window.opener.
+        <div class="accounts-cta">
+            @if (Model.ConsentConfigured)
+            {
+                <form method="post" action="@Url.Action("Connect", "Accounts")" data-google-connect>
+                    @Html.AntiForgeryToken()
+                    @*
+                        Scripts/googleConnect.ts flips this to "true" only after window.open has actually
+                        handed it a window, and points the form's target at that window. Posted in the body
+                        of the request antiforgery already protects — never a query parameter — because the
+                        controller carries this flag through Google and back to decide whether the callback
+                        answers with a page that talks to window.opener.
 
-                Untouched it stays "false", which is the same-tab flow: no JavaScript, or a blocked
-                popup, both land here.
-            *@
-            <input type="hidden" name="popup" value="false" data-google-connect-popup />
-            <button type="submit" class="btn btn--primary btn--lg" @(Model.ConsentConfigured ? null : "disabled")>
-                + افزودن اکانت با OAuth
-            </button>
-        </form>
+                        Untouched it stays "false", which is the same-tab flow: no JavaScript, or a blocked
+                        popup, both land here.
+                    *@
+                    <input type="hidden" name="popup" value="false" data-google-connect-popup />
+                    <button type="submit" class="btn btn--primary btn--lg">
+                        + افزودن اکانت با OAuth
+                    </button>
+                </form>
+
+                @* Written by the popup enhancement only. Rendered hidden and empty so no reader meets a
+                   label for a window that was never opened, and here rather than across the page so the
+                   sentence lands under the button it is about. *@
+                <p class="page-sub" role="status" data-google-connect-status hidden></p>
+            }
+            else
+            {
+                @*
+                    Never disabled. Google will not take a request without a client id — that part is
+                    Google's and cannot be undone here — but a primary action that refuses to depress
+                    and offers nothing instead reads as a broken product rather than as an unfinished
+                    setup. So the control keeps working and does the only thing that is actually next:
+                    it goes to the form that produces what is missing. The label promises that and not
+                    a connection. Plain anchor to the panel's fragment, so this works with no script at
+                    all; googleConnect.ts adds the unfolding, the scroll and the focus.
+                *@
+                <a class="btn btn--primary btn--lg"
+                   href="#@SetupPanel"
+                   aria-describedby="accounts-cta-why"
+                   data-setup-jump>راه‌اندازی اتصال به گوگل</a>
+
+                @*
+                    The refusal, explained where the refusal happens. The detailed instructions stay in
+                    the panel; this is the one sentence an operator needs before they scroll — including
+                    the part no amount of engineering removes, said plainly and said once.
+                *@
+                <p class="accounts-cta-why" id="accounts-cta-why">
+                    گوگل بدون <span class="mono" dir="ltr">Client ID</span> هیچ درخواستی را نمی‌پذیرد، و این
+                    کلاینت فقط در پروژه‌ی Google Cloud خودِ شما ساخته می‌شود؛ این پنل نمی‌تواند آن را بسازد.
+                    دکمه شما را به مراحل ساخت و فرم ذخیره‌ی آن می‌برد.
+                </p>
+            }
+        </div>
     </div>
-
-    @* Written by the popup enhancement only. Rendered hidden and empty so no reader meets a label
-       for a window that was never opened. *@
-    <p class="page-sub" role="status" data-google-connect-status hidden></p>
 
     @if (!string.IsNullOrEmpty(Model.Notice))
     {
@@ -56,24 +94,28 @@
         The setup panel, above the accounts and not below them, because with nothing configured
         there are no accounts to be below. It is the whole answer to «چطور شروع کنم؟» and it is
         rendered on every visit, folded, so changing a client id later is not a hunt.
+
+        It used to be followed by a red paragraph naming the three settings — an explanation for a
+        refusal that had happened several screens earlier, which is where nobody was looking. The
+        reason now sits with the control, and the settings are named inside the panel, beside the
+        form that is the other way of supplying them.
     *@
     <partial name="_GoogleSetup" model="Model.Setup" />
-
-    @if (!Model.ConsentConfigured)
-    {
-        <p class="page-sub" style="color: var(--danger);">
-            تا وقتی هر سه‌ی <span class="mono" dir="ltr">Google:ClientId</span>،
-            <span class="mono" dir="ltr">Google:ClientSecret</span> و
-            <span class="mono" dir="ltr">Google:RedirectUri</span> — از پیکربندی سرور یا از فرم بالا —
-            تأمین نشوند، اتصال اکانت ممکن نیست.
-        </p>
-    }
 
     @if (Model.Accounts.Count == 0)
     {
         <div class="card card--flush">
             <div class="empty">
-                <span>هیچ اکانتی متصل نیست. تا وقتی یک اکانت متصل نشود، آپلود کار نمی‌کند.</span>
+                @if (Model.ConsentConfigured)
+                {
+                    <span>هیچ اکانتی متصل نیست. تا وقتی یک اکانت متصل نشود، آپلود کار نمی‌کند.</span>
+                }
+                else
+                {
+                    @* The end of the same sentence the top of the page started: what all of this is
+                       for, and where the result will appear. Not a second refusal. *@
+                    <span>هنوز اکانتی متصل نیست. اولین اکانت پس از ذخیره‌ی کلاینت، از همین صفحه وصل می‌شود.</span>
+                }
             </div>
         </div>
     }

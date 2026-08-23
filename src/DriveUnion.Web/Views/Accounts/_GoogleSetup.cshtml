@@ -15,7 +15,13 @@
     };
 }
 
-<details class="setup" @(expanded ? "open" : null)>
+@*
+    id="google-setup" is the target of the accounts screen's primary action when there is nothing to
+    connect with. It is what makes that button a route rather than a dead end, with no script
+    involved: the browser's own fragment navigation lands here, and the panel is already unfolded
+    because it is incomplete.
+*@
+<details class="setup" id="google-setup" @(expanded ? "open" : null)>
     <summary class="setup-summary">
         <span class="setup-summary-text">
             <span class="setup-summary-title">راه‌اندازی اتصال به گوگل</span>
@@ -26,7 +32,9 @@
                 }
                 else
                 {
-                    <text>برای اتصال اکانت، ابتدا باید یک کلاینت OAuth در Google Cloud بسازید.</text>
+                    @* Why the client is needed is said once, next to the button that cannot connect
+                       without it. This says what is inside the panel instead of repeating it. *@
+                    <text>مرحله‌های ساخت آن در Google Cloud، و نشانی‌ای که باید همان‌جا ثبت شود.</text>
                 }
             </span>
         </span>
@@ -128,6 +136,22 @@
                 متغیر را از سرور بردارید.
             </p>
         }
+        else
+        {
+            @*
+                The three settings, named, beside the form that is the other way of supplying them.
+                This used to be a red paragraph at the foot of the accounts screen — nowhere near
+                either of the two things it is about. A deployment that does have a terminal should
+                know the environment is an option, and that it wins.
+            *@
+            <p class="setup-note">
+                همین سه مقدار را می‌توان به‌جای این فرم از پیکربندی سرور داد:
+                <span class="mono" dir="ltr">Google:ClientId</span>،
+                <span class="mono" dir="ltr">Google:ClientSecret</span> و
+                <span class="mono" dir="ltr">Google:RedirectUri</span>.
+                اگر آنجا مقداری باشد، همان اعمال می‌شود.
+            </p>
+        }
 
         <form class="setup-form" method="post" action="@Url.Action("SaveGoogleCredentials", "Accounts")">
             @Html.AntiForgeryToken()
@@ -135,8 +159,11 @@
             <div class="stack" style="gap: 4px;">
                 <label class="field-label" for="setup-client-id">Client ID</label>
                 <span class="field">
+                    @* Named for the enhancement rather than found by position: the first <input> in
+                       this panel is the antiforgery token, and focusing that does nothing visible. *@
                     <input id="setup-client-id"
                            name="ClientId"
+                           data-setup-focus
                            dir="ltr"
                            autocomplete="off"
                            spellcheck="false"

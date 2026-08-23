@@ -23,6 +23,7 @@ const POPUP_HEIGHT = 680;
 
 export function mountGoogleConnect(): void {
   mountRedirectUriCopy();
+  mountSetupJump();
 
   const form = document.querySelector<HTMLFormElement>('[data-google-connect]');
   const flag = form?.querySelector<HTMLInputElement>('[data-google-connect-popup]');
@@ -89,6 +90,46 @@ export function mountGoogleConnect(): void {
       // Reloading is right in both cases — it is the same GET the flow ends on either way.
       finish();
     }, 400);
+  });
+}
+
+/**
+ * The primary action while there is no OAuth client: a link to the setup panel, made to arrive.
+ *
+ * Without this file the anchor is still a working route — the browser's own fragment navigation
+ * scrolls the panel into view and it is already unfolded, because it renders unfolded whenever it
+ * is incomplete. What is added here is the last two feet of the journey: unfold the panel even if
+ * the operator folded it earlier in this visit, and put the caret in the field they came to fill.
+ *
+ * The default is prevented rather than left to run alongside, because a fragment jump and a smooth
+ * scroll to the same element at the same time is one visible jerk followed by a slide.
+ */
+function mountSetupJump(): void {
+  const jump = document.querySelector<HTMLAnchorElement>('[data-setup-jump]');
+  if (!jump) return;
+
+  // From the href itself, so the markup keeps deciding where this goes and there is no second copy
+  // of the id in here to drift from it.
+  const panel = jump.hash.length > 1 ? document.getElementById(jump.hash.slice(1)) : null;
+  if (!(panel instanceof HTMLDetailsElement)) return;
+
+  jump.addEventListener('click', (event: MouseEvent) => {
+    // A modified click is the operator asking for a new tab or a saved link; that is the browser's
+    // to answer, not ours.
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+    event.preventDefault();
+    panel.open = true;
+
+    panel.scrollIntoView({
+      block: 'start',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+
+    // preventScroll, because focus would otherwise scroll the field to the top of the viewport and
+    // undo the scroll above — the operator would land past the instructions they were sent to read.
+    panel.querySelector<HTMLInputElement>('[data-setup-focus]')?.focus({ preventScroll: true });
   });
 }
 

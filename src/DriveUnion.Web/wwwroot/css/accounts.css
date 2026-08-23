@@ -123,6 +123,47 @@
   }
 }
 
+/* ------------------------------------------------------- the head of /accounts */
+
+/*
+ * Title on one side, the primary action on the other — the comp's row, with two differences it
+ * needs: it wraps, because the action carries a sentence with it when there is nothing configured
+ * and the pair will not fit beside a title on a narrow window; and it aligns to the top, so a
+ * two-line explanation grows downwards instead of dragging the button off the title's baseline.
+ */
+.accounts-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/*
+ * The action and everything said about it, as one block.
+ *
+ * align-items: flex-end puts the button at the inline end — where it has always been, and where it
+ * still is once a client is configured and this column holds nothing else. The measure is what
+ * keeps the sentence under the button it explains rather than running the width of the page: a
+ * reader who has just been told the button will not connect has to find the reason without moving
+ * their eyes.
+ */
+.accounts-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 46ch;
+}
+
+.accounts-cta-why {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 2;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
 /* ------------------------------------------------------- the setup panel on /accounts */
 
 /*
@@ -135,6 +176,12 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
+
+  /* The primary action links to this panel by fragment, and the panel header is sticky: without
+     this the browser scrolls the panel's top edge to y=0 and the header covers the summary the
+     operator was sent to read. 80px clears the header at its tallest — a .btn--lg between 14px
+     paddings — and leaves a little air. */
+  scroll-margin-block-start: 80px;
 }
 
 /* Open, it stops being one row and starts being a document; the rule separates the two. */
@@ -271,6 +318,12 @@
   line-height: 1.9;
   color: var(--muted);
   text-wrap: pretty;
+}
+
+/* A note inside a step hangs 6px under its line; a note that is a section of the body is spaced by
+   the body's own gap, and a paragraph's default margins would double it. */
+.setup-body > .setup-note {
+  margin: 0;
 }
 
 .setup-note--warn {
