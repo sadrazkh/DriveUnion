@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="FluentAssertions" Version="6.12.1" />
+    <!--
+      The HTTP lane boots DriveUnion.Web's real pipeline in-process. It is the only way to prove the
+      thing that matters most about /d/{slug}: that an anonymous request reaches a tenant's row. A
+      unit test cannot see that failure, because the failure is the absence of a session.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DriveUnion.Core\DriveUnion.Core.csproj" />
+    <ProjectReference Include="..\..\src\DriveUnion.Infrastructure\DriveUnion.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\DriveUnion.Web\DriveUnion.Web.csproj" />
+  </ItemGroup>
+
+</Project>

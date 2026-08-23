@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DriveUnion.Core/DriveUnion.Core.csproj" />
+    <Project Path="src/DriveUnion.Infrastructure/DriveUnion.Infrastructure.csproj" />
+    <Project Path="src/DriveUnion.Web/DriveUnion.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DriveUnion.Tests/DriveUnion.Tests.csproj" />
+  </Folder>
+</Solution>

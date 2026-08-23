@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    No package references, deliberately. Core holds the entities, the rules worth testing, and the
+    interfaces the outside world is reached through. Everything that needs a network, a database or
+    a Google credential is somebody else's problem — which is the only reason the rules can be
+    tested on a machine with no Docker and no Google account.
+  -->
+
+</Project>

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\DriveUnion.Core\DriveUnion.Core.csproj" />
+    <ProjectReference Include="..\DriveUnion.Infrastructure\DriveUnion.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- node_modules is enormous and must never reach the publish output or the file watcher. -->
+    <Content Remove="node_modules\**" />
+    <None Remove="node_modules\**" />
+    <Compile Remove="node_modules\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DriveUnion.Tests" />
+  </ItemGroup>
+
+</Project>
