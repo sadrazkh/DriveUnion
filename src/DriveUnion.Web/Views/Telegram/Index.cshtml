@@ -1,0 +1,182 @@
+@using DriveUnion.Web.Models
+@model TelegramOperatorPageViewModel
+@{
+    ViewData["Title"] = "ربات تلگرام";
+}
+
+@*
+    accounts.css carries the setup panel's steps, state rows and form — the same shapes this screen
+    needs and the same ones the Google setup panel draws. Linked here rather than in the head because
+    _Layout has no head section to extend; the browser blocks rendering of what follows while it
+    loads, so there is nothing to flash.
+*@
+<link rel="stylesheet" href="~/css/accounts.css" asp-append-version="true" />
+
+@*
+    The operator's screen, and the whole of what it may say about the people using the bot is the two
+    counts below.
+
+    There is no list here, no chat id, no customer @username and no filename — and there is nothing
+    behind this view that could render one either: ITelegramOperatorView returns two integers. A
+    cross-tenant directory of customers' messenger identities is a privacy surface with no product
+    use behind it, and the absence is enforced by the read model rather than by this file's restraint.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">ربات تلگرام</h1>
+        <p class="page-sub">توکن ربات رمزنگاری‌شده روی سرور ذخیره می‌شود.</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.Notice))
+    {
+        <p class="page-sub" role="status">@Model.Notice</p>
+    }
+
+    @if (!string.IsNullOrEmpty(Model.Error))
+    {
+        <p class="page-sub" role="alert" style="color: var(--danger);">@Model.Error</p>
+    }
+
+    <div class="card card--pad" style="max-width: 900px;">
+        <div class="row" style="gap: 12px; align-items: baseline;">
+            <span style="font-size: 14px; font-weight: 700;">راه‌اندازی ربات</span>
+            <span class="@(Model.IsComplete ? "badge" : "badge badge--warn") push-end">
+                @(Model.IsComplete ? "آماده" : "ناقص")
+            </span>
+        </div>
+
+        @*
+            Written out rather than linked to Telegram's documentation: that documentation is in
+            English, and the four steps below are the whole of what the operator has to do.
+        *@
+        <ol class="setup-steps" style="margin-top: 14px;">
+            <li>
+                در تلگرام به <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer">@@BotFather</a>
+                پیام دهید و با <span class="mono" dir="ltr">/newbot</span> یک ربات بسازید.
+            </li>
+            <li>
+                توکنی که می‌دهد را در کادر زیر بگذارید. توکن مانند
+                <span class="mono" dir="ltr">123456789:AA…</span> است و همان‌جا نام کاربری ربات هم
+                گفته می‌شود.
+            </li>
+            <li>
+                با <span class="mono" dir="ltr">/setjoingroups</span> افزودن ربات به گروه‌ها را
+                <strong>ببندید</strong>. این ربات فقط در گفتگوی خصوصی کار می‌کند، و رباتی که بتوان به
+                گروه اضافه‌اش کرد، اضافه خواهد شد.
+            </li>
+            <li>
+                با <span class="mono" dir="ltr">/setprivacy</span> حالت حریم خصوصی را
+                <strong>روشن</strong> بگذارید.
+            </li>
+        </ol>
+
+        <div class="setup-state" role="group" aria-label="وضعیت فعلی" style="margin-top: 14px;">
+            <div class="setup-state-row">
+                <span class="setup-state-label">توکن</span>
+                @* Never the value. «ذخیره شده» is the whole of what a browser is ever told: a screen
+                   that could print the token is a screen that eventually will. *@
+                <span class="setup-state-value">@(Model.HasToken ? "ذخیره شده" : "—")</span>
+                <span class="@(Model.HasToken ? "badge" : "badge badge--warn")">
+                    @(Model.HasToken ? "تنظیم شده" : "تنظیم نشده")
+                </span>
+            </div>
+            <div class="setup-state-row">
+                <span class="setup-state-label">نام کاربری</span>
+                <span class="setup-state-value mono" dir="ltr">
+                    @(string.IsNullOrEmpty(Model.BotUsername) ? "—" : "@" + Model.BotUsername)
+                </span>
+                <span class="@(string.IsNullOrEmpty(Model.BotUsername) ? "badge badge--warn" : "badge")">
+                    @(string.IsNullOrEmpty(Model.BotUsername) ? "تنظیم نشده" : "تنظیم شده")
+                </span>
+            </div>
+            <div class="setup-state-row">
+                @* The bot's own numeric id, read out of the token rather than asked for. It is the
+                   operator's own identifier and names no customer. *@
+                <span class="setup-state-label">شناسه ربات</span>
+                <span class="setup-state-value mono" dir="ltr">@(Model.BotUserId?.ToString() ?? "—")</span>
+                <span class="badge badge--muted">از توکن</span>
+            </div>
+        </div>
+
+        <form class="setup-form" method="post" action="@Url.Action("SaveBot", "Telegram")" style="margin-top: 14px;">
+            @Html.AntiForgeryToken()
+
+            <div class="stack" style="gap: 4px;">
+                <label class="field-label" for="telegram-token">توکن ربات</label>
+                @*
+                    type=password so a shoulder or a screen share does not read it, and no value
+                    attribute ever. Blank means «unchanged», which the placeholder says — so
+                    correcting the @username does not cost a trip back to @BotFather.
+                *@
+                <span class="field">
+                    <input id="telegram-token"
+                           name="BotToken"
+                           type="password"
+                           dir="ltr"
+                           autocomplete="off"
+                           spellcheck="false"
+                           placeholder="@(Model.HasToken ? "ذخیره شده — برای تغییر مقدار تازه وارد کنید" : "123456789:AA…")" />
+                </span>
+            </div>
+
+            <div class="stack" style="gap: 4px;">
+                <label class="field-label" for="telegram-username">نام کاربری ربات</label>
+                <span class="field">
+                    <input id="telegram-username"
+                           name="BotUsername"
+                           dir="ltr"
+                           autocomplete="off"
+                           spellcheck="false"
+                           placeholder="DriveUnionBot"
+                           value="@Model.BotUsername" />
+                </span>
+                <span class="setup-hint">پیوند اتصال هر مشتری از همین نام ساخته می‌شود.</span>
+            </div>
+
+            <div class="row" style="gap: 8px;">
+                <button type="submit" class="btn btn--primary">ذخیره</button>
+
+                @if (Model.UpdatedText is { Length: > 0 } updated)
+                {
+                    <span class="setup-hint push-end">آخرین تغییر: @updated</span>
+                }
+            </div>
+        </form>
+
+        @if (Model.HasToken || !string.IsNullOrEmpty(Model.BotUsername))
+        {
+            @* A separate form, because a delete inside the save form is one stray Enter away from
+               being the button that submits. *@
+            <form method="post" action="@Url.Action("ClearBot", "Telegram")" style="margin-top: 12px;">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn--danger btn--sm">حذف اطلاعات ربات</button>
+            </form>
+        }
+    </div>
+
+    <div class="card card--pad" style="max-width: 900px;">
+        <span style="font-size: 14px; font-weight: 700;">وضعیت</span>
+
+        <div class="setup-state" role="group" aria-label="شمارش‌ها" style="margin-top: 12px;">
+            <div class="setup-state-row">
+                <span class="setup-state-label">حساب‌های متصل</span>
+                <span class="setup-state-value">@Model.LinkedCountText</span>
+                <span class="badge badge--muted">کل</span>
+            </div>
+            <div class="setup-state-row">
+                <span class="setup-state-label">درخواست‌های در جریان</span>
+                <span class="setup-state-value">@Model.PendingCountText</span>
+                <span class="badge badge--muted">۱۰ دقیقه‌ای</span>
+            </div>
+        </div>
+
+        @*
+            Said out loud so nobody goes looking for the list that is not here, and so the next person
+            to build this screen knows it was refused rather than forgotten.
+        *@
+        <p class="setup-note" style="margin-top: 12px;">
+            این صفحه نام، شناسه یا فایل هیچ مشتری‌ای را نشان نمی‌دهد و نمی‌تواند نشان بدهد. فهرست
+            حساب‌های تلگرام مشتری‌ها ساخته نمی‌شود.
+        </p>
+    </div>
+</div>

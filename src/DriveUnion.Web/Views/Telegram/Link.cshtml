@@ -1,0 +1,186 @@
+@using DriveUnion.Web.Models
+@model TelegramLinkPageViewModel
+@{
+    ViewData["Title"] = "اتصال تلگرام";
+}
+
+@* Same panel shapes as the Google setup card — see Views/Accounts/Index.cshtml for why the link is
+   here rather than in the head. *@
+<link rel="stylesheet" href="~/css/accounts.css" asp-append-version="true" />
+
+<div class="stack" style="gap: 16px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">اتصال تلگرام</h1>
+        <p class="page-sub">حساب تلگرام خود را به فضای کاری‌تان وصل کنید.</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.Notice))
+    {
+        <p class="page-sub" role="status">@Model.Notice</p>
+    }
+
+    @if (!string.IsNullOrEmpty(Model.Error))
+    {
+        <p class="page-sub" role="alert" style="color: var(--danger);">@Model.Error</p>
+    }
+
+    <div class="card card--pad" style="max-width: 720px;">
+        @if (!Model.BotConfigured)
+        {
+            @*
+                A control that cannot work must not be rendered as though it can. With no bot
+                configured there is no @username to build a link from, so the card says so plainly
+                instead of drawing a button that fails.
+            *@
+            <div class="stack" style="gap: 8px;">
+                <span style="font-size: 14px; font-weight: 700;">تلگرام</span>
+                <p class="page-sub">
+                    ربات تلگرام این سرویس هنوز راه‌اندازی نشده است. تا آن زمان امکان اتصال وجود ندارد.
+                </p>
+            </div>
+        }
+        else if (Model.Linked is { } linked)
+        {
+            <div class="row" style="gap: 16px; align-items: flex-start;">
+                <span class="stack" style="gap: 4px; flex: 1; min-width: 0;">
+                    <span style="font-size: 14px; font-weight: 700;">@linked.Title</span>
+                    @* The numeric Telegram id is never here. The @username is the customer's own and
+                       the only handle they recognise. *@
+                    @if (linked.Handle is { Length: > 0 } handle)
+                    {
+                        <span class="mono muted" dir="ltr" style="font-size: 12px;">@handle</span>
+                    }
+                    <span class="page-sub">تاریخ اتصال: @linked.LinkedText</span>
+                </span>
+
+                <span class="badge @(linked.IsDeliverable ? null : "badge--warn")">@linked.StatusText</span>
+            </div>
+
+            @if (!linked.IsDeliverable)
+            {
+                <p class="setup-note setup-note--warn" role="status" style="margin-top: 12px;">
+                    تلگرام پیام‌های ربات را نمی‌پذیرد. در تلگرام گفتگو با ربات را از حالت مسدود خارج
+                    کنید؛ این کار فقط از روی گوشی خودتان انجام می‌شود.
+                </p>
+            }
+
+            <form method="post" action="@Url.Action("Unlink", "Telegram")" style="margin-top: 16px;">
+                @Html.AntiForgeryToken()
+                @* What will stop working, said before the button rather than after it. *@
+                <p class="setup-hint" style="margin-bottom: 8px;">
+                    با قطع اتصال، ربات دیگر به شما پاسخ نمی‌دهد. فایل‌ها و لینک‌های شما دست‌نخورده
+                    می‌مانند.
+                </p>
+                <button type="submit" class="btn btn--danger btn--sm">قطع اتصال</button>
+            </form>
+        }
+        else
+        {
+            <div class="stack" style="gap: 8px;">
+                <span style="font-size: 14px; font-weight: 700;">اتصال حساب تلگرام</span>
+                <p class="page-sub">
+                    پس از اتصال، فایلی که برای ربات بفرستید همین‌جا ذخیره می‌شود، و فایلی که اینجا
+                    دارید را می‌توانید از تلگرام بخواهید.
+                </p>
+                @*
+                    Above the button, not below it: a data-residency fact belongs before the decision
+                    it is about. Sending a file through the bot means the file passes through
+                    Telegram's servers and stays cached on them, which is not true of anything else
+                    in this product.
+                *@
+                <p class="setup-note">
+                    فایلی که از راه تلگرام رفت‌وآمد کند از سرورهای تلگرام عبور می‌کند و روی آن‌ها
+                    باقی می‌ماند. اگر این را نمی‌خواهید، از همین پنل استفاده کنید.
+                </p>
+            </div>
+
+            @if (Model.DeepLink is { Length: > 0 } deepLink)
+            {
+                <div class="stack" style="gap: 12px; margin-top: 16px;">
+                    <a class="btn btn--primary" href="@deepLink" target="_blank" rel="noopener noreferrer">
+                        باز کردن ربات در تلگرام
+                    </a>
+
+                    @*
+                        The QR code, because the common case is a desktop panel and a phone's
+                        Telegram, and nobody types a ۴۳ نویسه‌ای token. Rendered inline: an endpoint
+                        that drew this from a token in its URL would put the token in an access log,
+                        a referrer and the browser's history.
+                    *@
+                    <div style="width: 176px; max-width: 100%;">
+                        @Html.Raw(Model.QrSvg)
+                    </div>
+
+                    <p class="setup-hint">
+                        این پیوند فقط ۱۰ دقیقه معتبر است و یک‌بار مصرف می‌شود. پس از باز شدن، ربات یک
+                        کد شش‌رقمی می‌فرستد.
+                    </p>
+                </div>
+            }
+            else if (Model.HasPendingRequest)
+            {
+                <p class="setup-hint" style="margin-top: 16px;">
+                    یک درخواست در جریان دارید. اگر کد را دریافت کرده‌اید، همین‌جا واردش کنید؛ وگرنه
+                    درخواست تازه‌ای بسازید.
+                </p>
+            }
+
+            <div class="row" style="gap: 8px; margin-top: 16px; align-items: flex-end;">
+                <form method="post" action="@Url.Action("Start", "Telegram")">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn @(Model.HasPendingRequest ? "btn--sm" : "btn--primary")">
+                        @(Model.HasPendingRequest ? "ساخت پیوند تازه" : "اتصال حساب تلگرام")
+                    </button>
+                </form>
+
+                @if (Model.HasPendingRequest)
+                {
+                    <form method="post" action="@Url.Action("Unlink", "Telegram")">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn--sm">انصراف</button>
+                    </form>
+                }
+            </div>
+
+            @if (Model.HasPendingRequest)
+            {
+                <form class="setup-form" method="post" action="@Url.Action("Confirm", "Telegram")" style="margin-top: 16px;">
+                    @Html.AntiForgeryToken()
+
+                    <div class="stack" style="gap: 4px;">
+                        <label class="field-label" for="telegram-code">کد شش‌رقمی</label>
+                        <span class="field" style="max-width: 200px;">
+                            @*
+                                inputmode=numeric so a phone offers the number pad, and
+                                autocomplete=one-time-code so the browser can fill it from a
+                                notification. Never pre-filled from the server: this value is the
+                                thing being proved.
+                            *@
+                            <input id="telegram-code"
+                                   name="code"
+                                   dir="ltr"
+                                   inputmode="numeric"
+                                   pattern="[0-9]{6}"
+                                   maxlength="6"
+                                   autocomplete="one-time-code"
+                                   spellcheck="false"
+                                   placeholder="۱۲۳۴۵۶" />
+                        </span>
+                        @if (Model.AttemptsLeftText is { Length: > 0 } attempts)
+                        {
+                            <span class="setup-hint">@attempts تلاش باقی مانده است.</span>
+                        }
+                        else
+                        {
+                            <span class="setup-hint">همان کدی که ربات در تلگرام فرستاده است.</span>
+                        }
+                    </div>
+
+                    <div class="row" style="gap: 8px;">
+                        <button type="submit" class="btn btn--primary">تأیید و اتصال</button>
+                    </div>
+                </form>
+            }
+        }
+    </div>
+</div>
