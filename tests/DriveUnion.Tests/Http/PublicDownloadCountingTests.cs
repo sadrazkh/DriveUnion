@@ -1,3 +1,5 @@
+using System.Net;
+using DriveUnion.Core.Abstractions;
 using FluentAssertions;
 
 namespace DriveUnion.Tests.Http;
@@ -13,6 +15,9 @@ namespace DriveUnion.Tests.Http;
 /// </summary>
 public class PublicDownloadCountingTests
 {
+    /// <summary>How long a parked transfer may take before this is called a hang rather than waited on.</summary>
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
+
     [Fact]
     public async Task A_request_with_no_range_header_counts_as_one_download()
     {
@@ -114,5 +119,143 @@ public class PublicDownloadCountingTests
         await client.GetStringAsync($"/d/{seeded.Slug}");
 
         (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_cap_of_two_serves_two_files_however_many_transfers_are_open_at_once()
+    {
+        // The test the old order of operations could not pass.
+        //
+        // When the counter moved after the last byte, a link's remaining downloads were measured
+        // against a number that did not yet include the transfers currently running — so three more
+        // visitors arriving while two were in flight were all told yes, and a link capped at two
+        // served five files. On a 214 GB file that window is hours wide.
+        //
+        // Two downloads are opened and held open at Google, each having already reserved its slot and
+        // delivered nothing. Three more visitors then ask, and must be refused.
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("cc77cc77", content: PublicSiteHarness.TestBytes(1024), maxDownloads: 2);
+
+        var drive = new ParkedDriveClient(harness.Drive, parkingSpaces: 2);
+        harness.DriveClient = drive;
+
+        using var client = harness.NewClient();
+        var url = $"/d/{seeded.Slug}/file";
+
+        var first = client.GetAsync(url);
+        await drive.ParkedAsync(1);
+
+        var second = client.GetAsync(url);
+        await drive.ParkedAsync(2);
+
+        for (var visitor = 0; visitor < 3; visitor++)
+        {
+            using var refused = await client.GetAsync(url).WaitAsync(Patience);
+
+            // The same card as revoked, expired and never-existed. Not a 429, not a 409: a refusal
+            // that looked different from the others is a fourth way to tell live slugs from dead.
+            refused.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+
+        // One at a time, so the two open transfers finish on their own rather than racing each other
+        // through a SQLite connection this suite shares between every request.
+        drive.LetGo(1);
+        using var servedFirst = await first.WaitAsync(Patience);
+        drive.LetGo(2);
+        using var servedSecond = await second.WaitAsync(Patience);
+
+        servedFirst.StatusCode.Should().Be(HttpStatusCode.OK);
+        servedSecond.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await servedFirst.Content.ReadAsByteArrayAsync()).Should().Equal(seeded.Content);
+        (await servedSecond.Content.ReadAsByteArrayAsync()).Should().Equal(seeded.Content);
+
+        drive.Opens.Should().Be(2, "a refused request must never cost the operator a call to Google");
+        (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(2);
+        (await harness.DownloadEventCountAsync(seeded.LinkId)).Should().Be(2, "the audit trail has to agree");
+    }
+
+    /// <summary>
+    /// A Drive that parks each download at the moment it is opened and holds it there until let go.
+    ///
+    /// The window under test is the one between deciding a link may be served and recording that it
+    /// was, so the test has to keep transfers open across other requests — and a fake that blocks
+    /// until released is deterministic where a sleep is a guess about how fast the machine is.
+    ///
+    /// Parking happens before any byte moves, which is where a reservation has to already exist:
+    /// nothing has been delivered, and the slot is spent all the same.
+    /// </summary>
+    private sealed class ParkedDriveClient(IDriveClient inner, int parkingSpaces) : IDriveClient
+    {
+        private readonly TaskCompletionSource[] arrivals = Gates(parkingSpaces);
+        private readonly TaskCompletionSource[] departures = Gates(parkingSpaces);
+
+        private int opens;
+
+        /// <summary>Requests that got as far as Google. A refused one must never appear here.</summary>
+        public int Opens => Volatile.Read(ref opens);
+
+        /// <summary>Completes once the nth download (1-based) has reached Google and parked.</summary>
+        public Task ParkedAsync(int nth) => arrivals[nth - 1].Task.WaitAsync(Patience);
+
+        public void LetGo(int nth) => departures[nth - 1].TrySetResult();
+
+        public async Task<DriveDownload> OpenDownloadAsync(
+            Guid accountId,
+            string driveFileId,
+            string? rangeHeader,
+            CancellationToken cancellationToken)
+        {
+            var space = Interlocked.Increment(ref opens) - 1;
+
+            if (space < departures.Length)
+            {
+                arrivals[space].TrySetResult();
+                await departures[space].Task;
+            }
+            else
+            {
+                // More transfers reached Google than the link's cap allows, which is precisely the
+                // failure this test exists to catch. Let everything through instead of parking it:
+                // the assertions above say what went wrong, and a deadlocked CI run says nothing.
+                foreach (var gate in departures) gate.TrySetResult();
+            }
+
+            return await inner.OpenDownloadAsync(accountId, driveFileId, rangeHeader, cancellationToken);
+        }
+
+        public Task<DriveResumableSession> BeginResumableUploadAsync(
+            Guid accountId,
+            DriveUploadRequest request,
+            CancellationToken cancellationToken) =>
+            inner.BeginResumableUploadAsync(accountId, request, cancellationToken);
+
+        public Task<DriveChunkOutcome> WriteChunkAsync(
+            Uri sessionUri,
+            Stream content,
+            long offset,
+            long length,
+            long totalSize,
+            CancellationToken cancellationToken) =>
+            inner.WriteChunkAsync(sessionUri, content, offset, length, totalSize, cancellationToken);
+
+        public Task<long> GetConfirmedLengthAsync(
+            Uri sessionUri,
+            long totalSize,
+            CancellationToken cancellationToken) =>
+            inner.GetConfirmedLengthAsync(sessionUri, totalSize, cancellationToken);
+
+        public Task<string> EnsureFolderAsync(
+            Guid accountId,
+            string folderName,
+            string? parentFolderId,
+            CancellationToken cancellationToken) =>
+            inner.EnsureFolderAsync(accountId, folderName, parentFolderId, cancellationToken);
+
+        public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken) =>
+            inner.GetStorageQuotaAsync(accountId, cancellationToken);
+
+        private static TaskCompletionSource[] Gates(int count) =>
+            [.. Enumerable.Range(0, count)
+                .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))];
     }
 }

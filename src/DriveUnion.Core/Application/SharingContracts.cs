@@ -100,12 +100,44 @@ public interface IPublicLinkReader
     Task<PublicDownloadTicket?> ResolveForDownloadAsync(string slug, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Records one counted download. The caller decides whether a request counts — see
-    /// <see cref="DownloadCounting"/> — because that decision is about the Range header, not the row.
+    /// Takes one of the link's remaining downloads and says whether there was one left to take.
+    ///
+    /// This is the gate. The count <see cref="ResolveForDownloadAsync"/> reads is advisory — true
+    /// when it was read and possibly false a moment later — and a transfer runs for as long as the
+    /// file is big, so a link at 499 of 500 with several downloads in flight would hand out a 501st.
+    /// The slot is therefore spent here, before Google is contacted, and the answer is the database's
+    /// rather than this process's.
+    ///
+    /// False means no slot was left. The caller must answer with the same card it gives a revoked,
+    /// expired or never-existed slug: a refusal that looked different — a 429, a 409, anything — is
+    /// a fourth oracle for telling live slugs from dead ones.
+    ///
+    /// Every true must be finished by exactly one <see cref="RecordDownloadAsync"/> when the visitor
+    /// took the bytes, or one <see cref="ReleaseDownloadAsync"/> when they did not.
+    /// </summary>
+    Task<bool> TryReserveDownloadAsync(Guid shareLinkId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Writes down a reservation the visitor consumed — the audit row behind the number, and
+    /// nothing else. The counter already moved when the slot was reserved, so moving it again here
+    /// would bill one download twice.
+    ///
+    /// The caller decides whether a request counts at all — see <see cref="DownloadCounting"/> —
+    /// because that decision is about the Range header, not the row. A request that does not count
+    /// reserves nothing and records nothing.
     /// </summary>
     Task RecordDownloadAsync(
         Guid shareLinkId,
         string ipHash,
         string? userAgent,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gives a reservation back, for a download that never happened: Drive refused before the first
+    /// byte, or the stream died mid-response. No audit row, because nothing was served.
+    ///
+    /// It cannot drive the count below zero. A caller that releases twice, or releases a slot it
+    /// never reserved, must not be able to mint downloads out of a negative counter.
+    /// </summary>
+    Task ReleaseDownloadAsync(Guid shareLinkId, CancellationToken cancellationToken);
 }

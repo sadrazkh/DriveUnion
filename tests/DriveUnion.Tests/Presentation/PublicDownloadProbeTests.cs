@@ -215,6 +215,11 @@ public class PublicDownloadProbeTests
 
         public int Resolutions { get; private set; }
 
+        /// <summary>Slots taken and slots handed back. This double has no cap, so it always grants.</summary>
+        public int Reserved { get; private set; }
+
+        public int Released { get; private set; }
+
         public Task<PublicLinkResolution> ResolveAsync(string slug, CancellationToken cancellationToken) =>
             throw new NotSupportedException("Neither of the byte routes renders the landing page.");
 
@@ -222,6 +227,18 @@ public class PublicDownloadProbeTests
         {
             Resolutions++;
             return Task.FromResult(ticket);
+        }
+
+        public Task<bool> TryReserveDownloadAsync(Guid shareLinkId, CancellationToken cancellationToken)
+        {
+            Reserved++;
+            return Task.FromResult(true);
+        }
+
+        public Task ReleaseDownloadAsync(Guid shareLinkId, CancellationToken cancellationToken)
+        {
+            Released++;
+            return Task.CompletedTask;
         }
 
         public Task RecordDownloadAsync(

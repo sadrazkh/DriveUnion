@@ -66,36 +66,54 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
             file.SizeBytes);
     }
 
+    public async Task<bool> TryReserveDownloadAsync(Guid shareLinkId, CancellationToken cancellationToken)
+    {
+        // One conditional UPDATE: the test and the increment are the same statement, so the database
+        // decides who gets the last slot. Reading the count and then writing count + 1 hands 500 of
+        // 500 to both of two requests that read 499, and asking "is there room?" in one statement and
+        // taking it in another leaves a gap the length of a download — hours, on a 214 GB file.
+        //
+        // Rows affected is the answer. One means this request owns a slot; zero means the link is
+        // revoked or spent, and the caller cannot tell those apart, which is deliberate.
+        //
+        // Expiry is deliberately not in the predicate. SQLite keeps a DateTimeOffset as text and will
+        // not compare one — the same reason ShareLinkService sorts in memory — so a WHERE on ExpiresAt
+        // would mean one rule on Postgres and a different one under the tests. It costs nothing: the
+        // resolve one round trip earlier evaluates expiry against the clock, and unlike the cap,
+        // expiry is not a value two anonymous requests can take from each other.
+        var affected = await db.ShareLinks
+            .Where(l => l.Id == shareLinkId
+                && l.IsActive
+                && (l.MaxDownloads == null || l.DownloadCount < l.MaxDownloads))
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(l => l.DownloadCount, l => l.DownloadCount + 1),
+                cancellationToken);
+
+        if (affected == 0) return false;
+
+        DetachStaleCount(shareLinkId);
+
+        return true;
+    }
+
     public async Task RecordDownloadAsync(
         Guid shareLinkId,
         string ipHash,
         string? userAgent,
         CancellationToken cancellationToken)
     {
-        await using var transaction = await DbTransactions.BeginIfNoneAsync(db, cancellationToken);
+        // The counter is not touched here. It moved when the slot was reserved, and a second
+        // increment at the last byte would bill the download twice.
+        var linkExists = await db.ShareLinks
+            .AsNoTracking()
+            .AnyAsync(l => l.Id == shareLinkId, cancellationToken);
 
-        // One UPDATE, and the new value is computed by the database from the old one. Read-modify-
-        // write loses a download every time two of them overlap, and at 499/500 it hands out a
-        // 501st.
-        var affected = await db.ShareLinks
-            .Where(l => l.Id == shareLinkId)
-            .ExecuteUpdateAsync(
-                s => s.SetProperty(l => l.DownloadCount, l => l.DownloadCount + 1),
-                cancellationToken);
-
-        if (affected == 0)
+        if (!linkExists)
         {
-            // The link was deleted between the ticket and the last byte. There is no counter to move
-            // and no audit row worth orphaning.
+            // The link was deleted between the reservation and the last byte. DownloadEvent has a
+            // foreign key to it, so the insert would fail; an orphaned audit row helps nobody either.
             return;
         }
-
-        // ExecuteUpdate goes round the change tracker, so a copy someone else loaded still holds the
-        // old count. Left attached, the next SaveChanges in this scope would write that stale number
-        // back over the increment we just made.
-        var stale = db.ChangeTracker.Entries<ShareLink>()
-            .FirstOrDefault(e => e.Entity.Id == shareLinkId);
-        if (stale is not null) stale.State = EntityState.Detached;
 
         db.DownloadEvents.Add(new DownloadEvent
         {
@@ -106,9 +124,39 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
             UserAgent = userAgent,
         });
 
+        // One row, so SaveChanges is already all-or-nothing and there is nothing for a transaction to
+        // hold together. What the counter and the audit row no longer share is a moment: the count
+        // moves when the download starts and the row lands when it finishes, which is the whole point
+        // of reserving.
         await db.SaveChangesAsync(cancellationToken);
+    }
 
-        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+    public async Task ReleaseDownloadAsync(Guid shareLinkId, CancellationToken cancellationToken)
+    {
+        // The floor lives in the WHERE rather than in the new value, so it is applied by the same
+        // statement that does the decrement. A release that computed Math.Max(0, count - 1) from a
+        // value it read would still write -1 when two of them overlap at a count of one, and a
+        // negative counter is free downloads for as long as it takes somebody to notice.
+        var affected = await db.ShareLinks
+            .Where(l => l.Id == shareLinkId && l.DownloadCount > 0)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(l => l.DownloadCount, l => l.DownloadCount - 1),
+                cancellationToken);
+
+        if (affected > 0) DetachStaleCount(shareLinkId);
+    }
+
+    /// <summary>
+    /// ExecuteUpdate goes round the change tracker, so a copy someone else loaded still holds the old
+    /// count. Left attached, the next SaveChanges in this scope — the audit row at the end of the
+    /// very transfer this reserved for — would write that stale number back over the move.
+    /// </summary>
+    private void DetachStaleCount(Guid shareLinkId)
+    {
+        var stale = db.ChangeTracker.Entries<ShareLink>()
+            .FirstOrDefault(e => e.Entity.Id == shareLinkId);
+
+        if (stale is not null) stale.State = EntityState.Detached;
     }
 
     private async Task<(ShareLink? Link, StoredFile? File)> LookUpAsync(

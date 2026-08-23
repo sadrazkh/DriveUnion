@@ -190,6 +190,38 @@ public class PublicDownloadStreamTests
     }
 
     [Fact]
+    public async Task The_slot_a_failed_transfer_gave_back_is_spendable_by_the_next_visitor()
+    {
+        // A cap of one, spent on a download that never happened, is a link the customer paid for and
+        // nobody can use. The reservation is taken before Google is called and given back when Google
+        // refuses, so the visitor a minute later gets the one download the link was sold with.
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("rl88rl88", content: PublicSiteHarness.TestBytes(1024), maxDownloads: 1);
+
+        harness.Drive.FailAlways(FakeDriveOperation.OpenDownload, new DriveApiException("Drive said no."));
+
+        using var client = harness.NewClient();
+
+        using var failed = await client.GetAsync($"/d/{seeded.Slug}/file");
+        failed.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(0);
+
+        harness.Drive.ClearFailure(FakeDriveOperation.OpenDownload);
+
+        using var served = await client.GetAsync($"/d/{seeded.Slug}/file");
+        served.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await served.Content.ReadAsByteArrayAsync()).Should().Equal(seeded.Content);
+
+        (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(1);
+        (await harness.DownloadEventCountAsync(seeded.LinkId)).Should().Be(1,
+            "the download that did happen is the only one in the audit trail");
+
+        // And the cap still means one: the released slot was given back, not created.
+        using var refused = await client.GetAsync($"/d/{seeded.Slug}/file");
+        refused.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task A_drive_stream_that_dies_mid_response_breaks_the_transfer_rather_than_claiming_success()
     {
         // Spec §9: a stream that dies mid-response cannot change a status code already sent, so the
@@ -218,10 +250,159 @@ public class PublicDownloadStreamTests
         received.Should().BeNull();
 
         // And it is free. The stream broke at 512 of 4096 bytes because Google dropped it, which is
-        // the operator's failure and not the visitor's; the counter is what a customer's capped link
-        // is spent from, so nothing moves until the last byte is delivered. The visitor's Range
-        // resume pays for the download it actually completes.
+        // the operator's failure and not the visitor's; the slot this request reserved before it
+        // opened Drive goes back, so the counter reads as though the request never happened and the
+        // visitor's Range resume pays for the download it actually completes.
         (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(0);
         (await harness.DownloadEventCountAsync(seeded.LinkId)).Should().Be(0, "the audit trail has to agree");
+    }
+
+    [Fact]
+    public async Task A_visitor_who_abandons_their_own_transfer_is_still_charged_for_it()
+    {
+        // The other half of the rule above, and the half that looks unfair until it is costed: a
+        // client that walks away at 99% has already taken the egress. Refunding it makes a 214 GB
+        // file free for anyone willing to cancel, again and again, against a cap it never touches.
+        //
+        // So the two ways a transfer can end short are not the same: Google dropping it releases the
+        // slot, the visitor dropping it spends it.
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("ab99ab99", content: PublicSiteHarness.TestBytes(4096));
+        harness.DriveClient = new AbandonedStreamDriveClient(harness.Drive, bytesBeforeAbandonment: 512);
+
+        using var client = harness.NewClient();
+
+        using var response = await client.GetAsync(
+            $"/d/{seeded.Slug}/file",
+            HttpCompletionOption.ResponseHeadersRead);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // What the visitor left with. How a client is told about a body that stopped short is the
+        // transport's business — under TestServer the response simply ends — and it is not what this
+        // test is about; the number below is.
+        (await response.Content.ReadAsByteArrayAsync()).Should().Equal(seeded.Content[..512]);
+
+        (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(1);
+        (await harness.DownloadEventCountAsync(seeded.LinkId)).Should().Be(1, "the audit trail has to agree");
+    }
+
+    /// <summary>
+    /// A Drive whose body stops with the exception a visitor closing their tab produces.
+    ///
+    /// <see cref="DyingStreamDriveClient"/> throws an <see cref="IOException"/>, which is Google
+    /// failing; this throws an <see cref="OperationCanceledException"/>, which is the request being
+    /// aborted under the copy. The controller has to tell those two apart — one releases the
+    /// reservation and the other spends it — and nothing else in the suite makes it prove that.
+    /// </summary>
+    private sealed class AbandonedStreamDriveClient(IDriveClient inner, int bytesBeforeAbandonment)
+        : IDriveClient
+    {
+        public async Task<DriveDownload> OpenDownloadAsync(
+            Guid accountId,
+            string driveFileId,
+            string? rangeHeader,
+            CancellationToken cancellationToken)
+        {
+            var download = await inner.OpenDownloadAsync(accountId, driveFileId, rangeHeader, cancellationToken);
+
+            return new DriveDownload(
+                new AbandonedStream(download.Content, bytesBeforeAbandonment),
+                download.ContentType,
+                download.ContentLength,
+                download.ContentRange,
+                download.IsPartial,
+                download);
+        }
+
+        public Task<DriveResumableSession> BeginResumableUploadAsync(
+            Guid accountId,
+            DriveUploadRequest request,
+            CancellationToken cancellationToken) =>
+            inner.BeginResumableUploadAsync(accountId, request, cancellationToken);
+
+        public Task<DriveChunkOutcome> WriteChunkAsync(
+            Uri sessionUri,
+            Stream content,
+            long offset,
+            long length,
+            long totalSize,
+            CancellationToken cancellationToken) =>
+            inner.WriteChunkAsync(sessionUri, content, offset, length, totalSize, cancellationToken);
+
+        public Task<long> GetConfirmedLengthAsync(
+            Uri sessionUri,
+            long totalSize,
+            CancellationToken cancellationToken) =>
+            inner.GetConfirmedLengthAsync(sessionUri, totalSize, cancellationToken);
+
+        public Task<string> EnsureFolderAsync(
+            Guid accountId,
+            string folderName,
+            string? parentFolderId,
+            CancellationToken cancellationToken) =>
+            inner.EnsureFolderAsync(accountId, folderName, parentFolderId, cancellationToken);
+
+        public Task<DriveStorageQuota> GetStorageQuotaAsync(
+            Guid accountId,
+            CancellationToken cancellationToken) =>
+            inner.GetStorageQuotaAsync(accountId, cancellationToken);
+
+        private sealed class AbandonedStream(Stream inner, int budget) : Stream
+        {
+            private bool served;
+
+            public override bool CanRead => true;
+
+            public override bool CanSeek => false;
+
+            public override bool CanWrite => false;
+
+            public override long Length => throw new NotSupportedException();
+
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+
+            public override void Flush()
+            {
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                if (served) throw new OperationCanceledException("The visitor closed the tab.");
+
+                served = true;
+
+                return inner.Read(buffer, offset, Math.Min(budget, count));
+            }
+
+            public override async ValueTask<int> ReadAsync(
+                Memory<byte> buffer,
+                CancellationToken cancellationToken = default)
+            {
+                if (served) throw new OperationCanceledException("The visitor closed the tab.");
+
+                served = true;
+                var take = Math.Min(budget, buffer.Length);
+
+                return await inner.ReadAsync(buffer[..take], cancellationToken);
+            }
+
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+            public override void SetLength(long value) => throw new NotSupportedException();
+
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing) inner.Dispose();
+
+                base.Dispose(disposing);
+            }
+        }
     }
 }

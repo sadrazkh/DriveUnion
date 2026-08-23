@@ -92,9 +92,11 @@ public sealed class PublicDownloadController(
     /// buffer, not a copy. Nothing about Google appears in the response; there is no redirect to
     /// drive.google.com, and the file id and account email stay on this side of the wire.
     ///
-    /// The cap is checked before Google is contacted and the counter moves after the last byte. So a
-    /// link with no downloads left still refuses before anything is opened, and a transfer Google
-    /// dropped halfway costs the customer nothing.
+    /// The cap is <em>reserved</em> before Google is contacted, and given back if the download never
+    /// happens. Checking it and spending it used to be two separate acts with the whole transfer
+    /// between them, which on a 214 GB file is hours: a link at 499 of 500 with several downloads in
+    /// flight served every one of them. Reserving first closes that window without charging for a
+    /// stream Google dropped at byte 512 of 4096, because the slot goes back.
     /// </summary>
     [HttpGet("/d/{slug}/file")]
     [EnableRateLimiting(DriveUnionRateLimits.PublicDownload)]
@@ -112,77 +114,102 @@ public sealed class PublicDownloadController(
 
         var rangeHeader = Request.Headers.Range.Count > 0 ? Request.Headers.Range.ToString() : null;
 
-        DriveDownload download;
+        // Only a GET arrives here — HEAD is routed to Probe, which has no recorder in it — so the
+        // Range header is the whole question, which is exactly what DownloadCounting takes. A request
+        // that does not count reserves nothing: a player's one-byte probe and a mid-file seek are
+        // somebody continuing a download that has already been paid for.
+        var counts = DownloadCounting.CountsAsDownload(rangeHeader);
+        var reserved = false;
+
+        if (counts)
+        {
+            // Not the request's token, for one statement that takes a millisecond: a reservation
+            // cancelled between the write landing and this line being reached is a slot taken by
+            // nobody and given back by nobody, on a link whose cap is the thing being protected.
+            // Finishing it costs one UPDATE the finally below will undo.
+            reserved = await links.TryReserveDownloadAsync(ticket.ShareLinkId, CancellationToken.None);
+
+            // No slot left — the link was spent by requests that are still streaming, or by one that
+            // finished between the resolve above and this line. The same card as revoked, expired and
+            // never-existed: not a 429 and not a 409, either of which would tell a scanner it had
+            // found a live link.
+            if (!reserved) return Unavailable(language);
+        }
+
+        var delivered = false;
+
         try
         {
-            download = await drive.OpenDownloadAsync(
-                ticket.GoogleAccountId,
-                ticket.DriveFileId,
-                rangeHeader,
-                cancellationToken);
-        }
-        catch (DriveApiException exception)
-        {
-            // Not the "no longer available" card: the link is fine and storage is not. Saying
-            // otherwise would send the visitor away from a file that will be there in a minute.
-            logger.LogError(exception, "Opening the Drive stream for a public link failed");
-            return StatusCode(StatusCodes.Status502BadGateway);
-        }
-
-        await using (download)
-        {
-            // Only a GET arrives here — HEAD is routed to Probe, which has no recorder in it — so
-            // the Range header is the whole question, which is exactly what DownloadCounting takes.
-            var counts = DownloadCounting.CountsAsDownload(rangeHeader);
-            var delivered = true;
-
-            Response.StatusCode = download.IsPartial
-                ? StatusCodes.Status206PartialContent
-                : StatusCodes.Status200OK;
-            WriteFileHeaders(ticket);
-
-            if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
-            if (download.ContentLength is { } contentLength) Response.ContentLength = contentLength;
-
+            DriveDownload download;
             try
             {
-                await download.Content.CopyToAsync(Response.Body, cancellationToken);
+                download = await drive.OpenDownloadAsync(
+                    ticket.GoogleAccountId,
+                    ticket.DriveFileId,
+                    rangeHeader,
+                    cancellationToken);
             }
-            catch (OperationCanceledException)
+            catch (DriveApiException exception)
             {
-                // The visitor closed the tab or the player stopped. Not an error, and there is
-                // nothing left to tell them — but it is still their download and it still counts.
-                // This server did everything it was asked; a transfer abandoned at 99% must not be
-                // 214 GB of the operator's egress for free, again and again, against a cap it never
-                // touches.
-            }
-            catch (Exception exception)
-            {
-                // The status line left the building long ago; the only honest move is to break the
-                // response so the client sees a truncated transfer and resumes with a Range.
-                logger.LogError(exception, "The Drive stream failed mid-response; aborting the connection");
-                HttpContext.Abort();
-                delivered = false;
+                // Not the "no longer available" card: the link is fine and storage is not. Saying
+                // otherwise would send the visitor away from a file that will be there in a minute.
+                logger.LogError(exception, "Opening the Drive stream for a public link failed");
+                return StatusCode(StatusCodes.Status502BadGateway);
             }
 
-            // Counted here rather than before the copy. A stream Google dropped at byte 512 of 4096
-            // is the operator's failure, and a customer's capped link must not pay for it — the
-            // visitor gets a truncated transfer and resumes, and the download they finish is the one
-            // they are billed for.
-            //
-            // The cap was still checked before Google was contacted: ResolveForDownloadAsync refuses
-            // a link with none left, so moving the counter does not hand out an extra file. What it
-            // does widen is the window between that check and the increment, which is now the length
-            // of the transfer rather than one Drive round-trip; closing that needs an atomic reserve
-            // on IPublicLinkReader, which does not exist yet.
+            await using (download)
+            {
+                Response.StatusCode = download.IsPartial
+                    ? StatusCodes.Status206PartialContent
+                    : StatusCodes.Status200OK;
+                WriteFileHeaders(ticket);
+
+                if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
+                if (download.ContentLength is { } contentLength) Response.ContentLength = contentLength;
+
+                try
+                {
+                    await download.Content.CopyToAsync(Response.Body, cancellationToken);
+                    delivered = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    // The visitor closed the tab or the player stopped. Not an error, and there is
+                    // nothing left to tell them — but it is still their download and it still counts.
+                    // This server did everything it was asked; a transfer abandoned at 99% must not be
+                    // 214 GB of the operator's egress for free, again and again, against a cap it
+                    // never touches.
+                    delivered = true;
+                }
+                catch (Exception exception)
+                {
+                    // The status line left the building long ago; the only honest move is to break the
+                    // response so the client sees a truncated transfer and resumes with a Range. The
+                    // slot goes back in the finally: a stream Google dropped at byte 512 of 4096 is
+                    // the operator's failure, and a customer's capped link must not pay for it.
+                    logger.LogError(exception, "The Drive stream failed mid-response; aborting the connection");
+                    HttpContext.Abort();
+                }
+            }
+
+            return new EmptyResult();
+        }
+        finally
+        {
+            // Every reservation ends here, on every way out of this method — including the paths
+            // nothing above catches, such as a request cancelled while Drive was still being opened.
+            // A slot that is neither written down nor given back is a download the customer paid for
+            // and nobody took.
             //
             // Not the request's token: when the visitor is the one who cancelled it is already
             // cancelled, and the download would go unrecorded for the one reason that is not a
-            // failure at all.
-            if (counts && delivered) await RecordAsync(ticket.ShareLinkId, CancellationToken.None);
+            // failure at all — and a released slot would stay spent for the same reason.
+            if (reserved)
+            {
+                if (delivered) await RecordAsync(ticket.ShareLinkId, CancellationToken.None);
+                else await links.ReleaseDownloadAsync(ticket.ShareLinkId, CancellationToken.None);
+            }
         }
-
-        return new EmptyResult();
     }
 
     /// <summary>
