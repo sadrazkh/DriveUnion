@@ -1,0 +1,232 @@
+@{
+    ViewData["Title"] = "راهنمای طراحی";
+
+    @*
+        The printed value beside each swatch is documentation copied from the handoff; the swatch
+        itself is painted with var(--name), so it is always the truth. If the two ever disagree,
+        tokens.css is right and this list is stale — fix the list.
+    *@
+    (string Name, string Light, string Dark)[] colours =
+    [
+        ("--bg", "oklch(0.975 0.005 160)", "oklch(0.185 0.008 165)"),
+        ("--surface", "#FFFFFF", "oklch(0.225 0.010 165)"),
+        ("--surface2", "oklch(0.985 0.004 160)", "oklch(0.255 0.010 165)"),
+        ("--line", "oklch(0.915 0.006 160)", "oklch(0.315 0.012 165)"),
+        ("--text", "oklch(0.25 0.012 160)", "oklch(0.955 0.005 160)"),
+        ("--muted", "oklch(0.56 0.012 160)", "oklch(0.70 0.010 160)"),
+        ("--accent", "#0F9D77", "oklch(0.78 0.12 168)"),
+        ("--accent-ink", "#0B7A5C", "oklch(0.86 0.10 168)"),
+        ("--soft", "oklch(0.955 0.028 165)", "oklch(0.30 0.045 168)"),
+        ("--warn", "oklch(0.72 0.13 70)", "oklch(0.80 0.12 75)"),
+        ("--warn-soft", "oklch(0.96 0.04 80)", "oklch(0.31 0.05 75)"),
+        ("--danger", "oklch(0.57 0.16 27)", "oklch(0.70 0.14 27)"),
+        ("--danger-soft", "oklch(0.96 0.03 27)", "oklch(0.30 0.06 27)"),
+    ];
+
+    (string Size, string Weight, string Role)[] typeScale =
+    [
+        ("22px", "800", "عنوان صفحه"),
+        ("24px", "800", "عنوان فایل در صفحه‌ی عمومی"),
+        ("15px", "800", "نام برند و عنوان پنل کناری"),
+        ("14.5px", "700", "عنوان پنل جزئیات"),
+        ("14px", "700", "عنوان کارت"),
+        ("13.5px", "700", "عنوان ردیف اصلی"),
+        ("13px", "600", "برچسب ردیف"),
+        ("12.5px", "400", "بدنه‌ی جدول"),
+        ("12px", "400", "متادیتا"),
+        ("11.5px", "600", "هدر جدول و زیرنویس"),
+        ("11px", "400", "ریزنویس مونواسپیس"),
+    ];
+}
+
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+    <h1 class="page-title">راهنمای طراحی</h1>
+    <span class="mono muted" style="font-size: 11.5px;" dir="ltr">wwwroot/css/tokens.css · app.css</span>
+</div>
+<p class="page-sub" style="margin-bottom: 18px; max-width: 70ch;">
+    مرجع زنده‌ی توکن‌ها و اجزای پایه. بدون دیتابیس و بدون ورود کار می‌کند تا هرکسی بتواند یک پیکسل را
+    بسنجد. رنگ هر نمونه از <span class="mono" dir="ltr">var(--token)</span> می‌آید، پس همیشه همان چیزی
+    است که مرورگر واقعاً می‌کشد.
+</p>
+
+<nav class="row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 26px;" aria-label="پرش به بخش‌ها">
+    <a class="chip" href="#tokens">رنگ‌ها</a>
+    <a class="chip" href="#type">تایپوگرافی</a>
+    <a class="chip" href="#space">اسپیسینگ و شعاع</a>
+    <a class="chip" href="#numerals">اعداد فارسی</a>
+    <a class="chip" href="#light">اجزا — روشن</a>
+    <a class="chip" href="#dark">اجزا — تیره</a>
+</nav>
+
+<h2 class="section-title" id="tokens" style="margin-bottom: 12px;">توکن‌های رنگ — هر دو تم</h2>
+<div class="grid-2" style="margin-bottom: 26px;">
+    @foreach (var (theme, label) in new[] { ("light", "روشن"), ("dark", "تیره") })
+    {
+        @* Each panel carries its own data-theme, so both palettes are on screen at once instead of
+           one being a memory of the last time you clicked the toggle. *@
+        <div data-theme="@theme"
+             style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px;">
+            <div class="row" style="justify-content: space-between; margin-bottom: 14px;">
+                <h3 class="card-title">@label</h3>
+                <span class="mono muted" style="font-size: 11px;" dir="ltr">
+                    @(theme == "light" ? ":root" : "[data-theme=\"dark\"]")
+                </span>
+            </div>
+            <div class="stack" style="gap: 10px;">
+                @foreach (var c in colours)
+                {
+                    <div class="row" style="gap: 10px;">
+                        <span aria-hidden="true"
+                              style="width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; border: 1px solid var(--line); background: var(@c.Name);"></span>
+                        <span style="min-width: 0; line-height: 1.45;">
+                            <span class="mono" style="display: block; font-size: 11.5px;" dir="ltr">@c.Name</span>
+                            <span class="mono muted" style="display: block; font-size: 10.5px;" dir="ltr">@(theme == "light" ? c.Light : c.Dark)</span>
+                        </span>
+                    </div>
+                }
+                <div class="row" style="gap: 10px;">
+                    <span aria-hidden="true"
+                          style="width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; background: var(--surface); box-shadow: var(--shadow);"></span>
+                    <span style="min-width: 0; line-height: 1.45;">
+                        <span class="mono" style="display: block; font-size: 11.5px;" dir="ltr">--shadow</span>
+                        <span class="mono muted" style="display: block; font-size: 10.5px;" dir="ltr">
+                            @(theme == "light"
+                                ? "0 1px 2px rgba(16,40,32,.05), 0 8px 24px -12px rgba(16,40,32,.18)"
+                                : "0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6)")
+                        </span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+<p class="muted" style="font-size: 11.5px; margin: -14px 0 26px; max-width: 78ch;">
+    مقادیر <span class="mono" dir="ltr">oklch()</span> عمداً همان‌طور مانده‌اند. سبزهای این پالت فقط
+    در فضای ادراکی روشنایی‌شان را بین دو تم حفظ می‌کنند؛ تبدیل به هگز آن را خراب می‌کند. در این
+    پروژه Tailwind نیست و قرار هم نیست باشد — طرح روی مقادیر خارج از مقیاس بنا شده
+    (<span class="mono" dir="ltr">13.5px</span>، <span class="mono" dir="ltr">--row-pad: 11px 14px</span>،
+    شعاع‌های ۹ تا ۲۰).
+</p>
+
+<h2 class="section-title" id="type" style="margin-bottom: 12px;">تایپوگرافی</h2>
+<div class="card card--flush" style="margin-bottom: 26px;">
+    <div class="dtable" style="--cols: 92px 78px minmax(0, 1fr) minmax(0, 1.2fr)">
+        <div class="dtable-head">
+            <div>اندازه</div><div>وزن</div><div>نقش</div><div>نمونه</div>
+        </div>
+        @foreach (var t in typeScale)
+        {
+            <div class="dtable-row">
+                <div class="cell-num" dir="ltr">@t.Size</div>
+                <div class="cell-num" dir="ltr">@t.Weight</div>
+                <div class="cell-muted">@t.Role</div>
+                <div style="font-size: @t.Size; font-weight: @t.Weight; line-height: 1.4;">درایو یونیون</div>
+            </div>
+        }
+    </div>
+    <div class="dtable-foot">
+        <span>خانواده‌ی اصلی وزیرمتن، self-host؛ مونواسپیس برای اعداد، شناسه‌ها، آدرس‌ها و سرعت‌ها.</span>
+        <span class="mono" dir="ltr">ui-monospace, SFMono-Regular, Menlo</span>
+    </div>
+</div>
+
+<h2 class="section-title" id="space" style="margin-bottom: 12px;">اسپیسینگ و شکل</h2>
+<div class="grid-2" style="margin-bottom: 26px;">
+    <div class="card card--pad">
+        <h3 class="card-title" style="margin-bottom: 12px;">مقیاس اسپیسینگ</h3>
+        <div class="row" style="align-items: flex-end; gap: 6px; flex-wrap: wrap;">
+            @foreach (var v in new[] { 3, 4, 6, 8, 9, 10, 12, 14, 16, 18, 22, 26 })
+            {
+                <span style="text-align: center;">
+                    <span style="display: block; width: @(v)px; height: @(v)px; background: var(--accent); border-radius: 2px;"></span>
+                    <span class="mono muted" style="display: block; font-size: 10px; margin-top: 5px;" dir="ltr">@v</span>
+                </span>
+            }
+        </div>
+        <p class="muted" style="font-size: 11.5px; margin: 14px 0 0;">
+            گپ گرید کارت‌ها ۱۴ · پدینگ کارت ۱۸ · پدینگ محتوا <span class="mono" dir="ltr">24px 26px 40px</span>.
+        </p>
+    </div>
+    <div class="card card--pad">
+        <h3 class="card-title" style="margin-bottom: 12px;">شعاع‌ها</h3>
+        <div class="row" style="gap: 10px; flex-wrap: wrap;">
+            @foreach (var (r, role) in new[] { (8, "دکمه‌ی کوچک"), (9, "ورودی/دکمه"), (10, "دکمه‌ی بزرگ"), (11, "کارت داخلی"), (12, "کارت آمار"), (14, "کارت اصلی"), (18, "کارت عمومی"), (20, "بَج/چیپ") })
+            {
+                <span style="text-align: center;">
+                    <span style="display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border: 1px solid var(--line); background: var(--surface2); border-radius: @(r)px;"
+                          class="mono" dir="ltr">@r</span>
+                    <span class="muted" style="display: block; font-size: 10px; margin-top: 5px;">@role</span>
+                </span>
+            }
+        </div>
+        <p class="muted" style="font-size: 11.5px; margin: 14px 0 0;">
+            <span class="mono" dir="ltr">--row-pad</span>: <span class="mono" dir="ltr">11px 14px</span> راحت /
+            <span class="mono" dir="ltr">7px 14px</span> فشرده · نوار پیشرفت ۶ ردیفی و ۸ کارتی · آواتار ۵۰٪.
+        </p>
+    </div>
+</div>
+
+<h2 class="section-title" id="numerals" style="margin-bottom: 12px;">اعداد فارسی</h2>
+<p class="muted" style="font-size: 12.5px; margin: 0 0 12px; max-width: 78ch;">
+    طرح روی یک صفحه هر دو دستگاه رقم را کنار هم می‌گذارد و این تصادفی نیست: رقمی که داخل متن فارسی
+    نشسته فارسی است، و رقمی که در یک خوانش فنی چپ‌به‌راست است (حجم، سرعت، تأخیر، اسلاگ، شناسه‌ی درایو)
+    لاتین می‌ماند — چون آن‌ها را کپی می‌کنند، grep می‌کنند و برای پشتیبانی گوگل می‌خوانند. پس تبدیل
+    برای هر مقدار جداگانه تصمیم گرفته می‌شود، نه یک‌بار برای کل صفحه.
+</p>
+<div class="card card--flush" style="margin-bottom: 26px;">
+    <div class="dtable" style="--cols: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.4fr)">
+        <div class="dtable-head">
+            <div>فراخوانی</div><div>خروجی</div><div>کجا</div>
+        </div>
+        <div class="dtable-row">
+            <div class="cell-num" dir="ltr">PersianDigits.Count(14286)</div>
+            <div>@PersianDigits.Count(14286)</div>
+            <div class="cell-muted">شمارش‌ها؛ جداکننده‌ی هزارگان ٬</div>
+        </div>
+        <div class="dtable-row">
+            <div class="cell-num" dir="ltr">PersianDigits.Count(241)</div>
+            <div>@PersianDigits.Count(241)</div>
+            <div class="cell-muted">«@PersianDigits.Count(241) بار دانلود شده»</div>
+        </div>
+        <div class="dtable-row">
+            <div class="cell-num" dir="ltr">PersianDigits.Plain(1405)</div>
+            <div>@PersianDigits.Plain(1405)</div>
+            <div class="cell-muted">سال — بدون گروه‌بندی</div>
+        </div>
+        <div class="dtable-row">
+            <div class="cell-num" dir="ltr">PersianDigits.Percent(68)</div>
+            <div>@PersianDigits.Percent(68)</div>
+            <div class="cell-muted">درصد در متن، با علامت ٪</div>
+        </div>
+        <div class="dtable-row">
+            <div class="cell-num" dir="ltr">PersianDigits.Translate("1405/05/31")</div>
+            <div>@PersianDigits.Translate("1405/05/31")</div>
+            <div class="cell-muted">رشته‌ی از پیش ساخته‌شده — تاریخ، مدت</div>
+        </div>
+        <div class="dtable-row">
+            <div class="cell-num" dir="ltr">—</div>
+            <div class="cell-num" dir="ltr">18.4 MB · 341 MB/s · /d/kx91mz</div>
+            <div class="cell-muted">لاتین می‌ماند؛ تبدیل نکنید</div>
+        </div>
+    </div>
+    <div class="dtable-foot">
+        <span class="mono" dir="ltr">Infrastructure/PersianDigits.cs</span>
+        <span>وزیرمتن نسخه‌ی FD هم دارد که هر رقم لاتین را فارسی می‌کند — عمداً استفاده نشده، چون حجم و اسلاگ را هم عوض می‌کرد.</span>
+    </div>
+</div>
+
+<h2 class="section-title" id="light" style="margin-bottom: 4px;">اجزا — تم روشن</h2>
+<p class="muted" style="font-size: 11.5px; margin: 0 0 14px;">
+    همان اجزا دو بار رندر شده‌اند، هر بار داخل یک <span class="mono" dir="ltr">data-theme</span> خودش.
+    هیچ‌چیز اینجا رنگ ثابت ندارد؛ اگر جزئی در تیره خراب شود، همین‌جا دیده می‌شود.
+</p>
+<div data-theme="light"
+     style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 26px;">
+    <partial name="_Gallery" model="@("light")" />
+</div>
+
+<h2 class="section-title" id="dark" style="margin-bottom: 14px;">اجزا — تم تیره</h2>
+<div data-theme="dark"
+     style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px;">
+    <partial name="_Gallery" model="@("dark")" />
+</div>

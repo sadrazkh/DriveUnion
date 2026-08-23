@@ -1,0 +1,32 @@
+@using DriveUnion.Web.Models
+@model PublicUnavailableViewModel
+@{
+    var lang = Model.Language;
+
+    Layout = "_PublicLayout";
+    ViewData["Title"] = PublicText.Pick(lang, "در دسترس نیست", "Unavailable");
+    ViewData["Lang"] = PublicText.LangCode(lang);
+}
+
+@*
+    Revoked, expired, at its download cap, and never existed at all render this one card, with the
+    same 404 and the same headers. Nothing on it varies with the reason and nothing repeats the
+    slug: a visitor who can tell «منقضی» from «چنین لینکی نیست» can walk the slug space and keep
+    only the hits.
+*@
+<div class="public-card">
+    <div class="public-body" style="text-align: center;">
+        <span class="badge badge--muted" style="margin-bottom: 12px;">
+            @PublicText.Pick(lang, "غیرقابل دسترس", "Unavailable")
+        </span>
+        <h1 class="public-title" style="font-size: 20px;">
+            @PublicText.Pick(lang, "این لینک دیگر در دسترس نیست", "This link is no longer available")
+        </h1>
+        <p class="public-desc" style="margin: 0 auto;">
+            @PublicText.Pick(
+                lang,
+                "ممکن است منقضی شده، به سقف دانلود رسیده یا ابطال شده باشد.",
+                "It may have expired, reached its download limit, or been revoked.")
+        </p>
+    </div>
+</div>

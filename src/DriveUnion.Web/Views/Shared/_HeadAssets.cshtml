@@ -1,0 +1,59 @@
+@inject ViteManifest Vite
+@{
+    var (viteJs, viteCss) = Vite.Resolve("Scripts/main.ts");
+}
+@*
+    Shared by _Layout and _PublicLayout. One copy, because the order of these five things is the
+    whole no-flash story and it is not obvious enough to trust to a second transcription.
+
+    Order matters:
+      1. the theme script, before any stylesheet, so data-theme is settled before first paint;
+      2. fonts, so the @font-face is known when the text is laid out;
+      3. tokens, which everything else reads;
+      4. app.css, the shell and primitives;
+      5. Vite's island CSS last, so a component can override a primitive without !important.
+*@
+<script>
+    // Runs before the stylesheets on purpose: CSS does not paint until they load, so setting the
+    // attribute here means the correct theme is in place for the first paint and the panel never
+    // flashes light before going dark.
+    //
+    // 'driveunion-theme' is the same key as THEME_KEY in Scripts/theme.ts. It is repeated rather
+    // than imported because this has to run before any bundle exists — keep the two in step.
+    (function () {
+        var stored = null;
+        try {
+            stored = localStorage.getItem('driveunion-theme');
+        } catch (e) {
+            // Private mode or storage disabled — fall through to the OS preference.
+        }
+        var theme = (stored === 'light' || stored === 'dark')
+            ? stored
+            : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+    })();
+</script>
+@* Same-origin, and still crossorigin: fonts are fetched in CORS mode whatever the origin, and
+   without the attribute the browser downloads the file twice. *@
+<link rel="preload" href="~/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="stylesheet" href="~/css/fonts.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/tokens.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+@if (Vite.UseDevServer)
+{
+    <script type="module" src="@(Vite.DevServerUrl)/@@vite/client"></script>
+    <script type="module" src="@(Vite.DevServerUrl)/Scripts/main.ts"></script>
+}
+else
+{
+    foreach (var css in viteCss)
+    {
+        <link rel="stylesheet" href="@css" />
+    }
+    @* No bundle is a degraded page, not a broken one: the shell above is server-rendered CSS and
+       every island's mount point carries a working fallback. Rendering nothing here is correct. *@
+    if (viteJs is not null)
+    {
+        <script type="module" src="@viteJs"></script>
+    }
+}

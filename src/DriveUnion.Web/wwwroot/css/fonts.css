@@ -1,0 +1,21 @@
+/*
+ * Vazirmatn, self-hosted.
+ *
+ * The handoff's prototype pulls this from cdn.jsdelivr.net; the handoff's own production note
+ * forbids it — the server is in Germany and a foreign CDN would hand every visitor's IP and
+ * Referer to a third party and make first paint depend on a host we do not operate. The bytes
+ * under wwwroot/fonts are copied from the pinned `vazirmatn` npm package by Scripts/build/copy-fonts.mjs.
+ *
+ * font-display: swap so the panel is readable while 111 kB is in flight. Persian text in a Latin
+ * fallback is ugly for a moment; invisible text for a second is worse.
+ */
+
+@font-face {
+  font-family: Vazirmatn;
+  /* One variable file spans the whole 100–900 axis, which is what the design walks:
+     400 body, 500 units, 600 labels, 700 card titles, 800 page and brand titles. */
+  src: url("/fonts/Vazirmatn-Variable.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

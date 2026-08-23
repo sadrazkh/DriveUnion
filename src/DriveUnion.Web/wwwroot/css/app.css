@@ -1,0 +1,1250 @@
+/*
+ * Drive Union app shell and primitives.
+ *
+ * Plain CSS with custom properties, deliberately — see the M1 spec §4. The design specifies
+ * oklch() colours and off-scale values (13.5px, --row-pad: 11px 14px, radii 9/10/11/12/14/18/20);
+ * in Tailwind that is arbitrary values everywhere or a config rewrite. Do not add Tailwind.
+ *
+ * Every box uses logical properties (padding-inline, inset-inline-start, border-inline-end). The
+ * panel is RTL Persian and the public download page renders LTR in English from the same
+ * stylesheet — that only holds if nothing here says "left" or "right".
+ *
+ * Load order: fonts.css, tokens.css, then this file. Vite's island CSS comes after.
+ */
+
+/* ---------------------------------------------------------------- base */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+/* Not in the handoff, and the dark panel looks broken without it: color-scheme is what makes the
+   scrollbar, the caret and native controls follow the theme instead of staying white. */
+:root {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
+}
+
+/* The design draws no focus ring; a keyboard-only operator managing storage credentials needs
+   one. Added on :focus-visible so it never appears for mouse users, which is why the comp
+   does not show it. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.push-end {
+  margin-inline-start: auto;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- shell */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-sidebar {
+  width: 232px;
+  flex: 0 0 232px;
+  border-inline-end: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 18px;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  flex: 0 0 30px;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.brand-name {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.brand-sub {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-align: start;
+  color: var(--muted);
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.nav-item:hover {
+  background: var(--surface2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-item.is-active {
+  background: var(--soft);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+.nav-item--split {
+  justify-content: space-between;
+}
+
+.nav-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 6px;
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--soft);
+  color: var(--accent-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: 0 0 28px;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 26px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.app-content {
+  flex: 1;
+  padding: 24px 26px 40px;
+}
+
+.search {
+  flex: 1;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* Off-canvas trigger. Hidden until the sidebar collapses, so it never sits in the header on a
+   desktop the way a `hidden` class left behind by a refactor would. */
+.nav-toggle {
+  display: none;
+}
+
+.nav-scrim {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- type */
+
+.page-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.page-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+/* Tables, footers and preview strips all run to the card's edge; without this the 14px corner
+   is drawn over by the child's square one. */
+.card--flush {
+  overflow: hidden;
+}
+
+.card--pad {
+  padding: 18px;
+}
+
+.card--stat {
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.card-body {
+  padding: 18px;
+}
+
+.card-foot {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The nested card the design uses inside a panel — the "active link" box in file details. */
+.subcard {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 12px;
+  background: var(--surface2);
+}
+
+.card--dashed {
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none;
+  padding: 22px;
+  color: var(--muted);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Table beside a sticky detail panel. Pages override --aside (340px files, 380px links). */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--aside, 340px);
+  gap: 14px;
+  align-items: start;
+}
+
+.split-aside {
+  position: sticky;
+  top: 88px;
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface2);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+/* The comp specifies a hover only for the primary button. An outline button that does nothing on
+   hover reads as disabled next to one that does, so it borrows the accent border the comp already
+   uses for "this one is chosen" (active chip, selected expiry option). */
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: .55;
+  cursor: not-allowed;
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.btn--primary {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn--primary:hover {
+  background: var(--accent-ink);
+  color: #fff;
+}
+
+.btn--primary:disabled,
+.btn--primary[aria-disabled="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Outline shape, danger text — the comp's "revoke link" and "disconnect account". Never a solid
+   red button: both actions sit next to a save, and a red block draws the eye to the wrong one. */
+.btn--danger {
+  color: var(--danger);
+}
+
+.btn--danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn--sm {
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn--lg {
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* The public page's single call to action. */
+.btn--cta {
+  border-radius: 12px;
+  padding: 15px 34px;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px -10px var(--accent);
+}
+
+.btn--dashed {
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 10px;
+  padding: 9px;
+  font-size: 12px;
+}
+
+.btn--dashed:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+/* ---------------------------------------------------------------- badges and chips */
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  border-radius: 20px;
+  padding: 3px 10px;
+  background: var(--soft);
+  color: var(--accent-ink);
+  line-height: 1.6;
+}
+
+.badge--warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badge--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.badge--muted {
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+/* The sidebar's queue count. Solid accent, monospace, tight padding — a number, not a label. */
+.badge--count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--accent);
+  color: #fff;
+  padding: 1px 7px;
+}
+
+.chip {
+  font-size: 12px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  background: transparent;
+  border-radius: 20px;
+  padding: 5px 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.chip.is-active {
+  border-color: var(--accent);
+  background: var(--soft);
+  color: var(--accent-ink);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: 0 0 8px;
+}
+
+/* ---------------------------------------------------------------- tables */
+
+/*
+ * The comp's tables are CSS grids, not <table> — the column tracks differ per screen and the
+ * detail panel needs cells to line up across a card edge. Each page sets its own tracks:
+ *
+ *   <div class="dtable" style="--cols: 28px minmax(0,2.4fr) 84px 92px 110px 118px 96px">
+ *
+ * Rows are `display: contents` so a row wrapper can carry :hover and .is-selected while its cells
+ * still participate in the one grid.
+ */
+.dtable {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+}
+
+.dtable-head {
+  display: contents;
+}
+
+.dtable-head > * {
+  padding: var(--row-pad);
+  background: var(--surface2);
+  border-bottom: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.dtable-row {
+  display: contents;
+}
+
+.dtable-row > * {
+  padding: var(--row-pad);
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  min-width: 0;
+  transition: background 120ms ease;
+}
+
+.dtable-row:last-child > * {
+  border-bottom: 0;
+}
+
+.dtable-row:hover > * {
+  background: var(--surface2);
+}
+
+/* After :hover on purpose — a selected row keeps --soft while the pointer is over it. */
+.dtable-row.is-selected > *,
+.dtable-row.is-selected:hover > * {
+  background: var(--soft);
+}
+
+.dtable-row.is-selected > .cell-name {
+  font-weight: 600;
+}
+
+.cell-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-num {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+/* A slug is a link the operator will read character by character; accent-ink separates it from
+   the grey technical columns beside it. */
+.cell-slug {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-ink);
+}
+
+.cell-muted {
+  color: var(--muted);
+}
+
+.dtable-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rowbox {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.rowbox.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- progress */
+
+.bar {
+  height: 6px;
+  border-radius: 6px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+/* The account cards use the taller bar; rows and the quota card use the 6px one. */
+.bar--lg {
+  height: 8px;
+  border-radius: 8px;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* The daily-quota rule from the handoff: ≥80% warns, ≥95% is danger. The threshold lives in the
+   view model, not here — this is only the paint. */
+.bar-fill--warn {
+  background: var(--warn);
+}
+
+.bar-fill--danger {
+  background: var(--danger);
+}
+
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.bar-label > .mono {
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- loading */
+
+.skeleton {
+  background: var(--line);
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--surface2), transparent);
+  opacity: .55;
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A shimmer nobody can stop is a defect, not a decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
+}
+
+.skeleton-row {
+  display: contents;
+}
+
+.skeleton-row > * {
+  display: flex;
+  align-items: center;
+  padding: var(--row-pad);
+  border-bottom: 1px solid var(--line);
+}
+
+/*
+ * A zero-width strut one 12.5px line tall — the line box a real row's tallest cell makes. With it
+ * a skeleton row is exactly as tall as the row that replaces it (--row-pad above and below, one
+ * line between), so the table does not jump when the data lands, and it stays right in compact
+ * density because the padding still comes from the token.
+ *
+ * It has to be a child rather than a min-height on the cell: box-sizing is border-box everywhere,
+ * so a min-height smaller than the padding is simply swallowed and the row comes out 11px short.
+ * That is exactly the bug this replaced.
+ */
+.skeleton-row > *::before {
+  content: "";
+  flex: 0 0 0;
+  width: 0;
+  min-height: calc(12.5px * 1.7);
+}
+
+.skeleton-row:last-child > * {
+  border-bottom: 0;
+}
+
+.skeleton-row .skeleton {
+  height: 10px;
+  width: 100%;
+}
+
+/* The name column is the widest thing on the row; a full-width bar there reads as a paragraph. */
+.skeleton-row .skeleton--short {
+  width: 55%;
+}
+
+.skeleton-row .skeleton--box {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+
+/* ---------------------------------------------------------------- empty */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+
+/* An empty table is a grid with one cell; without this the message sits in the first column. */
+.empty--incell {
+  grid-column: 1 / -1;
+}
+
+/* ---------------------------------------------------------------- form controls */
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface2);
+  padding: 8px 11px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+}
+
+.field-prefix {
+  color: var(--muted);
+}
+
+/* Segmented choice — the comp's expiry row. */
+.seg {
+  display: flex;
+  gap: 8px;
+}
+
+.seg-option {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 8px;
+  padding: 7px;
+  color: var(--muted);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.seg-option.is-active {
+  border-color: var(--accent);
+  background: var(--soft);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.switch-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.switch-hint {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.switch {
+  width: 38px;
+  height: 22px;
+  flex: 0 0 38px;
+  border: 0;
+  padding: 0;
+  border-radius: 20px;
+  background: var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  inset-inline-end: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  transition: inset-inline-start 120ms ease, inset-inline-end 120ms ease;
+}
+
+.switch.is-on {
+  background: var(--accent);
+}
+
+/* inset-inline-end has to be released or the knob is pinned at both ends and never moves. */
+.switch.is-on::after {
+  inset-inline-start: 3px;
+  inset-inline-end: auto;
+  background: #fff;
+}
+
+.radio-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  background: transparent;
+  text-align: start;
+  font: inherit;
+}
+
+.radio-card.is-selected {
+  border-color: var(--accent);
+  background: var(--soft);
+}
+
+.radio-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  flex: 0 0 14px;
+  margin-top: 3px;
+  background: var(--surface);
+}
+
+.radio-card.is-selected .radio-mark {
+  border: 4px solid var(--accent);
+}
+
+.slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--line);
+  position: relative;
+}
+
+.slider-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: var(--accent);
+}
+
+.slider-thumb {
+  position: absolute;
+  top: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--accent);
+}
+
+/* ---------------------------------------------------------------- placeholders */
+
+/* The comp's preview stand-in. Replaced by the Drive thumbnailLink or a server-rendered first
+   page — the stripes are what shows while there is nothing to show. */
+.ph {
+  background-image: repeating-linear-gradient(135deg, var(--line) 0 1px, transparent 1px 9px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ph-label {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+/* ---------------------------------------------------------------- public download page */
+
+.public-page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.public-wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 26px 22px 60px;
+}
+
+.public-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 28px;
+}
+
+.public-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.public-preview {
+  height: 230px;
+  border-bottom: 1px solid var(--line);
+}
+
+.public-body {
+  padding: 26px 26px 24px;
+}
+
+.public-title {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.public-desc {
+  margin: 0 0 20px;
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.9;
+  max-width: 56ch;
+  text-wrap: pretty;
+}
+
+/* gap:1px over a --line background is the comp's divider trick: one rule draws every rule
+   between cells, and it survives the cells reflowing to two columns on a phone. */
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+
+.meta-cell {
+  background: var(--surface);
+  padding: 13px 15px;
+}
+
+.meta-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.meta-value {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.public-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.public-assurance {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.public-foot {
+  border-top: 1px solid var(--line);
+  background: var(--surface2);
+  padding: 13px 26px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.public-note {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 26px;
+  line-height: 1.9;
+}
+
+/* ---------------------------------------------------------------- responsive */
+
+/* The handoff: under 1200px the side panels become drawers. A page opts in by putting
+   data-drawer="open|closed" on .split-aside and rendering a control that flips it. Without the
+   attribute the panel simply falls under the table — a page that has not been wired yet stays
+   readable instead of losing its detail panel entirely. */
+@media (max-width: 1200px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .split-aside {
+    position: static;
+  }
+
+  .split-aside[data-drawer] {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: min(380px, 92vw);
+    z-index: 30;
+    overflow-y: auto;
+    border-radius: 0;
+    transition: transform 160ms ease;
+  }
+
+  /* translate, not display:none — the panel keeps its scroll position and the transition has
+     something to animate. */
+  .split-aside[data-drawer="closed"] {
+    transform: translateX(var(--drawer-hide, 100%));
+    visibility: hidden;
+  }
+
+  [dir="rtl"] .split-aside[data-drawer="closed"] {
+    --drawer-hide: -100%;
+  }
+}
+
+/* Under 900px the sidebar becomes a collapsible menu. Default (no data-nav on the shell) is the
+   sidebar as a plain block at the top of the page: if main.ts never runs, the panel is still
+   navigable rather than a content column with no way out. main.ts sets data-nav="closed" on
+   first paint and the header button toggles it. */
+@media (max-width: 900px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: auto;
+    flex: none;
+    position: static;
+    height: auto;
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .nav-toggle {
+    display: inline-flex;
+  }
+
+  .app-shell[data-nav] .app-sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: min(260px, 84vw);
+    height: 100vh;
+    z-index: 30;
+    border-bottom: 0;
+    border-inline-end: 1px solid var(--line);
+    transition: transform 160ms ease;
+  }
+
+  .app-shell[data-nav="closed"] .app-sidebar {
+    transform: translateX(var(--nav-hide, -100%));
+    visibility: hidden;
+  }
+
+  [dir="rtl"] .app-shell[data-nav="closed"] .app-sidebar {
+    --nav-hide: 100%;
+  }
+
+  .app-shell[data-nav="open"] .nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(0, 0, 0, .38);
+  }
+
+  .app-header,
+  .app-content {
+    padding-inline: 16px;
+  }
+
+  .grid-2,
+  .grid-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .meta-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .public-body {
+    padding: 20px 18px 18px;
+  }
+
+  .public-foot {
+    padding: 13px 18px;
+  }
+}

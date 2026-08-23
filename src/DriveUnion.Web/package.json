@@ -1,0 +1,26 @@
+{
+  "name": "driveunion-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Embedded Vue islands for the Drive Union Razor UI. Built by Vite into wwwroot/build; no Node process runs in production.",
+  "scripts": {
+    "dev": "vite",
+    "fonts": "node Scripts/build/copy-fonts.mjs",
+    "prebuild": "npm run fonts",
+    "build": "vite build",
+    "watch": "vite build --watch",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "^5.7.3",
+    "vazirmatn": "^33.0.3",
+    "vite": "^6.0.7",
+    "vue-tsc": "^2.2.0"
+  }
+}

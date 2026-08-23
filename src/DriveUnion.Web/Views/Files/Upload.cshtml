@@ -1,0 +1,29 @@
+@using DriveUnion.Web.Models
+@model AntiforgeryTokenViewModel
+@{
+    ViewData["Title"] = "آپلود فایل";
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">آپلود فایل</h1>
+        <p class="page-sub">فایل از مرورگر به سرور ما می‌رود و از آنجا تکه‌تکه به فضای ذخیره‌سازی منتقل می‌شود.</p>
+    </div>
+
+    <div class="card card--pad">
+        @*
+            The mount point's data-* are its props: the upload island posts to /api/uploads, then
+            PUTs each chunk with a Content-Range. Both need the antiforgery header, because the
+            panel authenticates with a cookie.
+        *@
+        <div data-island="upload-panel"
+             data-begin-url="@Url.Action("Begin", "Uploads")"
+             data-antiforgery-header="@Model.HeaderName"
+             data-antiforgery-token="@Model.Token">
+            <div class="empty">
+                <span>آپلود تکه‌ای بدون جاوااسکریپت ممکن نیست — یک فایل ۹۶ گیگابایتی باید در تکه‌های قابل ازسرگیری فرستاده شود.</span>
+                <a class="btn" href="@Url.Action("Index", "Files")">بازگشت به فایل‌ها</a>
+            </div>
+        </div>
+    </div>
+</div>

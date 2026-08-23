@@ -1,0 +1,145 @@
+@{
+    var shell = ShellContext.From(ViewData);
+    var title = ViewData["Title"] as string;
+    var controller = ViewContext.RouteData.Values["controller"] as string ?? "Home";
+    string NavClass(string name) =>
+        string.Equals(controller, name, StringComparison.OrdinalIgnoreCase)
+            ? "nav-item is-active"
+            : "nav-item";
+}
+@*
+    The panel shell: fixed sidebar (232px, inline-end in RTL), sticky header, content at
+    24px 26px 40px. Persian RTL throughout — the public download page has its own layout because
+    it is chrome-less and bilingual, not because it needs different tokens.
+
+    Nothing here says left or right. The same primitives set the LTR public page; a single
+    `padding-left` would mean a second stylesheet for English.
+
+    Navigation uses literal hrefs rather than asp-controller/asp-action deliberately. Link
+    generation is endpoint-based: the anchor tag helper throws when no controller is registered for
+    the pair, so the shell would take the whole panel down for as long as any one of these
+    controllers is unwritten. The conventional route is {controller}/{action}/{id?} and these paths
+    match it.
+*@
+<!DOCTYPE html>
+<html dir="rtl" lang="fa" data-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>@(string.IsNullOrEmpty(title) ? "درایو یونیون" : $"{title} · درایو یونیون")</title>
+    <partial name="_HeadAssets" />
+</head>
+<body>
+<div class="app-shell" data-shell>
+    <div class="nav-scrim" data-nav-scrim></div>
+
+    <nav class="app-sidebar" aria-label="ناوبری اصلی">
+        <div class="brand">
+            <span class="brand-mark" aria-hidden="true">د</span>
+            <span class="brand-text">
+                <span class="brand-name">درایو یونیون</span>
+                @if (shell.AccountSummary is { Length: > 0 } summary)
+                {
+                    <span class="brand-sub" dir="ltr">@summary</span>
+                }
+                else
+                {
+                    <span class="skeleton" style="height: 9px; width: 88px; margin-top: 4px;"></span>
+                }
+            </span>
+        </div>
+
+        <a class="@NavClass("Home")" href="/">
+            <span class="nav-dot" aria-hidden="true"></span>داشبورد
+        </a>
+        <a class="@NavClass("Files")" href="/Files">
+            <span class="nav-dot" aria-hidden="true"></span>فایل‌ها
+        </a>
+        @*
+            Queue and Settings are M3 and M6 (spec §12) and have no controller. Rendered so the
+            shell is the comp's, marked so a click is not a 404 — a dead primary nav item teaches
+            an operator to distrust the whole menu.
+        *@
+        <span class="nav-item nav-item--split" aria-disabled="true" title="در نسخه‌ی بعدی">
+            <span class="row"><span class="nav-dot" aria-hidden="true"></span>صف انتقال</span>
+        </span>
+        <a class="@NavClass("Links")" href="/Links">
+            <span class="nav-dot" aria-hidden="true"></span>لینک‌های اشتراک
+        </a>
+        <a class="@NavClass("Accounts")" href="/Accounts">
+            <span class="nav-dot" aria-hidden="true"></span>اکانت‌های گوگل
+        </a>
+        <span class="nav-item" aria-disabled="true" title="در نسخه‌ی بعدی">
+            <span class="nav-dot" aria-hidden="true"></span>تنظیمات
+        </span>
+
+        <div class="sidebar-foot">
+            <div class="subcard">
+                <div class="bar-label" style="font-size: 11.5px; margin-bottom: 7px;">
+                    <span>سهمیه آپلود امروز</span>
+                    @if (shell.HasQuota)
+                    {
+                        <span class="mono" dir="ltr">@shell.DailyQuotaUsedGb / @shell.DailyQuotaLimitGb GB</span>
+                    }
+                </div>
+                @if (shell.HasQuota)
+                {
+                    <div class="bar">
+                        <span class="@shell.QuotaFillClass"
+                              style="width: @shell.QuotaPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                    </div>
+                }
+                else
+                {
+                    @* No quota reading yet — a skeleton, never a plausible number. *@
+                    <div class="skeleton" style="height: 6px;"></div>
+                }
+            </div>
+
+            @* The comp's dashed button previews the public page, which needs a slug this shell does
+               not have; that control belongs on a row that owns one. The living style guide is what
+               is genuinely one click away from every screen. *@
+            <a class="btn btn--dashed" href="/Design">راهنمای طراحی ↗</a>
+
+            <div class="row" style="padding: 6px 4px;">
+                <span class="avatar" aria-hidden="true">@(shell.UserName is { Length: > 0 } n ? n[..1] : "؟")</span>
+                <span style="line-height: 1.3;">
+                    <span style="display: block; font-size: 12.5px; font-weight: 600;">@(shell.UserName ?? "—")</span>
+                    <span style="display: block; font-size: 10.5px;" class="muted">@(shell.UserRole ?? "—")</span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="app-main">
+        <header class="app-header">
+            <button type="button" class="btn btn--sm nav-toggle" data-nav-toggle aria-expanded="false">
+                <span aria-hidden="true">☰</span>
+                <span class="visually-hidden">منو</span>
+            </button>
+
+            <form class="search" method="get" action="/Files" role="search">
+                <span class="muted" aria-hidden="true">⌕</span>
+                <label class="visually-hidden" for="shell-search">جست‌وجو در همه‌ی اکانت‌ها</label>
+                <input id="shell-search" name="q" placeholder="جست‌وجو در همه‌ی اکانت‌ها…" />
+                <span class="kbd" aria-hidden="true">⌘K</span>
+            </form>
+
+            <div class="row push-end" style="gap: 8px;">
+                @* The island. Server-rendered fallback inside the mount point: Vue replaces it, and
+                   if the bundle never loads the page is short one control rather than broken. *@
+                <span data-island="theme-language" data-lang="fa">
+                    <noscript>تم تیره نیاز به جاوااسکریپت دارد</noscript>
+                </span>
+                <a class="btn btn--primary btn--lg" href="/Files/Upload">آپلود فایل</a>
+            </div>
+        </header>
+
+        <main class="app-content">
+            @RenderBody()
+        </main>
+    </div>
+</div>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

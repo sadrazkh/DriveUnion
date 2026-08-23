@@ -1,5 +1,9 @@
+using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.Persistence;
+using DriveUnion.Infrastructure.Services;
+using DriveUnion.Web.Hosting;
+using DriveUnion.Web.Infrastructure;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +17,8 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 
 builder.Services.AddDbContext<DriveUnionDbContext>(options => options.UseNpgsql(connectionString));
 
-// Keys in the database, not on disk — see DriveUnionDbContext.DataProtectionKeys for why.
+// Keys in the database, not on disk — see DriveUnionDbContext.DataProtectionKeys for why. This has
+// to come before AddGoogleDrive: the token protector encrypts refresh tokens with this key ring.
 builder.Services.AddDataProtection()
     .PersistKeysToDbContext<DriveUnionDbContext>()
     .SetApplicationName("DriveUnion");
@@ -26,6 +31,20 @@ builder.Services
     })
     .AddEntityFrameworkStores<DriveUnionDbContext>()
     .AddDefaultTokenProviders();
+
+// The Drive client, the OAuth token service and the account directory. It has no ValidateOnStart on
+// purpose: the panel boots without Google credentials, and only connecting an account fails.
+builder.Services.AddGoogleDrive(builder.Configuration);
+
+// The application layer — file catalogue, uploads, share links, and the public reader.
+builder.Services.AddDriveUnionServices();
+
+// Authorization policies and the rate limiter for /d/*.
+builder.Services.AddDriveUnionWeb();
+
+// Resolves hashed Vite bundles for Razor. A singleton because the manifest is read from disk once
+// and every view @injects it — without this registration every page throws before it renders a byte.
+builder.Services.AddSingleton<ViteManifest>();
 
 builder.Services.AddControllersWithViews();
 
@@ -40,6 +59,11 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+
+// After UseRouting, so the limiter can see which endpoint — and therefore which policy — a request
+// resolved to. Before authentication, because /d/* is anonymous and must be throttled regardless.
+app.UseRateLimiter();
+
 app.UseAuthentication();
 app.UseAuthorization();
 

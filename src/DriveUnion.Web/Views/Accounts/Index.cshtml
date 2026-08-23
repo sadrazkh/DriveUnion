@@ -1,0 +1,87 @@
+@using DriveUnion.Web.Models
+@model AccountsPageViewModel
+@{
+    ViewData["Title"] = "اکانت‌های گوگل";
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="row">
+        <div class="stack" style="gap: 4px;">
+            <h1 class="page-title">اکانت‌های گوگل</h1>
+            <p class="page-sub">توکن‌ها رمزنگاری‌شده روی سرور ذخیره می‌شوند.</p>
+        </div>
+
+        <form class="push-end" method="post" action="@Url.Action("Connect", "Accounts")">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn--primary btn--lg" @(Model.ConsentConfigured ? null : "disabled")>
+                + افزودن اکانت با OAuth
+            </button>
+        </form>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.Notice))
+    {
+        <p class="page-sub" role="status">@Model.Notice</p>
+    }
+
+    @if (!string.IsNullOrEmpty(Model.Error))
+    {
+        <p class="page-sub" role="alert" style="color: var(--danger);">@Model.Error</p>
+    }
+
+    @if (!Model.ConsentConfigured)
+    {
+        <p class="page-sub" style="color: var(--danger);">
+            تا وقتی <span class="mono" dir="ltr">Google:ClientId</span>،
+            <span class="mono" dir="ltr">Google:ClientSecret</span> و
+            <span class="mono" dir="ltr">Google:RedirectUri</span> تنظیم نشده باشند، اتصال اکانت ممکن نیست.
+        </p>
+    }
+
+    @if (Model.Accounts.Count == 0)
+    {
+        <div class="card card--flush">
+            <div class="empty">
+                <span>هیچ اکانتی متصل نیست. تا وقتی یک اکانت متصل نشود، آپلود کار نمی‌کند.</span>
+            </div>
+        </div>
+    }
+
+    @foreach (var account in Model.Accounts)
+    {
+        <div class="card card--pad" style="max-width: 900px;">
+            <div class="row" style="gap: 16px; align-items: flex-start;">
+                <span class="brand-mark" aria-hidden="true">@account.Label</span>
+
+                <span class="stack" style="gap: 4px; flex: 1; min-width: 0;">
+                    <span class="mono" dir="ltr" style="font-size: 14px; font-weight: 700;">@account.Email</span>
+                    <span class="mono muted" dir="ltr" style="font-size: 11px;">scope: drive</span>
+                </span>
+
+                <span class="badge @(account.Status == GoogleAccountStatus.Healthy ? null : "badge--warn")">
+                    @account.StatusText
+                </span>
+            </div>
+
+            <div style="margin-top: 14px; max-width: 320px;">
+                <div class="bar-label">
+                    <span>فضای مصرفی</span>
+                    <span class="mono" dir="ltr">@account.UsedText / @account.TotalText</span>
+                </div>
+                @* The width is this account's own reading, not styling — it cannot live in a stylesheet. *@
+                <div class="bar bar--lg"><span class="bar-fill" style="width: @(account.UsedPercent)%"></span></div>
+            </div>
+
+            <div class="row" style="gap: 8px; margin-top: 16px;">
+                <form method="post" action="@Url.Action("RefreshQuota", "Accounts", new { id = account.Id })">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn--sm">تازه‌سازی فضا</button>
+                </form>
+                <form method="post" action="@Url.Action("Disconnect", "Accounts", new { id = account.Id })">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn--danger btn--sm">قطع اتصال</button>
+                </form>
+            </div>
+        </div>
+    }
+</div>

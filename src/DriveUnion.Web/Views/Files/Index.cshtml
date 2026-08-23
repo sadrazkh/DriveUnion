@@ -1,0 +1,151 @@
+@using DriveUnion.Web.Models
+@model FilesPageViewModel
+@{
+    ViewData["Title"] = "فایل‌ها";
+
+    // The comp's tracks minus «اکانت» and «دانلود»: a customer must never learn which Google
+    // account holds their file, and FileListItem carries a link count rather than a download
+    // total. Checkbox · name · size · modified · links.
+    const string Cols = "--cols: 28px minmax(0,2.4fr) 92px 110px 118px";
+}
+
+@*
+    Server-rendered whole. The antiforgery pair below is how an island's fetch satisfies the write
+    APIs — the panel is cookie-authenticated, so every state-changing call carries this header.
+*@
+<div class="stack"
+     style="gap: 16px;"
+     data-panel="files"
+     data-antiforgery-header="@Model.Antiforgery.HeaderName"
+     data-antiforgery-token="@Model.Antiforgery.Token">
+
+    <div class="row" style="align-items: baseline; gap: 12px;">
+        <h1 class="page-title">فایل‌ها</h1>
+        <span class="page-sub">@PersianDigits.Count(Model.Rows.Count) فایل</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.Notice))
+    {
+        <p class="page-sub" role="status">@Model.Notice</p>
+    }
+
+    <div class="split">
+        <div class="card card--flush">
+            <div class="dtable" style="@Cols">
+                <div class="dtable-head">
+                    <div></div><div>نام</div><div>حجم</div><div>تغییر</div><div>لینک</div>
+                </div>
+
+                @if (Model.Rows.Count == 0)
+                {
+                    <div class="empty empty--incell">
+                        <span>هنوز فایلی آپلود نشده است.</span>
+                        <a class="btn btn--primary" href="@Url.Action("Upload", "Files")">آپلود اولین فایل</a>
+                    </div>
+                }
+                else
+                {
+                    @* An anchor row: display:contents keeps the cells in the one grid while the
+                       wrapper carries :hover and .is-selected, and selection stays a URL — the
+                       detail panel survives a refresh and can be linked to. *@
+                    foreach (var row in Model.Rows)
+                    {
+                        <a class="dtable-row @(row.IsSelected ? "is-selected" : null)"
+                           href="@Url.Action("Index", "Files", new { selected = row.Id })">
+                            <div><span class="rowbox @(row.IsSelected ? "is-checked" : null)"></span></div>
+                            <div class="cell-name" title="@row.Name">@row.Name</div>
+                            <div class="cell-num" dir="ltr">@row.SizeText</div>
+                            <div class="cell-muted">@row.ModifiedText</div>
+                            <div class="@(row.ActiveLinkCount == 0 ? "cell-muted" : "cell-slug")">@row.LinkText</div>
+                        </a>
+                    }
+                }
+            </div>
+
+            @if (Model.Selected is not null)
+            {
+                <div class="dtable-foot">
+                    <span>@Model.Selected.Name</span>
+                    <span class="row" style="gap: 8px;">
+                        <form method="post" action="@Url.Action("Delete", "Files", new { id = Model.Selected.Id })">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn btn--danger btn--sm">حذف</button>
+                        </form>
+                    </span>
+                </div>
+            }
+        </div>
+
+        <aside class="split-aside">
+            <div class="card card--flush">
+                @if (Model.Selected is null)
+                {
+                    <div class="empty">
+                        <span>برای دیدن جزئیات، یک فایل را انتخاب کنید.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="ph" style="height: 150px; border-bottom: 1px solid var(--line);">
+                        <span class="ph-label">@Model.Selected.KindText</span>
+                    </div>
+
+                    <div class="card-body">
+                        @* The comp's «اکانت», «مسیر» and «شناسه درایو» rows are deliberately absent:
+                           nothing a customer sees may name the Google account holding their file. *@
+                        <h2 class="card-title" style="font-size: 14.5px;">@Model.Selected.Name</h2>
+                        <p class="mono muted" dir="ltr" style="font-size: 11.5px; margin: 3px 0 14px;">
+                            @Model.Selected.SizeText · @Model.Selected.KindText
+                        </p>
+
+                        <div class="row" style="font-size: 12.5px; margin-bottom: 16px;">
+                            <span class="muted">ساخته شده</span>
+                            <span class="push-end">@Model.Selected.CreatedText</span>
+                        </div>
+
+                        @if (Model.Selected.ActiveLink is { } link)
+                        {
+                            <div class="subcard" style="margin-bottom: 14px;">
+                                <div class="row" style="margin-bottom: 9px;">
+                                    <span style="font-size: 12.5px; font-weight: 700;">لینک فعال</span>
+                                    <span class="badge push-end">عمومی</span>
+                                </div>
+                                <div class="field" dir="ltr">
+                                    <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@link.DisplayUrl</span>
+                                    <button type="button"
+                                            class="btn btn--sm"
+                                            data-island="copy-link"
+                                            data-value="@link.PublicUrl">کپی</button>
+                                </div>
+                                <div class="row mono muted" style="gap: 14px; font-size: 11px; margin-top: 9px;">
+                                    <span>@link.DownloadsText</span>
+                                    <span>@link.ExpiryText</span>
+                                </div>
+                            </div>
+
+                            <div class="row" style="gap: 8px;">
+                                <form method="post"
+                                      style="flex: 1;"
+                                      action="@Url.Action("RevokeLink", "Files", new { fileId = Model.Selected.Id, linkId = link.Id })">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn--block">ابطال لینک</button>
+                                </form>
+                                <a class="btn btn--primary" style="flex: 1;" href="@link.PublicUrl" target="_blank" rel="noopener">
+                                    دیدن صفحه عمومی
+                                </a>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="muted" style="font-size: 12.5px; margin: 0 0 12px;">این فایل هنوز لینک عمومی ندارد.</p>
+                            <form method="post" action="@Url.Action("CreateLink", "Files", new { id = Model.Selected.Id })">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn--primary btn--block">ساخت لینک</button>
+                            </form>
+                        }
+                    </div>
+                }
+            </div>
+        </aside>
+    </div>
+</div>

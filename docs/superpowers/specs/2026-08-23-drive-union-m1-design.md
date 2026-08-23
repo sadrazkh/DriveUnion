@@ -71,7 +71,7 @@ Each slice gets its own spec and plan.
 
 | Project | Responsibility | Depends on |
 |---|---|---|
-| `DriveUnion.Core` | Entities, business rules, and the **interfaces** (`IDriveClient`, `ITokenProtector`, `ISlugGenerator`, `IClock`) | nothing |
+| `DriveUnion.Core` | Entities, business rules, and the **interfaces** (`IDriveClient`, `ITokenProtector`, `ISlugGenerator`, `IUploadTargetSelector`) | nothing |
 | `DriveUnion.Infrastructure` | EF Core + Postgres, the real `IDriveClient` over Google Drive API v3, token encryption | Core |
 | `DriveUnion.Web` | Razor views, controllers, Vue islands built by Vite | Core, Infrastructure |
 | `tests/DriveUnion.Tests` | xUnit — unit over Core, integration over Web with a fake `IDriveClient` | all |

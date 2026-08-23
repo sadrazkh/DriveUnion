@@ -1,0 +1,61 @@
+@using DriveUnion.Web.Models
+@model PublicDownloadViewModel
+@{
+    var lang = Model.Language;
+
+    Layout = "_PublicLayout";
+    ViewData["Title"] = Model.FileName;
+
+    // The layout builds the document's lang/dir and the FA/EN link from this. The controller
+    // decided it from ?lang= and Accept-Language before any HTML existed, so the page is readable
+    // with JavaScript off and cacheable per language.
+    ViewData["Lang"] = PublicText.LangCode(lang);
+}
+
+<div class="public-card">
+    <div class="ph public-preview">
+        <span class="ph-label" dir="ltr">@Model.KindText</span>
+    </div>
+
+    <div class="public-body">
+        <span class="badge" style="margin-bottom: 12px;">@PublicText.Pick(lang, "فایل به اشتراک گذاشته‌شده", "Shared file")</span>
+
+        <h1 class="public-title">@Model.FileName</h1>
+
+        <div class="meta-grid">
+            <div class="meta-cell">
+                <div class="meta-label">@PublicText.Pick(lang, "حجم", "Size")</div>
+                <div class="meta-value mono" dir="ltr">@Model.SizeText</div>
+            </div>
+            <div class="meta-cell">
+                <div class="meta-label">@PublicText.Pick(lang, "نوع", "Type")</div>
+                <div class="meta-value mono" dir="ltr">@Model.KindText</div>
+            </div>
+            <div class="meta-cell">
+                <div class="meta-label">@PublicText.Pick(lang, "تاریخ", "Date")</div>
+                <div class="meta-value">@Model.DateText</div>
+            </div>
+            <div class="meta-cell">
+                <div class="meta-label">@PublicText.Pick(lang, "اعتبار لینک", "Expires in")</div>
+                <div class="meta-value">@Model.ExpiryText</div>
+            </div>
+        </div>
+
+        <div class="public-cta">
+            <a class="btn btn--primary btn--cta" href="@Model.DownloadUrl">
+                @PublicText.Pick(lang, "دانلود فایل", "Download file")
+            </a>
+            <span class="public-assurance">
+                @PublicText.Pick(
+                    lang,
+                    "دانلود مستقیم و استریم‌شده از سرور ما · بدون تبلیغ، بدون انتظار",
+                    "Streamed directly from our server · no ads, no waiting")
+            </span>
+        </div>
+    </div>
+
+    <div class="public-foot">
+        <span class="mono" dir="ltr">@Model.DisplayUrl</span>
+        <span>@Model.DownloadCountText</span>
+    </div>
+</div>

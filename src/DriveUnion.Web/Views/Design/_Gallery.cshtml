@@ -1,0 +1,335 @@
+@model string
+@{
+    @* The model is the theme this copy is rendered in ("light" / "dark"). It only exists to keep
+       element ids unique — the gallery is on the page twice and duplicate ids break every label. *@
+    var s = Model;
+    const string Cols = "--cols: 28px minmax(0,2.4fr) 84px 92px 110px 118px 96px";
+}
+
+<h3 class="section-title" style="margin-bottom: 12px;">دکمه‌ها</h3>
+<div class="card card--pad" style="margin-bottom: 22px;">
+    <div class="row" style="flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+        <button type="button" class="btn btn--primary">دکمه‌ی اصلی</button>
+        <button type="button" class="btn">دکمه‌ی خطی</button>
+        <button type="button" class="btn btn--danger">ابطال لینک</button>
+        <button type="button" class="btn btn--sm">کوچک</button>
+        <button type="button" class="btn btn--primary btn--lg">آپلود فایل</button>
+        <button type="button" class="btn btn--dashed">پیش‌نمایش صفحه عمومی ↗</button>
+        <button type="button" class="btn btn--primary" disabled>غیرفعال</button>
+        <button type="button" class="btn" disabled>غیرفعال خطی</button>
+    </div>
+    <button type="button" class="btn btn--primary btn--cta">دانلود فایل</button>
+    <p class="muted" style="font-size: 11.5px; margin: 12px 0 0;">
+        شعاع‌ها: ۸ کوچک · ۹ استاندارد · ۱۰ بزرگ · ۱۲ فراخوان عمومی. فراخوان عمومی سایه‌ی
+        <span class="mono" dir="ltr">0 8px 20px -10px var(--accent)</span> دارد.
+    </p>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">بَج‌ها و چیپ‌ها</h3>
+<div class="card card--pad" style="margin-bottom: 22px;">
+    <div class="row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 14px;">
+        <span class="badge">سالم</span>
+        <span class="badge badge--warn">نزدیک سقف</span>
+        <span class="badge badge--danger">ناموفق</span>
+        <span class="badge badge--muted">منقضی</span>
+        <span class="badge badge--count">۳</span>
+    </div>
+    <div class="row" style="flex-wrap: wrap; gap: 8px;">
+        <button type="button" class="chip is-active">همه اکانت‌ها</button>
+        <button type="button" class="chip">A1 archive.main</button>
+        <button type="button" class="chip">A2 archive.cold</button>
+        <button type="button" class="chip">فقط لینک‌دار</button>
+        <button type="button" class="chip">بزرگ‌تر از ۱۰GB</button>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">جدول — چگالی راحت</h3>
+<div class="card card--flush" style="margin-bottom: 22px;">
+    <div class="dtable" style="@Cols">
+        <div class="dtable-head">
+            <div></div><div>نام</div><div>اکانت</div><div>حجم</div><div>تغییر</div><div>لینک</div><div>دانلود</div>
+        </div>
+        <div class="dtable-row is-selected">
+            <div><span class="rowbox is-checked"></span></div>
+            <div class="cell-name">Q3-Report-Final.pdf</div>
+            <div class="cell-num" dir="ltr">A1</div>
+            <div class="cell-num" dir="ltr">18.4 MB</div>
+            <div class="cell-muted">امروز ۱۰:۲۲</div>
+            <div class="cell-slug" dir="ltr">/d/kx91mz</div>
+            <div class="cell-num">@PersianDigits.Count(241)</div>
+        </div>
+        <div class="dtable-row">
+            <div><span class="rowbox"></span></div>
+            <div class="cell-name">Season-04-Master.mkv</div>
+            <div class="cell-num" dir="ltr">A1</div>
+            <div class="cell-num" dir="ltr">214 GB</div>
+            <div class="cell-muted">دیروز</div>
+            <div class="cell-muted" style="font-size: 11.5px;">—</div>
+            <div class="cell-num">@PersianDigits.Count(0)</div>
+        </div>
+        <div class="dtable-row">
+            <div><span class="rowbox"></span></div>
+            <div class="cell-name">دفترچه-راهنما-نسخه۳.pdf</div>
+            <div class="cell-num" dir="ltr">A2</div>
+            <div class="cell-num" dir="ltr">6.2 MB</div>
+            <div class="cell-muted">۵ روز پیش</div>
+            <div class="cell-slug" dir="ltr">/d/rt40ab</div>
+            <div class="cell-num">@PersianDigits.Count(76)</div>
+        </div>
+    </div>
+    <div class="dtable-foot">
+        <span>۱ فایل انتخاب شده</span>
+        <span class="row" style="gap: 8px;">
+            <button type="button" class="btn btn--sm">انتقال به A2</button>
+            <button type="button" class="btn btn--primary btn--sm">ساخت لینک</button>
+        </span>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">جدول — چگالی فشرده</h3>
+<p class="muted" style="font-size: 11.5px; margin: 0 0 10px;">
+    فقط <span class="mono" dir="ltr">data-density="compact"</span> روی یک نیای مشترک؛ ردیف‌ها پدینگ
+    را از <span class="mono" dir="ltr">--row-pad</span> می‌خوانند و از هیچ‌جای دیگر.
+</p>
+<div class="card card--flush" data-density="compact" style="margin-bottom: 22px;">
+    <div class="dtable" style="@Cols">
+        <div class="dtable-head">
+            <div></div><div>نام</div><div>اکانت</div><div>حجم</div><div>تغییر</div><div>لینک</div><div>دانلود</div>
+        </div>
+        <div class="dtable-row">
+            <div><span class="rowbox"></span></div>
+            <div class="cell-name">promo-reel-4k.mp4</div>
+            <div class="cell-num" dir="ltr">A2</div>
+            <div class="cell-num" dir="ltr">4.7 GB</div>
+            <div class="cell-muted">۳ روز پیش</div>
+            <div class="cell-slug" dir="ltr">/d/8vaq2c</div>
+            <div class="cell-num">@PersianDigits.Count(189)</div>
+        </div>
+        <div class="dtable-row">
+            <div><span class="rowbox"></span></div>
+            <div class="cell-name">dataset-full.img</div>
+            <div class="cell-num" dir="ltr">A1</div>
+            <div class="cell-num" dir="ltr">812 GB</div>
+            <div class="cell-muted">۱ هفته پیش</div>
+            <div class="cell-muted" style="font-size: 11.5px;">—</div>
+            <div class="cell-num">@PersianDigits.Count(0)</div>
+        </div>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">حالت بارگذاری</h3>
+<p class="muted" style="font-size: 11.5px; margin: 0 0 10px;">
+    ردیف اسکلتون دقیقاً به ارتفاع ردیف واقعی است — همان <span class="mono" dir="ltr">--row-pad</span>
+    به‌علاوه‌ی ارتفاع یک خط متن. جدول موقع رسیدن داده تکان نمی‌خورد.
+</p>
+<div class="card card--flush" style="margin-bottom: 22px;">
+    <div class="dtable" style="@Cols">
+        <div class="dtable-head">
+            <div></div><div>نام</div><div>اکانت</div><div>حجم</div><div>تغییر</div><div>لینک</div><div>دانلود</div>
+        </div>
+        @for (var i = 0; i < 4; i++)
+        {
+            <div class="skeleton-row">
+                <div><span class="skeleton skeleton--box"></span></div>
+                <div><span class="skeleton skeleton--short"></span></div>
+                <div><span class="skeleton"></span></div>
+                <div><span class="skeleton"></span></div>
+                <div><span class="skeleton"></span></div>
+                <div><span class="skeleton"></span></div>
+                <div><span class="skeleton"></span></div>
+            </div>
+        }
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">حالت خالی</h3>
+<div class="card card--flush" style="margin-bottom: 22px;">
+    <div class="dtable" style="@Cols">
+        <div class="dtable-head">
+            <div></div><div>نام</div><div>اکانت</div><div>حجم</div><div>تغییر</div><div>لینک</div><div>دانلود</div>
+        </div>
+        <div class="empty empty--incell">
+            <span>هنوز فایلی آپلود نشده است.</span>
+            <button type="button" class="btn btn--primary">آپلود اولین فایل</button>
+        </div>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">نوارهای پیشرفت</h3>
+<div class="card card--pad" style="margin-bottom: 22px;">
+    <div class="bar-label"><span>فضای مصرفی</span><span class="mono" dir="ltr">3.42 / 5 TB</span></div>
+    <div class="bar bar--lg" style="margin-bottom: 16px;"><span class="bar-fill" style="width: 68%"></span></div>
+
+    <div class="bar-label"><span>آپلود امروز — زیر ۸۰٪</span><span class="mono" dir="ltr">306 / 750 GB</span></div>
+    <div class="bar bar--lg" style="margin-bottom: 16px;"><span class="bar-fill" style="width: 40.8%"></span></div>
+
+    <div class="bar-label"><span>آپلود امروز — از ۸۰٪ گذشته</span><span class="mono" dir="ltr">612 / 750 GB</span></div>
+    <div class="bar bar--lg" style="margin-bottom: 16px;"><span class="bar-fill bar-fill--warn" style="width: 81.6%"></span></div>
+
+    <div class="bar-label"><span>آپلود امروز — از ۹۵٪ گذشته</span><span class="mono" dir="ltr">728 / 750 GB</span></div>
+    <div class="bar bar--lg" style="margin-bottom: 16px;"><span class="bar-fill bar-fill--danger" style="width: 97.1%"></span></div>
+
+    <div class="bar-label"><span>ردیفی — ارتفاع ۶</span><span class="mono" dir="ltr">73%</span></div>
+    <div class="bar"><span class="bar-fill" style="width: 73%"></span></div>
+
+    <p class="muted" style="font-size: 11.5px; margin: 12px 0 0;">
+        قانون سهمیه‌ی روزانه: از ۸۰٪ <span class="mono" dir="ltr">--warn</span>، از ۹۵٪
+        <span class="mono" dir="ltr">--danger</span>. این تصمیم در
+        <span class="mono" dir="ltr">ShellContext.QuotaFillClass</span> است، نه در CSS.
+    </p>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">کنترل‌های فرم</h3>
+<div class="card card--pad" style="margin-bottom: 22px;">
+    <label class="field-label" for="slug-@s">آدرس اختصاصی</label>
+    <div class="field" dir="ltr" style="margin-bottom: 16px;">
+        <span class="field-prefix">yourdomain.com/d/</span>
+        <input id="slug-@s" value="kx91mz" />
+    </div>
+
+    <span class="field-label">تاریخ انقضا</span>
+    <div class="seg" style="margin-bottom: 16px;">
+        <button type="button" class="seg-option">۲۴ ساعت</button>
+        <button type="button" class="seg-option is-active">۱۴ روز</button>
+        <button type="button" class="seg-option">بدون</button>
+    </div>
+
+    <div class="switch-row">
+        <span>
+            <span class="switch-label">محافظت با رمز</span>
+            <span class="switch-hint" style="display: block;">قبل از دیدن پیش‌نمایش پرسیده می‌شود</span>
+        </span>
+        <button type="button" class="switch is-on" role="switch" aria-checked="true">
+            <span class="visually-hidden">محافظت با رمز</span>
+        </button>
+    </div>
+    <div class="switch-row" style="margin-bottom: 16px;">
+        <span>
+            <span class="switch-label">پنهان‌کردن نام اصلی فایل</span>
+            <span class="switch-hint" style="display: block;">نمایش نام مستعار به گیرنده</span>
+        </span>
+        <button type="button" class="switch" role="switch" aria-checked="false">
+            <span class="visually-hidden">پنهان‌کردن نام اصلی فایل</span>
+        </button>
+    </div>
+
+    <span class="field-label">سقف تعداد دانلود</span>
+    <div class="row" style="gap: 10px; margin-bottom: 16px;">
+        <span class="slider">
+            <span class="slider-fill" style="width: 48%"></span>
+            <span class="slider-thumb" style="inset-inline-start: 48%"></span>
+        </span>
+        <span class="mono" style="font-size: 12.5px;">500</span>
+    </div>
+
+    <span class="field-label">سیاست آپلود</span>
+    <div class="stack" style="gap: 8px;">
+        <button type="button" class="radio-card is-selected">
+            <span class="radio-mark" aria-hidden="true"></span>
+            <span>
+                <span style="display: block; font-size: 13px; font-weight: 600;">بیشترین فضای خالی</span>
+                <span class="muted" style="display: block; font-size: 11px;">اکانتی با فضای آزاد بیشتر اول پر می‌شود</span>
+            </span>
+        </button>
+        <button type="button" class="radio-card">
+            <span class="radio-mark" aria-hidden="true"></span>
+            <span>
+                <span style="display: block; font-size: 13px; font-weight: 600;">round-robin</span>
+                <span class="muted" style="display: block; font-size: 11px;">پخش متناوب بین اکانت‌ها</span>
+            </span>
+        </button>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">کارت‌ها</h3>
+<div class="grid-2" style="margin-bottom: 22px;">
+    <div class="card card--pad">
+        <h4 class="card-title" style="margin-bottom: 8px;">کارت اصلی</h4>
+        <p class="muted" style="margin: 0; font-size: 12.5px;">شعاع ۱۴ · پدینگ ۱۸ · سایه‌ی <span class="mono" dir="ltr">--shadow</span></p>
+        <div class="subcard" style="margin-top: 14px;">
+            <span style="font-size: 12.5px; font-weight: 700;">کارت داخلی</span>
+            <span class="badge push-end">عمومی</span>
+        </div>
+    </div>
+    <div class="stack" style="gap: 12px;">
+        <div class="card card--stat">
+            <div class="muted" style="font-size: 11.5px; margin-bottom: 6px;">سرعت کل</div>
+            <div class="mono" style="font-size: 22px; font-weight: 800;" dir="ltr">341 <span class="muted" style="font-size: 12px; font-weight: 500;">MB/s</span></div>
+        </div>
+        <div class="card--dashed" style="text-align: center; font-size: 12.5px;">
+            افزودن اکانت سوم — ظرفیت کل به ۱۵TB می‌رسد
+        </div>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">جای‌نگهدار پیش‌نمایش</h3>
+<div class="card card--flush" style="margin-bottom: 22px;">
+    <div class="ph" style="height: 150px;">
+        <span class="ph-label">پیش‌نمایش صفحه اول PDF</span>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">کارت صفحه‌ی عمومی</h3>
+<div class="public-card" style="margin-bottom: 22px;">
+    <div class="ph public-preview">
+        <span class="ph-label">پیش‌نمایش صفحه اول PDF</span>
+    </div>
+    <div class="public-body">
+        <span class="badge" style="margin-bottom: 12px;">فایل به اشتراک گذاشته‌شده</span>
+        <h4 class="public-title">Q3-Report-Final.pdf</h4>
+        <p class="public-desc">
+            گزارش مالی سه‌ماهه سوم ۱۴۰۵ همراه با پیوست‌های تحلیلی. لطفاً پیش از انتشار بیرونی با
+            واحد مالی هماهنگ کنید.
+        </p>
+        <div class="meta-grid">
+            <div class="meta-cell">
+                <div class="meta-label">حجم</div>
+                <div class="meta-value mono" dir="ltr">18.4 MB</div>
+            </div>
+            <div class="meta-cell">
+                <div class="meta-label">نوع</div>
+                <div class="meta-value mono" dir="ltr">PDF</div>
+            </div>
+            <div class="meta-cell">
+                <div class="meta-label">تاریخ</div>
+                <div class="meta-value">۱۴۰۵/۰۵/۳۱</div>
+            </div>
+            <div class="meta-cell">
+                <div class="meta-label">اعتبار لینک</div>
+                <div class="meta-value">۱۲ روز</div>
+            </div>
+        </div>
+        <div class="public-cta">
+            <button type="button" class="btn btn--primary btn--cta">دانلود فایل</button>
+            <span class="public-assurance">دانلود مستقیم و استریم‌شده از سرور ما · بدون تبلیغ، بدون انتظار</span>
+        </div>
+    </div>
+    <div class="public-foot">
+        <span class="mono" dir="ltr">yourdomain.com/d/kx91mz</span>
+        <span>@PersianDigits.Count(241) بار دانلود شده</span>
+    </div>
+</div>
+
+<h3 class="section-title" style="margin-bottom: 12px;">حالت‌های صفحه‌ی عمومی</h3>
+<div class="grid-2" style="margin-bottom: 6px;">
+    @* Same card, no call to action, no metadata. An unknown slug renders this too — the response
+       must not reveal whether a slug exists (spec §7). *@
+    <div class="public-card">
+        <div class="public-body" style="text-align: center;">
+            <span class="badge badge--muted" style="margin-bottom: 12px;">غیرقابل دسترس</span>
+            <h4 class="public-title" style="font-size: 20px;">این لینک دیگر در دسترس نیست</h4>
+            <p class="public-desc" style="margin: 0 auto;">ممکن است منقضی شده، به سقف دانلود رسیده یا ابطال شده باشد.</p>
+        </div>
+    </div>
+    <div class="public-card">
+        <div class="public-body">
+            <span class="badge" style="margin-bottom: 12px;">محافظت‌شده</span>
+            <h4 class="public-title" style="font-size: 20px;">برای دیدن فایل رمز را وارد کنید</h4>
+            <label class="field-label" for="pw-@s">رمز</label>
+            <div class="field" dir="ltr" style="margin-bottom: 14px;">
+                <input id="pw-@s" type="password" value="" placeholder="••••••••" />
+            </div>
+            <button type="button" class="btn btn--primary btn--block">ادامه</button>
+        </div>
+    </div>
+</div>

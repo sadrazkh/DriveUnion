@@ -1,0 +1,63 @@
+@using Microsoft.AspNetCore.WebUtilities
+@{
+    Layout = null;
+
+    @* The controller decides the language from Accept-Language / ?lang= before the HTML leaves the
+       server (M1 spec §7) and puts it here. The prototype's client-side [data-t] show/hide is
+       deliberately not reproduced: it ships both languages in every response, which is worse for
+       SEO, worse for caching, and unreadable with JavaScript off. *@
+    var lang = ViewData["Lang"] as string == "en" ? "en" : "fa";
+    var isFa = lang == "fa";
+    var dir = isFa ? "rtl" : "ltr";
+    var title = ViewData["Title"] as string;
+    var brand = isFa ? "درایو یونیون" : "Drive Union";
+    var path = Context.Request.Path.ToString();
+}
+<!DOCTYPE html>
+<html dir="@dir" lang="@lang" data-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>@(string.IsNullOrEmpty(title) ? brand : $"{title} · {brand}")</title>
+    @* The two renderings are the same resource in two languages, so say so rather than letting a
+       crawler treat them as duplicates and pick one. *@
+    <link rel="alternate" hreflang="fa" href="@QueryHelpers.AddQueryString(path, "lang", "fa")" />
+    <link rel="alternate" hreflang="en" href="@QueryHelpers.AddQueryString(path, "lang", "en")" />
+    <partial name="_HeadAssets" />
+</head>
+<body>
+<div class="public-page">
+    <div class="public-wrap">
+        <header class="public-head">
+            <div class="row">
+                <span class="brand-mark" aria-hidden="true">@(isFa ? "د" : "D")</span>
+                <span class="brand-name">@brand</span>
+            </div>
+            @* showLanguage on purpose: this is the one screen with two languages, and its control
+               is a link to the other rendering, not a class flip. *@
+            <span data-island="theme-language" data-lang="@lang" data-show-language="true">
+                <a class="btn btn--sm"
+                   href="@QueryHelpers.AddQueryString(path, "lang", isFa ? "en" : "fa")"
+                   hreflang="@(isFa ? "en" : "fa")">@(isFa ? "English" : "فارسی")</a>
+            </span>
+        </header>
+
+        @RenderBody()
+
+        @* The address is the handoff's placeholder and stays one until the domain is settled
+           (spec §11.3). Shipping it live would publish a mailbox nobody reads. *@
+        <p class="public-note">
+            @if (isFa)
+            {
+                @:این لینک اختصاصی است و ممکن است منقضی شود. گزارش سوءاستفاده: abuse@@yourdomain.com
+            }
+            else
+            {
+                @:This is a private link and may expire. Report abuse: abuse@@yourdomain.com
+            }
+        </p>
+    </div>
+</div>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
