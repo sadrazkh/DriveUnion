@@ -1,0 +1,9 @@
+# The upstream source and its build tree. fetch-source.sh puts several hundred megabytes of
+# C++ here (telegram-bot-api plus TDLib), and build.sh puts gigabytes of objects beside it.
+# None of it is source of ours — PIN is what identifies the version, and PIN is committed.
+vendor/
+
+# A real environment file must never reach the repository: it carries the api_id/api_hash,
+# which are credentials of the same class as the bot token. Only the .example is tracked.
+*.env
+!*.env.example

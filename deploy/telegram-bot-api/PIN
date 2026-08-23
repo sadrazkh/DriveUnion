@@ -1,0 +1,36 @@
+# The pin: which telegram-bot-api this deployment is.
+#
+# This file is the whole reason the C++ can be said to be "in step with the main project"
+# (the owner's «چرا c++ نمیشه کنار یا دقیقا همگام با پروژه اصلی باشه؟»). The source is not
+# committed here — this file is. It names one commit, and every script in this directory
+# refuses to act on anything else.
+#
+# Sourced by fetch-source.sh, build.sh and install.sh with `.` — it must stay assignments
+# only, no commands, no substitutions. Same contract as /etc/os-release.
+
+UPSTREAM_URL="https://github.com/tdlib/telegram-bot-api.git"
+
+# A commit, not a tag. tdlib/telegram-bot-api publishes NO tags and NO releases — its tag
+# atom feed is empty and its releases page says so. The Telegram spec's §2.4.1 says
+# "pinned to a tag"; there is nothing to pin to, so this is a full SHA instead. See
+# README.md § "The pin" for what that costs.
+PINNED_COMMIT="adfd7f6a8e990272851777eeb3ae0def4216f161"
+
+# What that commit is, kept beside the SHA so the pin is readable without a network round
+# trip. This is the commit that raised the implemented Bot API version to 10.2 — it touches
+# exactly two files, CMakeLists.txt and telegram-bot-api/telegram-bot-api.cpp, and changes
+# "10.1" to "10.2" in both.
+PINNED_COMMIT_SUBJECT="Update version to 10.2."
+PINNED_COMMIT_DATE="2026-07-14"
+
+# The number the spec's §2.1 figures were read against. If this stops matching what the
+# checked-out source declares, §2.1 has stopped describing what runs — which is the entire
+# point of pinning, and is why fetch-source.sh treats a mismatch as a hard failure rather
+# than a warning.
+BOT_API_VERSION="10.2"
+
+# Where the version can be read out of the source without building anything. Both are
+# checked; one is not enough, because a single grep that stops matching after an upstream
+# reorganisation looks exactly like a version that did not change.
+#   CMakeLists.txt line 3:                    project(TelegramBotApi VERSION 10.2 LANGUAGES CXX)
+#   telegram-bot-api/telegram-bot-api.cpp:    parameters->version_ = "10.2";

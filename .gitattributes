@@ -4,6 +4,20 @@
 * text=auto
 
 ###############################################################################
+# Anything Linux executes must keep LF, whatever the checkout is on.
+#
+# `text=auto` gives a Windows working tree CRLF, and this repository is edited on
+# Windows and deployed to Linux. A shell script copied straight out of the
+# checkout then fails with `bad interpreter: /usr/bin/env bash^M`, which reads
+# like a corrupt file rather than a line ending. systemd is no kinder about its
+# unit files.
+###############################################################################
+*.sh text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.env.example text eol=lf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

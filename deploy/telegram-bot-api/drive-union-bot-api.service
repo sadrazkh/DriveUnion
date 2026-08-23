@@ -1,0 +1,168 @@
+[Unit]
+Description=Drive Union — self-hosted Telegram Bot API server
+Documentation=file:///opt/drive-union/deploy/telegram-bot-api/README.md
+Documentation=https://github.com/tdlib/telegram-bot-api
+
+# It dials Telegram's datacenters over MTProto the moment it starts, so it wants a routable
+# network rather than merely a configured one.
+After=network-online.target
+Wants=network-online.target
+
+# In [Unit], not [Service]. systemd moved these two keys in v230 and silently ignores them
+# where they used to live — a rate limit that is quietly not in effect is worse than none,
+# because it is the thing you would check last.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+# Type=exec: the server does not link sd_notify. A Type=notify unit that never notifies hangs
+# systemd until the start timeout and then reports a timeout, which reads as a slow start
+# rather than as a wrong unit file.
+Type=exec
+
+# ---------------------------------------------------------------------------------------
+# Credentials and configuration.
+#
+# The api_id / api_hash are NOT on the command line, and that is deliberate rather than
+# stylistic: `--api-id` and `--api-hash` both default to the TELEGRAM_API_ID and
+# TELEGRAM_API_HASH environment variables (upstream's own help text says so), and a secret
+# passed as an argument is readable by every user on this box through `ps`. They are the same
+# class of secret as the bot token.
+#
+# This file is not in the repository and must be mode 0600, root-owned. systemd reads it as
+# root before dropping to User= below, so the service user never needs to read it at all.
+# ---------------------------------------------------------------------------------------
+EnvironmentFile=/etc/drive-union-bot-api/bot-api.env
+
+# --local is the whole point: it lifts the outbound ceiling from 50 MB to 2000 MB and the
+# inbound one from 20 MB to whatever the sender's client could send, and it makes getFile
+# return an absolute path on this disk instead of a perishable URL.
+#
+# --http-ip-address is not optional. Upstream's default is "connections to any local IPv4
+# address are accepted" — that is 0.0.0.0, i.e. the public interface. An unauthenticated Bot
+# API server on the public interface is a total compromise of every bot on it and a file-read
+# primitive on this host; see README.md § "The front door".
+#
+# ${VAR} in braces is one argument; $VAR unbraced is split on whitespace. DUBOTAPI_EXTRA_ARGS
+# is unbraced on purpose so that an empty value contributes no argument at all — that is what
+# lets the statistics port be optional without a second unit file.
+#
+# There is deliberately no --log. A log file on the volume that is this deployment's binding
+# constraint is a second thing that fills it, with its own rotation to get wrong. stderr goes
+# to the journal, which already has size limits somebody else maintains.
+ExecStart=/usr/local/bin/telegram-bot-api \
+  --local \
+  --dir ${DUBOTAPI_WORK_DIR} \
+  --temp-dir ${DUBOTAPI_TEMP_DIR} \
+  --http-ip-address ${DUBOTAPI_HTTP_IP} \
+  --http-port ${DUBOTAPI_HTTP_PORT} \
+  --max-connections ${DUBOTAPI_MAX_CONNECTIONS} \
+  --verbosity ${DUBOTAPI_VERBOSITY} \
+  $DUBOTAPI_EXTRA_ARGS
+
+# Literal, because systemd does not expand ${} here. If DUBOTAPI_WORK_DIR in the environment
+# file is ever moved outside this tree, ReadWritePaths below has to move with it or the server
+# gets EACCES on a directory it can see — install.sh checks that they agree and refuses
+# otherwise, because the failure is silent until the first file arrives.
+WorkingDirectory=/var/lib/drive-union-bot-api
+
+# Restart on failure, not always. A clean exit is what `close` produces, and restarting after a
+# deliberate shutdown would fight whoever is running the §2.4.4 migration. The burst limit turns
+# a wrong api_id into a unit that fails and stays failed, which is visible, rather than a unit
+# that respawns every five seconds forever, which is not.
+Restart=on-failure
+RestartSec=5
+
+# ---------------------------------------------------------------------------------------
+# Identity.
+#
+# Its own unprivileged user, with nothing else on the box running as it. Two reasons rather
+# than the usual one: in --local mode the server implements "Upload files using their local
+# path and the file URI scheme", which is a documented arbitrary-file-read primitive scoped to
+# whatever this user can read. So this user reads almost nothing — and specifically not M3's
+# transfer spool, which shares this volume but must not share access.
+#
+# upstream's own --username / --groupname options are deliberately NOT used: they mean starting
+# as root and dropping, and systemd sets the credentials before exec so the process is never
+# root at any point.
+# ---------------------------------------------------------------------------------------
+User=dubotapi
+Group=dubotapi
+
+# 0002 so files the server writes stay group-writable. The panel runs as a different user and
+# has to be able to delete the server's files the instant a send completes (spec §2.4.2) —
+# that is the shared group, and this umask is the half of it that is easy to forget.
+UMask=0002
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RemoveIPC=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# The only writable path on the whole filesystem, ProtectSystem=strict having made everything
+# else read-only. Customer file contents pass through here.
+ReadWritePaths=/var/lib/drive-union-bot-api
+
+# Restricts which ports this process may bind(). It does NOT restrict which address it binds to
+# — systemd has no directive for that — so it is a second lock on the port, not a substitute
+# for --http-ip-address above. Requires systemd 249+; if this unit refuses to start with an
+# error naming SocketBindDeny, this box is older and these two lines can be removed. install.sh
+# checks the version and says so.
+#
+# The port is literal here and configurable in the environment file. If DUBOTAPI_HTTP_PORT ever
+# changes, this line changes with it or the server starts and cannot listen; install.sh checks
+# that the two agree, because the symptom otherwise is a healthy-looking unit that refuses every
+# connection.
+SocketBindDeny=any
+SocketBindAllow=8081
+
+# ---------------------------------------------------------------------------------------
+# What is NOT here, so that nobody adds it back.
+#
+# IPAddressDeny=any / IPAddressAllow=localhost — the Telegram spec §2.4.3 asks for these as a
+# second lock on the bind address. They would take the server off the air completely.
+# IPAddressAllow/Deny filter ALL socket traffic in both directions, and this process is a TDLib
+# MTProto client whose entire job is to hold connections open to Telegram's datacenters on the
+# public internet. Restricting it to loopback would leave a server that starts, listens, and can
+# never log a bot in. The controls that actually bound the listener are --http-ip-address, the
+# SocketBind* pair above, and a firewall rule on 8081; those three fail independently.
+#
+# SystemCallFilter= and MemoryDenyWriteExecute= are also absent. They are probably fine for this
+# binary and neither has been tested against it anywhere — and their failure mode is a SIGSYS or
+# a segfault at startup, which reads as "the build is broken" rather than as "the unit is wrong".
+# Everything above fails as a legible EACCES instead. Add them once somebody has a box to try
+# them on.
+# ---------------------------------------------------------------------------------------
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=drive-union-bot-api
+
+# The server has its own --max-connections for file descriptors; this is the ceiling that one
+# is chosen under. A Bot API server holds a connection per bot per webhook plus its MTProto
+# sockets, so the default 1024 is genuinely too low.
+LimitNOFILE=65535
+TasksMax=4096
+
+# TDLib flushes its own database on the way out. Cutting that short is how a restart turns into
+# a re-login.
+TimeoutStopSec=60
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

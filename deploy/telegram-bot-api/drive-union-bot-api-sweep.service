@@ -1,0 +1,66 @@
+[Unit]
+Description=Drive Union — sweep the Telegram Bot API working directory
+Documentation=file:///opt/drive-union/deploy/telegram-bot-api/README.md
+
+# Not Requires=. The moment the working directory most needs sweeping is right after the Bot
+# API server or the panel died mid-transfer, leaving gigabytes behind. A sweep that refuses to
+# run because the service it cleans up after is down would be off precisely when it matters.
+After=drive-union-bot-api.service
+
+[Service]
+Type=oneshot
+
+# --delete is passed here and nowhere else. sweep-workdir.sh is dry-run by default and has no
+# way to be configured otherwise, so this line is the single place in the deployment where
+# deletion is turned on, and it is one word to find and one word to remove.
+ExecStart=/opt/drive-union/deploy/telegram-bot-api/sweep-workdir.sh --delete
+
+# Same user as the server, so it deletes files it owns. No root anywhere in this path: a
+# cleanup job running as root against a directory whose contents are supplied by strangers on
+# Telegram is a bad trade for a `find` that works either way.
+User=dubotapi
+Group=dubotapi
+
+# It has to read the environment file for the paths and the age. That file is root-owned 0600
+# and carries the api_id/api_hash, so the service user cannot read it — systemd reads it as
+# root before dropping, exactly as it does for the server itself.
+EnvironmentFile=/etc/drive-union-bot-api/bot-api.env
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+# It talks to nothing. A cleanup job with network access is a cleanup job that can exfiltrate
+# what it is about to delete.
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+
+# The only writable path, and the same tree sweep-workdir.sh independently refuses to leave.
+ReadWritePaths=/var/lib/drive-union-bot-api
+
+# Read-only: the script itself, so a compromised service user cannot rewrite the thing that
+# runs every minute as… itself. Small, but free.
+ReadOnlyPaths=/opt/drive-union/deploy/telegram-bot-api
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=drive-union-bot-api-sweep
+
+# A sweep of a directory that should be nearly empty takes milliseconds. A minute means
+# something is very wrong — most likely a network filesystem that has stopped answering — and
+# stacking those up every minute is how a cleanup job becomes the outage.
+TimeoutStartSec=60

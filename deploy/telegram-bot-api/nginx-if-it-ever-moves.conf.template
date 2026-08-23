@@ -1,0 +1,151 @@
+# ==========================================================================================
+#  THIS FILE IS NOT INSTALLED. IT IS NOT MEANT TO BE INSTALLED. DO NOT INSTALL IT.
+#
+#  The correct nginx configuration for the Drive Union Bot API server is NO CONFIGURATION.
+#  install.sh writes nothing into /etc/nginx and never will. This template exists so that the
+#  day somebody genuinely has to expose this server, they start from a block that has been
+#  thought about rather than from the first search result — and so that the reasons below are
+#  attached to the thing they are reasons about.
+#
+#  ----------------------------------------------------------------------------------------
+#  READ THIS FIRST, BECAUSE IT IS WORSE THAN THE USUAL WARNING.
+#
+#  AN UNAUTHENTICATED BOT API SERVER REACHABLE FROM THE INTERNET IS A TOTAL COMPROMISE OF
+#  EVERY BOT RUNNING ON IT. Not a risk. The compromise itself. Two reasons:
+#
+#  1. THE BOT TOKEN IS THE ONLY AUTHENTICATION, AND IT IS IN THE URL PATH.
+#     Every request is POST /bot<token>/sendMessage. Anything that can reach the port and has
+#     seen one URL *is* the bot: it can read every message the bot receives, send as the bot to
+#     every chat the bot is in, and there is no second factor, no session, no header to check.
+#     Which is also why NOTHING MAY LOG THESE URLS — not nginx's access_log, not an error page,
+#     not a proxy debug line. A token in a log file is the token. This is the one place in this
+#     product where a credential travels in a path instead of a header.
+#
+#  2. IN --local MODE THE SERVER WILL READ ARBITRARY FILES OFF THIS BOX.
+#     "Upload files using their local path and the file URI scheme" is a documented --local
+#     feature, and it is a feature that reads any path the server's user can read. Drive Union
+#     never constructs a file:// argument — but that decision protects nothing, because the
+#     danger is somebody ELSE constructing one. So reachability plus the token is not merely
+#     "send messages as the bot": it is an ARBITRARY FILE READ PRIMITIVE ON THIS HOST, running
+#     as the Bot API server's user. That is why that user is unprivileged, owns only its own
+#     working directory, and specifically cannot read M3's transfer spool.
+#
+#  ----------------------------------------------------------------------------------------
+#  WHY THERE IS NO PUBLIC ROUTE, STATED AS THE QUESTION "WHAT WOULD NEED ONE?"
+#
+#  Nothing. Every leg of this is already inside the machine:
+#
+#    panel  → Bot API server    loopback. Telegram:ApiBaseUrl is http://127.0.0.1:8081/.
+#    Bot API server → panel     loopback. --local permits "Use an HTTP URL for the webhook",
+#                               "Use any local IP address for the webhook" and "Use any port
+#                               for the webhook", so setWebhook points at Kestrel on 127.0.0.1.
+#    Bot API server → Telegram  OUTBOUND, MTProto, dialled by us. Telegram never connects in.
+#
+#  That last line is the one people get wrong. On the cloud API, Telegram POSTs your webhook, so
+#  you need a public HTTPS endpoint. Self-hosted, the webhook POST comes from the server on THIS
+#  BOX to the panel on THIS BOX. Telegram's side of the connection is a socket we opened.
+#
+#  A TLS terminator here would add a public attack surface in order to encrypt traffic that
+#  never leaves the kernel. That is not a trade, it is a loss.
+#
+#  The only scenario that changes this is the Bot API server moving to a different host from the
+#  panel — and that move is expensive for an unrelated reason: getFile in --local mode returns
+#  an absolute path on the server's own disk, which is unusable from another machine, and the
+#  HTTP fallback is reported to 404 against a self-hosted server in non-local mode
+#  (tdlib/telegram-bot-api #540). Running it non-local instead gives back the 20 MB download
+#  limit and undoes the entire decision. So "same box" is load-bearing, not incidental.
+#
+#  ----------------------------------------------------------------------------------------
+#  IF YOU ARE STILL HERE: the rules this template encodes. All five, not four.
+#
+#    · TLS 1.2 minimum, and 1.3 where available.
+#    · An explicit server_name. NEVER default_server — a default_server catches every hostname
+#      that resolves to this box, including the ones you did not think of.
+#    · allow the one calling host; deny all. An IP allowlist is the control that still works
+#      after somebody leaks a token, which is the failure this file is about.
+#    · A shared secret header ON TOP OF the token, checked before proxy_pass. The token is a
+#      credential that appears in paths and therefore in logs; it cannot be the only one.
+#      A client certificate is stronger and is the better answer if you can manage the CA.
+#    · access_log off for the proxied location, with the reason written above it.
+#
+#  Replace every <ANGLE-BRACKETED> value. There are no defaults here on purpose: a template with
+#  working defaults is a template somebody installs by accident.
+# ==========================================================================================
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+
+    # Explicit, and never default_server. If this name does not match, nginx must fall through
+    # to something that is not the Bot API server.
+    server_name <BOT-API-HOSTNAME>;
+
+    ssl_certificate     <PATH-TO-FULLCHAIN-PEM>;
+    ssl_certificate_key <PATH-TO-PRIVKEY-PEM>;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # Nothing but the Bot API paths is served from this name. A stray root would make this
+    # server block a file server as well as a proxy.
+    root /var/empty;
+
+    location / {
+        return 404;
+    }
+
+    # The Bot API surface. Everything the server answers lives under /bot<token>/ and
+    # /file/bot<token>/.
+    location ~ ^/(bot|file/bot) {
+
+        # ---- Control 1: who may connect at all. ----------------------------------------
+        # The calling host, and nothing else. This is the control that survives a leaked token,
+        # so it is first and it is not optional.
+        allow <PANEL-HOST-IP>;
+        deny  all;
+
+        # ---- Control 2: a second credential, checked before anything is proxied. --------
+        # The bot token in the path cannot be the only secret, because it ends up in logs,
+        # error pages and screenshots. This header is set by the panel's HttpClient and is
+        # never derived from the token.
+        if ($http_x_drive_union_bot_api_secret != "<LONG-RANDOM-SHARED-SECRET>") {
+            return 404;
+        }
+
+        # A client certificate is the stronger version of the line above. If you can run the CA,
+        # prefer it: add ssl_client_certificate / ssl_verify_client on to the server block and
+        # test $ssl_client_verify here instead.
+
+        # ---- Control 3: nothing about these requests is written down. ------------------
+        # The bot token is IN THE REQUEST PATH. An access log of this location is a file full of
+        # working credentials, readable by whoever reads logs, backed up wherever logs are backed
+        # up, and pasted into whatever bug report quotes them. There is no log format that fixes
+        # this, because the path is the whole request. So: off. Not filtered, not masked. Off.
+        access_log off;
+
+        # Error logging stays on but at a level that does not echo request lines. Verify this on
+        # the box after any nginx upgrade — the failure is silent and permanent.
+        error_log /var/log/nginx/bot-api-error.log error;
+
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+
+        # 2000 MB in each direction, and nginx must not buffer or cap either.
+        client_max_body_size 2000m;
+        proxy_request_buffering off;
+        proxy_buffering off;
+
+        # A 2000 MB transfer over a slow link takes longer than any default timeout.
+        proxy_read_timeout  1h;
+        proxy_send_timeout  1h;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # The statistics port, if --http-stat-port is ever enabled, is NOT proxied here and should
+    # not be. It is as unauthenticated as the main port and it is a diagnostic, so it belongs on
+    # loopback and behind an SSH tunnel.
+}

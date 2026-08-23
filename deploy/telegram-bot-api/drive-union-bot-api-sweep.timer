@@ -1,0 +1,25 @@
+[Unit]
+Description=Drive Union — sweep the Telegram Bot API working directory every minute
+Documentation=file:///opt/drive-union/deploy/telegram-bot-api/README.md
+
+[Timer]
+Unit=drive-union-bot-api-sweep.service
+
+# Every minute, not nightly. A directory that can gain 2000 MB per message is not something a
+# nightly job sweeps — it is something a nightly job finds full. The sweep itself is a `find`
+# over a directory that should be nearly empty, so the cost of running it 1440 times a day is
+# nothing measurable.
+OnBootSec=2min
+OnUnitActiveSec=1min
+
+# Ten seconds of slack lets systemd batch this with other timers instead of waking the box on
+# a hard boundary. Nothing here needs the minute to be exact.
+AccuracySec=10s
+
+# Persistent=false on purpose. If the box was off, there is no backlog worth catching up — the
+# next run in a minute's time sees exactly the same files. A catch-up run at boot would fire
+# during the window when the server is still starting.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
