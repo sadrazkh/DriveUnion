@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "driveunion",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "E:/Cash.Net/source/repos/sadrazkh/DriveUnion/src/DriveUnion.Web/DriveUnion.Web.csproj",
+        "--environment",
+        "Development",
+        "--urls",
+        "http://localhost:5099"
+      ],
+      "port": 5099
+    }
+  ]
+}
