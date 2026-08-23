@@ -28,6 +28,22 @@ public interface IShareLinkService
         Guid fileId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every link the tenant owns, newest first, each with the file it points at.
+    ///
+    /// The panel's «لینک‌های اشتراک» table is file · address · downloads · expiry · status, and a
+    /// <see cref="ShareLinkSummary"/> on its own can name none of the first column and offer nowhere
+    /// to go — so the row travels as a triple rather than as a fourth summary record that this one
+    /// table would be the only reader of.
+    ///
+    /// <c>tenantId</c> is an argument and not an ambient filter, for the reason in §8 of the M1
+    /// design: this product has no global query filter, because one would hand <c>Guid.Empty</c> to
+    /// every anonymous /d/{slug} and refuse every live link in the product.
+    /// </summary>
+    Task<IReadOnlyList<(ShareLinkSummary Link, Guid StoredFileId, string FileName)>> ListForTenantAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken);
+
     Task<bool> RevokeAsync(Guid tenantId, Guid linkId, CancellationToken cancellationToken);
 }
 

@@ -12,6 +12,11 @@
     // to set and nothing to forget.
     var isOperator = User.IsOperator();
 
+    // The sign-out control, and only that. Asked of the principal for the same reason as above: the
+    // sign-in page renders this layout too, and a footer offering to end a session nobody has is a
+    // form that can only 401.
+    var isSignedIn = User.Identity?.IsAuthenticated == true;
+
     // The comp's «جست‌وجو در همه‌ی اکانت‌ها…» is the operator reading the union of the pool. A
     // customer has one library and must not be told it is spread across accounts.
     var searchLabel = isOperator ? "جست‌وجو در همه‌ی اکانت‌ها" : "جست‌وجو در فایل‌ها";
@@ -147,6 +152,29 @@
                     <span style="display: block; font-size: 12.5px; font-weight: 600;">@(shell.UserName ?? "—")</span>
                     <span style="display: block; font-size: 10.5px;" class="muted">@(shell.UserRole ?? "—")</span>
                 </span>
+                @if (isSignedIn)
+                {
+                    @*
+                        Ending a session is a POST. On a GET any «img src» on any page signs the
+                        operator out, and a browser that prefetches sidebar links does it without
+                        anyone clicking. The literal action is the same address Program.cs gives the
+                        cookie handler as its LogoutPath, and it is spelled out here for the reason
+                        the navigation above is: a helper that cannot resolve would post the form to
+                        the current page, which is worse than a 404.
+
+                        The button wears .nav-item because that rule is already a button reset —
+                        border: 0, font: inherit, transparent background, cursor: pointer — so this
+                        is the sidebar's own control at the row's end rather than a second one bolted
+                        underneath. It sits in the identity row because that is whose session it is.
+                    *@
+                    <form method="post" action="/Identity/Account/Logout" class="push-end">
+                        @Html.AntiForgeryToken()
+                        <button type="submit"
+                                class="nav-item"
+                                style="padding: 6px 10px; font-size: 12px;"
+                                title="خروج از حساب">خروج</button>
+                    </form>
+                }
             </div>
         </div>
     </nav>

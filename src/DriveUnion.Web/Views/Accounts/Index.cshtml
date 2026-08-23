@@ -11,13 +11,28 @@
             <p class="page-sub">توکن‌ها رمزنگاری‌شده روی سرور ذخیره می‌شوند.</p>
         </div>
 
-        <form class="push-end" method="post" action="@Url.Action("Connect", "Accounts")">
+        <form class="push-end" method="post" action="@Url.Action("Connect", "Accounts")" data-google-connect>
             @Html.AntiForgeryToken()
+            @*
+                Scripts/googleConnect.ts flips this to "true" only after window.open has actually
+                handed it a window, and points the form's target at that window. Posted in the body
+                of the request antiforgery already protects — never a query parameter — because the
+                controller carries this flag through Google and back to decide whether the callback
+                answers with a page that talks to window.opener.
+
+                Untouched it stays "false", which is the same-tab flow: no JavaScript, or a blocked
+                popup, both land here.
+            *@
+            <input type="hidden" name="popup" value="false" data-google-connect-popup />
             <button type="submit" class="btn btn--primary btn--lg" @(Model.ConsentConfigured ? null : "disabled")>
                 + افزودن اکانت با OAuth
             </button>
         </form>
     </div>
+
+    @* Written by the popup enhancement only. Rendered hidden and empty so no reader meets a label
+       for a window that was never opened. *@
+    <p class="page-sub" role="status" data-google-connect-status hidden></p>
 
     @if (!string.IsNullOrEmpty(Model.Notice))
     {

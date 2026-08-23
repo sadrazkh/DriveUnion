@@ -29,6 +29,22 @@ public sealed class AccountsController(
 {
     private const string StateCookie = "du_google_oauth_state";
 
+    /// <summary>
+    /// What the state cookie's value starts with, ahead of the nonce.
+    ///
+    /// The "this started in a popup" flag has to survive a round trip through Google, and there were
+    /// two places it could ride: a query parameter Google echoes back, or the cookie that already
+    /// carries the CSRF nonce. It rides the cookie. That value is HttpOnly, scoped to /accounts, ten
+    /// minutes long, and only the antiforgery-protected POST below can write it — so nothing a link
+    /// can carry decides whether the callback answers with a page that talks to <c>window.opener</c>,
+    /// and the flag cannot desynchronise from the nonce the way a second cookie could.
+    ///
+    /// Both prefixes are four characters, so the state's length says nothing about its mode.
+    /// </summary>
+    private const string PopupStatePrefix = "pop.";
+
+    private const string TopLevelStatePrefix = "top.";
+
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
@@ -48,17 +64,31 @@ public sealed class AccountsController(
             Google() is not null));
     }
 
+    /// <summary>
+    /// Starts the consent flow. Still a POST, still antiforgery-checked, whichever window it lands in.
+    ///
+    /// <paramref name="popup"/> comes from a hidden field that Scripts/googleConnect.ts sets to true
+    /// only once <c>window.open</c> has actually handed it a window; the form is then submitted into
+    /// that window by name, so this response — a redirect to Google, or the card below when Google is
+    /// unconfigured — renders inside the popup. With no JavaScript, or with popups blocked, the field
+    /// stays false and this is the same-tab flow it has always been.
+    /// </summary>
     [HttpPost("connect")]
     [ValidateAntiForgeryToken]
-    public IActionResult Connect()
+    public IActionResult Connect([FromForm] bool popup)
     {
         if (Google() is not { } google)
         {
-            TempData["Error"] = "پیکربندی OAuth گوگل کامل نیست.";
-            return RedirectToAction(nameof(Index));
+            return Finish(
+                popup,
+                succeeded: false,
+                title: "پیکربندی گوگل کامل نیست",
+                message: "پیکربندی OAuth گوگل کامل نیست.",
+                hint: "Google:ClientId · Google:ClientSecret · Google:RedirectUri");
         }
 
-        var state = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
+        var state = (popup ? PopupStatePrefix : TopLevelStatePrefix)
+            + WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
 
         Response.Cookies.Append(StateCookie, state, new CookieOptions
         {
@@ -86,24 +116,42 @@ public sealed class AccountsController(
         var expected = Request.Cookies[StateCookie];
         Response.Cookies.Delete(StateCookie, new CookieOptions { Path = "/accounts" });
 
+        // Read out of the cookie and never out of the query — see PopupStatePrefix. A `state` the
+        // caller invented is about to be refused anyway; this way it cannot even pick the response
+        // shape on the way to being refused.
+        var popup = expected is not null
+            && expected.StartsWith(PopupStatePrefix, StringComparison.Ordinal);
+
         if (!string.IsNullOrEmpty(error))
         {
             logger.LogWarning("Google consent returned an error");
-            TempData["Error"] = "اتصال اکانت لغو شد.";
-            return RedirectToAction(nameof(Index));
+
+            return Finish(
+                popup,
+                succeeded: false,
+                title: "اتصال لغو شد",
+                message: "اتصال اکانت لغو شد.");
         }
 
         if (Google() is not { } google)
         {
-            TempData["Error"] = "پیکربندی OAuth گوگل کامل نیست.";
-            return RedirectToAction(nameof(Index));
+            return Finish(
+                popup,
+                succeeded: false,
+                title: "پیکربندی گوگل کامل نیست",
+                message: "پیکربندی OAuth گوگل کامل نیست.",
+                hint: "Google:ClientId · Google:ClientSecret · Google:RedirectUri");
         }
 
         if (string.IsNullOrEmpty(code) || !StateMatches(state, expected))
         {
             logger.LogWarning("Google callback rejected: the state did not match the one this browser was sent with");
-            TempData["Error"] = "بازگشت از گوگل معتبر نبود. دوباره تلاش کنید.";
-            return RedirectToAction(nameof(Index));
+
+            return Finish(
+                popup,
+                succeeded: false,
+                title: "بازگشت نامعتبر",
+                message: "بازگشت از گوگل معتبر نبود. دوباره تلاش کنید.");
         }
 
         try
@@ -111,15 +159,23 @@ public sealed class AccountsController(
             // The same redirect_uri the authorize request carried, because it comes from the same
             // option. Google compares the two strings and says nothing useful when they differ.
             await directory.ConnectAsync(code, google.RedirectUri, cancellationToken);
-            TempData["Notice"] = "اکانت گوگل متصل شد.";
         }
         catch (DriveApiException exception)
         {
             logger.LogError(exception, "Exchanging the Google authorization code failed");
-            TempData["Error"] = "تبادل کد با گوگل ناموفق بود.";
+
+            return Finish(
+                popup,
+                succeeded: false,
+                title: "تبادل با گوگل ناموفق بود",
+                message: "تبادل کد با گوگل ناموفق بود.");
         }
 
-        return RedirectToAction(nameof(Index));
+        return Finish(
+            popup,
+            succeeded: true,
+            title: "اکانت متصل شد",
+            message: "اکانت گوگل متصل شد.");
     }
 
     [HttpPost("{id:guid}/disconnect")]
@@ -156,6 +212,28 @@ public sealed class AccountsController(
         }
 
         return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// How the consent flow ends, told once and shown twice.
+    ///
+    /// TempData is written in both modes because the popup's opener reloads /accounts as the flow
+    /// finishes — so the page ends up saying exactly what it says without JavaScript, out of the same
+    /// two slots, and there is no second copy of these sentences on the client to drift from these.
+    /// The popup renders the same sentence itself, because that is where the operator is looking.
+    /// </summary>
+    private IActionResult Finish(
+        bool popup,
+        bool succeeded,
+        string title,
+        string message,
+        string? hint = null)
+    {
+        TempData[succeeded ? "Notice" : "Error"] = message;
+
+        return popup
+            ? View("ConnectPopup", new ConnectPopupViewModel(succeeded, title, message, hint))
+            : RedirectToAction(nameof(Index));
     }
 
     /// <summary>

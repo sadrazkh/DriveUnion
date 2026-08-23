@@ -23,6 +23,10 @@ public class PublicDownloadStreamTests
         response.Content.Headers.ContentType!.MediaType.Should().Be("video/mp4");
         response.Headers.AcceptRanges.Should().Contain("bytes");
 
+        // The other half of the 206 rule: a request that asked for no range is answered whole, and
+        // a Content-Range on a 200 would tell a client its unasked-for range had been honoured.
+        response.Content.Headers.ContentRange.Should().BeNull();
+
         var received = await response.Content.ReadAsByteArrayAsync();
         received.Should().Equal(seeded.Content);
 
@@ -54,6 +58,35 @@ public class PublicDownloadStreamTests
         received.Should().Equal(seeded.Content[100..200]);
     }
 
+    [Theory]
+    [InlineData("bytes=0-")]
+    [InlineData("bytes=0-4095")]
+    public async Task A_range_that_starts_at_byte_zero_is_still_a_206(string range)
+    {
+        // The commonest range a browser sends, and the one the suite used to miss: a resumed
+        // download restarting from the beginning, and a player opening a file. Drive answers every
+        // range it can satisfy with a 206 and a Content-Range — including the one whose slice
+        // happens to be the whole file — and a 200 here would tell the client its Range was ignored
+        // and that partial requests are not on offer.
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("zr55zr55", content: PublicSiteHarness.TestBytes(4096));
+
+        using var client = harness.NewClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/d/{seeded.Slug}/file");
+        request.Headers.Add("Range", range);
+
+        using var response = await client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.PartialContent);
+        response.Content.Headers.ContentRange!.ToString().Should().Be("bytes 0-4095/4096");
+        response.Content.Headers.ContentLength.Should().Be(4096);
+        (await response.Content.ReadAsByteArrayAsync()).Should().Equal(seeded.Content);
+
+        // And it is one download all the same: 206 is about how the bytes travel, not about who
+        // pays for them. DownloadCounting reads the first byte of the range, which is zero.
+        (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(1);
+    }
+
     [Fact]
     public async Task A_suffix_range_answers_206_with_the_tail_of_the_file()
     {
@@ -68,6 +101,7 @@ public class PublicDownloadStreamTests
 
         response.StatusCode.Should().Be(HttpStatusCode.PartialContent);
         response.Content.Headers.ContentRange!.ToString().Should().Be("bytes 3840-4095/4096");
+        response.Content.Headers.ContentLength.Should().Be(256);
 
         var received = await response.Content.ReadAsByteArrayAsync();
         received.Should().Equal(seeded.Content[3840..]);
@@ -183,10 +217,11 @@ public class PublicDownloadStreamTests
         failure.Should().NotBeNull("a truncated transfer must surface as a failure, not as a complete file");
         received.Should().BeNull();
 
-        // Pinned as it is rather than as it ought to be: the counter moves before the first byte is
-        // copied, so a transfer that died at 512 of 4096 bytes has still spent one of the
-        // customer's downloads. The visitor's Range resume will then spend a second one only if it
-        // restarts from zero.
-        (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(1);
+        // And it is free. The stream broke at 512 of 4096 bytes because Google dropped it, which is
+        // the operator's failure and not the visitor's; the counter is what a customer's capped link
+        // is spent from, so nothing moves until the last byte is delivered. The visitor's Range
+        // resume pays for the download it actually completes.
+        (await harness.DownloadCountAsync(seeded.LinkId)).Should().Be(0);
+        (await harness.DownloadEventCountAsync(seeded.LinkId)).Should().Be(0, "the audit trail has to agree");
     }
 }

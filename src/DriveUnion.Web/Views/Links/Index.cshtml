@@ -1,0 +1,56 @@
+@using DriveUnion.Web.Models
+@model LinksPageViewModel
+@{
+    ViewData["Title"] = "لینک‌های اشتراک";
+
+    // The comp's tracks, unchanged: فایل / آدرس / دانلود / انقضا / وضعیت.
+    const string Cols = "--cols: minmax(0,1.8fr) 118px 100px 96px 90px";
+}
+
+@*
+    The comp's sticky «تنظیمات لینک» aside is not here. Its slug field, password, alias and
+    download-cap slider are M4 (spec §12) and there is nothing behind them to save to, so it would
+    be a panel of controls that quietly do nothing — the same lesson as a nav item that 404s.
+
+    Nothing on this page names a Google account, and nothing on it can: the listing behind it
+    carries a file name and a slug and no account at all.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="row" style="align-items: baseline; gap: 12px;">
+        <h1 class="page-title">لینک‌های اشتراک</h1>
+        <span class="page-sub">@PersianDigits.Count(Model.Rows.Count) لینک</span>
+    </div>
+
+    <div class="card card--flush">
+        <div class="dtable" style="@Cols">
+            <div class="dtable-head">
+                <div>فایل</div><div>آدرس</div><div>دانلود</div><div>انقضا</div><div>وضعیت</div>
+            </div>
+
+            @if (Model.Rows.Count == 0)
+            {
+                <div class="empty empty--incell">
+                    <span>هنوز لینکی ساخته نشده است.</span>
+                    <a class="btn btn--primary" href="@Url.Action("Index", "Files")">رفتن به فایل‌ها</a>
+                </div>
+            }
+            else
+            {
+                @* An anchor row, like «فایل‌ها»: display:contents keeps the cells in the one grid
+                   while the wrapper carries :hover. It leads to the file's detail panel, which
+                   already owns copy, revoke and «دیدن صفحه عمومی» — a second set of those here
+                   would be a second set to keep in step with the first. *@
+                foreach (var row in Model.Rows)
+                {
+                    <a class="dtable-row" href="@Url.Action("Index", "Files", new { selected = row.FileId })">
+                        <div class="cell-name" title="@row.FileName">@row.FileName</div>
+                        <div class="cell-slug" dir="ltr">@row.SlugPath</div>
+                        <div class="cell-num">@row.DownloadsText</div>
+                        <div style="font-size: 12px;">@row.ExpiryText</div>
+                        <div style="font-size: 12px; @row.StatusStyle">@row.StatusText</div>
+                    </a>
+                }
+            }
+        </div>
+    </div>
+</div>

@@ -103,6 +103,35 @@ public sealed class ShareLinkService(
         return [.. links.OrderByDescending(l => l.CreatedAt).Select(l => l.ToSummary())];
     }
 
+    public async Task<IReadOnlyList<(ShareLinkSummary Link, Guid StoredFileId, string FileName)>>
+        ListForTenantAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var rows = await db.ShareLinks
+            .AsNoTracking()
+            .Where(l => l.TenantId == tenantId)
+            // An inner join, so a link whose file has been soft-deleted drops out. That is not a
+            // hidden row: FileCatalog.DeleteAsync revokes a file's links as it deletes it, so what
+            // would be listed is a dead link naming a file the tenant already removed.
+            .Join(
+                db.StoredFiles.Where(f => f.TenantId == tenantId && f.DeletedAt == null),
+                l => l.StoredFileId,
+                f => f.Id,
+                (l, f) => new
+                {
+                    Row = new LinkRow(
+                        l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive, l.CreatedAt),
+                    FileId = f.Id,
+                    f.Name,
+                })
+            .ToListAsync(cancellationToken);
+
+        // Newest first, sorted in memory: SQLite refuses ORDER BY on a DateTimeOffset and this code
+        // has to behave the same on it as on Postgres. See ListForFileAsync.
+        return [.. rows
+            .OrderByDescending(r => r.Row.CreatedAt)
+            .Select(r => (r.Row.ToSummary(), r.FileId, r.Name))];
+    }
+
     public async Task<bool> RevokeAsync(Guid tenantId, Guid linkId, CancellationToken cancellationToken)
     {
         var affected = await db.ShareLinks

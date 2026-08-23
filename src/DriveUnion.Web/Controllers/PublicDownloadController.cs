@@ -91,6 +91,10 @@ public sealed class PublicDownloadController(
     /// from one stream to the other and never materialised: a 214 GB file has to cost this server a
     /// buffer, not a copy. Nothing about Google appears in the response; there is no redirect to
     /// drive.google.com, and the file id and account email stay on this side of the wire.
+    ///
+    /// The cap is checked before Google is contacted and the counter moves after the last byte. So a
+    /// link with no downloads left still refuses before anything is opened, and a transfer Google
+    /// dropped halfway costs the customer nothing.
     /// </summary>
     [HttpGet("/d/{slug}/file")]
     [EnableRateLimiting(DriveUnionRateLimits.PublicDownload)]
@@ -129,10 +133,8 @@ public sealed class PublicDownloadController(
         {
             // Only a GET arrives here — HEAD is routed to Probe, which has no recorder in it — so
             // the Range header is the whole question, which is exactly what DownloadCounting takes.
-            if (DownloadCounting.CountsAsDownload(rangeHeader))
-            {
-                await RecordAsync(ticket.ShareLinkId, cancellationToken);
-            }
+            var counts = DownloadCounting.CountsAsDownload(rangeHeader);
+            var delivered = true;
 
             Response.StatusCode = download.IsPartial
                 ? StatusCodes.Status206PartialContent
@@ -149,7 +151,10 @@ public sealed class PublicDownloadController(
             catch (OperationCanceledException)
             {
                 // The visitor closed the tab or the player stopped. Not an error, and there is
-                // nothing left to tell them.
+                // nothing left to tell them — but it is still their download and it still counts.
+                // This server did everything it was asked; a transfer abandoned at 99% must not be
+                // 214 GB of the operator's egress for free, again and again, against a cap it never
+                // touches.
             }
             catch (Exception exception)
             {
@@ -157,7 +162,24 @@ public sealed class PublicDownloadController(
                 // response so the client sees a truncated transfer and resumes with a Range.
                 logger.LogError(exception, "The Drive stream failed mid-response; aborting the connection");
                 HttpContext.Abort();
+                delivered = false;
             }
+
+            // Counted here rather than before the copy. A stream Google dropped at byte 512 of 4096
+            // is the operator's failure, and a customer's capped link must not pay for it — the
+            // visitor gets a truncated transfer and resumes, and the download they finish is the one
+            // they are billed for.
+            //
+            // The cap was still checked before Google was contacted: ResolveForDownloadAsync refuses
+            // a link with none left, so moving the counter does not hand out an extra file. What it
+            // does widen is the window between that check and the increment, which is now the length
+            // of the transfer rather than one Drive round-trip; closing that needs an atomic reserve
+            // on IPublicLinkReader, which does not exist yet.
+            //
+            // Not the request's token: when the visitor is the one who cancelled it is already
+            // cancelled, and the download would go unrecorded for the one reason that is not a
+            // failure at all.
+            if (counts && delivered) await RecordAsync(ticket.ShareLinkId, CancellationToken.None);
         }
 
         return new EmptyResult();

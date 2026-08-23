@@ -269,16 +269,23 @@ public sealed class FakeDriveClient : IDriveClient
         }
 
         var total = file.Content.LongLength;
-        var (start, end) = ResolveRange(rangeHeader, total);
-        var isPartial = rangeHeader is not null && (start != 0 || end != total - 1);
-        var slice = file.Content.AsSpan((int)start, (int)(end - start + 1)).ToArray();
+
+        // 206 is decided by the request, not by the size of the answer. Drive answers any range it
+        // can satisfy with a 206 and a Content-Range naming the slice — «Range: bytes=0-» on a
+        // 4096-byte file comes back «206 · bytes 0-4095/4096», which is the commonest range a
+        // browser sends. Judging partialness by whether the slice happens to be the whole file
+        // would answer 200 there and quietly leave the busiest branch of the download path unproven.
+        var honoured = ResolveRange(rangeHeader, total);
+        var start = honoured?.Start ?? 0;
+        var length = honoured is { } range ? range.End - range.Start + 1 : total;
+        var slice = file.Content.AsSpan((int)start, (int)length).ToArray();
 
         return Task.FromResult(new DriveDownload(
             new MemoryStream(slice, writable: false),
             file.Metadata.MimeType,
             slice.LongLength,
-            isPartial ? $"bytes {start}-{end}/{total}" : null,
-            isPartial,
+            honoured is { } served ? $"bytes {served.Start}-{served.End}/{total}" : null,
+            honoured is not null,
             NoopAsyncDisposable.Instance));
     }
 
@@ -323,31 +330,53 @@ public sealed class FakeDriveClient : IDriveClient
         return session;
     }
 
-    private static (long Start, long End) ResolveRange(string? rangeHeader, long total)
+    /// <summary>
+    /// The byte range Drive would honour, or null when there is none to honour — no <c>Range</c>
+    /// header at all, or one in a unit this fake does not model, both of which Drive answers with
+    /// the whole file under a 200.
+    ///
+    /// A range it understands but cannot satisfy is Drive's 416, which <see cref="DriveDownload"/>
+    /// has no shape for, so it throws. Loud rather than forgiving, like the rest of this fake:
+    /// serving something plausible instead would be a silent recovery, and in a test that is a bug
+    /// that ships.
+    /// </summary>
+    private static (long Start, long End)? ResolveRange(string? rangeHeader, long total)
     {
-        var last = total == 0 ? 0 : total - 1;
-        if (string.IsNullOrWhiteSpace(rangeHeader)) return (0, last);
+        if (string.IsNullOrWhiteSpace(rangeHeader)) return null;
 
         const string prefix = "bytes=";
         var value = rangeHeader.Trim();
-        if (!value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return (0, last);
+        if (!value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
 
         var spec = value[prefix.Length..].Split(',')[0].Trim();
         var dash = spec.IndexOf('-');
-        if (dash < 0) return (0, last);
+        if (dash < 0) return null;
 
         var head = spec[..dash];
         var tail = spec[(dash + 1)..];
+        var last = total - 1;
+
+        long start;
+        long end;
 
         if (head.Length == 0)
         {
             // "bytes=-500": the last 500 bytes.
-            var suffix = long.Parse(tail, CultureInfo.InvariantCulture);
-            return (Math.Max(0, total - suffix), last);
+            start = Math.Max(0, total - long.Parse(tail, CultureInfo.InvariantCulture));
+            end = last;
+        }
+        else
+        {
+            start = long.Parse(head, CultureInfo.InvariantCulture);
+            end = tail.Length == 0 ? last : Math.Min(last, long.Parse(tail, CultureInfo.InvariantCulture));
         }
 
-        var start = long.Parse(head, CultureInfo.InvariantCulture);
-        var end = tail.Length == 0 ? last : Math.Min(last, long.Parse(tail, CultureInfo.InvariantCulture));
+        if (start < 0 || start > last || end < start)
+        {
+            throw new DriveApiException(
+                $"Range '{rangeHeader}' cannot be satisfied against {total} bytes. Real Drive "
+                + "answers 416 here, and this fake does not model that response.");
+        }
 
         return (start, end);
     }

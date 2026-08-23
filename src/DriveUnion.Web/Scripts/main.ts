@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import ThemeLanguageToggle from './islands/ThemeLanguageToggle.vue';
+import { mountGoogleConnect } from './googleConnect';
 import { mountNavToggle } from './nav';
 
 /**
@@ -26,3 +27,6 @@ for (const [name, mount] of Object.entries(islands)) {
 }
 
 mountNavToggle();
+
+// Enhances the accounts screen's OAuth form into a popup, and is a no-op on every other page.
+mountGoogleConnect();

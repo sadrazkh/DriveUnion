@@ -45,3 +45,16 @@ public sealed record AccountsPageViewModel(
     string? Notice,
     string? Error,
     bool ConsentConfigured);
+
+/// <summary>
+/// The one card the OAuth popup ever shows: how the consent flow ended, in the window the operator
+/// is looking at, before it tells the accounts page and closes.
+///
+/// <paramref name="Hint"/> is for the configuration keys — the failure this machine meets first, and
+/// the only one where naming the missing setting is worth more than an apology.
+/// </summary>
+public sealed record ConnectPopupViewModel(
+    bool Succeeded,
+    string Title,
+    string Message,
+    string? Hint);

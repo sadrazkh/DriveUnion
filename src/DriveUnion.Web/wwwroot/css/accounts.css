@@ -1,0 +1,121 @@
+/*
+ * The Google consent popup's own page. Loaded by Views/Accounts/ConnectPopup.cshtml alone.
+ *
+ * Separate from app.css because nothing in the panel is 520px wide with no shell around it, and
+ * these rules would be dead weight on every other page. Everything here reads tokens.css and reuses
+ * app.css's .btn — the popup has to look like it belongs to the panel that opened it, in either
+ * theme, and a second button style is how that stops being true.
+ */
+
+.oauth-popup {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  background: var(--bg);
+}
+
+/* 18px is the handoff's radius for a card that is the whole page — the public download card uses
+   it for the same reason. 14px is for a card among other cards. */
+.oauth-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 26px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: center;
+  animation: oauth-rise 160ms ease-out;
+}
+
+/* A 44px square with a 12px radius: the same mark the account cards carry, so the popup reads as
+   the same product rather than as a browser dialog. */
+.oauth-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.oauth-card--ok .oauth-glyph {
+  background: var(--soft);
+  color: var(--accent-ink);
+}
+
+.oauth-card--bad .oauth-glyph {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.oauth-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.oauth-message {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.9;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* The configuration keys. LTR monospace inside an RTL card, on --surface2 so it reads as a value
+   to copy rather than as more prose. */
+.oauth-hint {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface2);
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--text);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.oauth-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+/*
+ * `hidden` has to mean hidden here.
+ *
+ * The card starts with both a close button and a link back to the panel and the script hides
+ * whichever one is wrong — but [hidden] { display: none } is a user-agent rule, and .btn's
+ * display: inline-flex is an author one, so it wins. Without this the popup shows both a button
+ * that cannot work and a link nobody needs. One class deeper is all it takes to outrank it.
+ */
+.oauth-card [hidden] {
+  display: none;
+}
+
+.oauth-foot {
+  margin: 12px 0 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+@keyframes oauth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oauth-card {
+    animation: none;
+  }
+}

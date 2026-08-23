@@ -1,0 +1,102 @@
+@using DriveUnion.Web.Models
+@model ConnectPopupViewModel
+@{
+    Layout = null;
+    var outcome = Model.Succeeded ? "connected" : "failed";
+}
+@*
+    The whole page a Google consent popup ever shows.
+
+    Chrome-less like _PublicLayout and for the same reason: this is a 520px window, not a panel view,
+    and the sidebar and search bar would be absurd inside it. _HeadAssets is shared verbatim so the
+    theme is settled before first paint here too — a popup that flashes white over a dark panel is
+    the one place the flash is unmissable.
+*@
+<!DOCTYPE html>
+<html dir="rtl" lang="fa" data-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@Model.Title · درایو یونیون</title>
+    <partial name="_HeadAssets" />
+    <link rel="stylesheet" href="~/css/accounts.css" asp-append-version="true" />
+</head>
+<body class="oauth-popup" data-oauth-outcome="@outcome">
+<main class="oauth-card @(Model.Succeeded ? "oauth-card--ok" : "oauth-card--bad")">
+    <span class="oauth-glyph" aria-hidden="true">@(Model.Succeeded ? "✓" : "!")</span>
+
+    @* role="status" rather than "alert" on both: this window opened for exactly this sentence, so a
+       screen reader reaching it is already where the announcement belongs. *@
+    <div role="status">
+        <h1 class="oauth-title">@Model.Title</h1>
+        <p class="oauth-message">@Model.Message</p>
+    </div>
+
+    @if (Model.Hint is { Length: > 0 })
+    {
+        <p class="oauth-hint mono" dir="ltr">@Model.Hint</p>
+    }
+
+    <div class="oauth-actions">
+        @* Hidden until the script confirms there is an opener: window.close() only works on a window
+           script opened, so a close button in a window that has no opener is a button that lies. *@
+        <button type="button" class="btn btn--lg" data-oauth-close hidden>بستن پنجره</button>
+
+        @* The other half of the same choice, and the default: with no opener this page is a dead end
+           without a way back to the panel. The script hides whichever one is wrong. *@
+        <a class="btn btn--lg" href="/accounts" data-oauth-back>بازگشت به اکانت‌ها</a>
+    </div>
+
+    <p class="oauth-foot" data-oauth-foot hidden></p>
+</main>
+<script>
+    // Tells the accounts page that opened this window how the flow ended, then gets out of the way.
+    //
+    // Inline rather than in the Vite bundle because this window's whole job is two sentences and a
+    // postMessage: waiting on a hashed module to load before it can close would make the fastest
+    // path — success — the slowest one, and a bundle that failed to load would strand the operator
+    // in a popup that never closes.
+    (function () {
+        var succeeded = document.body.dataset.oauthOutcome === 'connected';
+        var close = document.querySelector('[data-oauth-close]');
+        var back = document.querySelector('[data-oauth-back]');
+        var foot = document.querySelector('[data-oauth-foot]');
+
+        var opener = null;
+        try {
+            opener = window.opener;
+        } catch (e) {
+            // Cross-origin or already gone. Treated as no opener, which is the safe reading.
+        }
+
+        if (!opener || opener.closed) {
+            close.hidden = true;
+            back.hidden = false;
+            return;
+        }
+
+        close.hidden = false;
+        back.hidden = true;
+
+        // An explicit target origin and never a wildcard: stating it is what makes the browser
+        // refuse to deliver this anywhere else. It is this window's own origin because Google's
+        // redirect_uri points back at this app, which is the app that rendered the opener. If a
+        // deployment ever puts the redirect URI on a different host the message is simply dropped —
+        // and the opener still reacts, because it also watches for this window closing.
+        opener.postMessage(
+            { source: 'drive-union-google-connect', outcome: succeeded ? 'connected' : 'failed' },
+            window.location.origin);
+
+        close.addEventListener('click', function () { window.close(); });
+
+        // Only the success path closes itself. An error the operator never read is an error they
+        // will meet again in ten seconds, having learned nothing; the button is how they leave.
+        if (!succeeded) return;
+
+        foot.textContent = 'این پنجره خودش بسته می‌شود…';
+        foot.hidden = false;
+        window.setTimeout(function () { window.close(); }, 1200);
+    })();
+</script>
+</body>
+</html>
