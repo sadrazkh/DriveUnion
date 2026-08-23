@@ -44,9 +44,11 @@ moved to *In production* before launch. Unverified + production + restricted sco
 because no one else authenticates. Confirm current Google policy at setup time; this is the one
 external dependency whose rules can change under us.
 
-If the two accounts turn out to be Google **Workspace** rather than consumer Google One, a service
-account with domain-wide delegation removes user OAuth entirely — no consent screen, no expiry, no
-warning. Worth checking before building the connect flow; it is strictly better when available.
+A Google **Workspace** account would have removed all of this: a service account with domain-wide
+delegation needs no user OAuth, no consent screen and no refresh token at all. The owner has
+confirmed the accounts are **consumer Google One**, so that door is closed and the OAuth path above
+is the one being built. Moving the consent screen to *In production* is therefore a launch
+blocker, not a nicety — the alternative is reconnecting both accounts every seven days forever.
 
 ## 3. Decomposition
 
@@ -146,8 +148,14 @@ fast path to Google that the customer's own connection is not.
    where to continue.
 
 Chunked rather than one long `POST` because a 96 GB request that dies at 90% must not lose 86 GB, and
-because this is the honest precursor to M3's parallel chunks — M3 changes the client's scheduling and
-the server's concurrency, not the protocol.
+because this is the protocol M3 keeps.
+
+M3's spec establishes a limit worth knowing here: Drive acknowledges **one contiguous prefix** per
+resumable session, always anchored at zero, so concurrent range writes into a single session are not
+supported. The comp's `resumable ×8` therefore cannot mean eight parallel writers into one session.
+M3 keeps the parallelism on the browser→OVH leg and funnels it through an ordered reassembler into a
+single sequential writer — which is exactly the writer M1 builds. Nothing here changes; the label in
+the UI does.
 
 Drive resumable sessions expire after about a week; an `UploadSession` past `ExpiresAt` is marked
 failed and the client restarts.
@@ -178,6 +186,12 @@ This rule is a unit test, not a comment.
 **Refusing a download.** Inactive, expired, or at the download cap all render the same "this link is
 no longer available" card. An unknown slug renders *the same card* — the response must not reveal
 whether a slug exists.
+
+**Slug length is eight, not the comp's six.** `/d/kx91mz` is 36^6 ≈ 2.2 billion, which behind an
+anonymous public route is guessable at scale — a few hundred hosts scanning steadily find a live
+link in minutes. Eight characters is 36^8 ≈ 2.8 trillion and costs two characters nobody reads.
+This is a deliberate deviation from an approved comp, agreed with the owner; the mock's example
+strings should be updated with it.
 
 ## 8. Tenant isolation, and the trap that has already been paid for
 
@@ -238,8 +252,8 @@ union view, where they can be designed once against multiple accounts instead of
 Four things are needed from the owner. The first two block the first commit of real code.
 
 1. **Google Cloud project + OAuth client** (client ID, client secret, authorised redirect URI) — and
-   confirmation of whether the two Drive accounts are consumer Google One or Workspace, which decides
-   OAuth-vs-service-account per §2.
+   and the move to *In production* publishing status. The account type is settled — consumer Google
+   One, so the OAuth path in §2 — which leaves only the credentials themselves.
 2. **Postgres for development.** A local instance is running on this machine but its credentials are
    not known here, and there is no Docker to stand up a throwaway one. Integration tests need a
    reachable database.
