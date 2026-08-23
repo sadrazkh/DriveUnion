@@ -1,7 +1,21 @@
+@using DriveUnion.Web.Security
 @{
     var shell = ShellContext.From(ViewData);
     var title = ViewData["Title"] as string;
     var controller = ViewContext.RouteData.Values["controller"] as string ?? "Home";
+
+    // Everything about the Google pool hangs off this one question, asked of the principal rather
+    // than carried on ShellContext. The claim is the same fact DriveUnionPolicies.Operator
+    // authorises on, so the sidebar shows exactly what /accounts would let this caller in to see. A
+    // bool on the view model would be a second copy of that fact which every page has to remember
+    // to set correctly, and the two can disagree without anything failing — here there is nothing
+    // to set and nothing to forget.
+    var isOperator = User.IsOperator();
+
+    // The comp's «جست‌وجو در همه‌ی اکانت‌ها…» is the operator reading the union of the pool. A
+    // customer has one library and must not be told it is spread across accounts.
+    var searchLabel = isOperator ? "جست‌وجو در همه‌ی اکانت‌ها" : "جست‌وجو در فایل‌ها";
+
     string NavClass(string name) =>
         string.Equals(controller, name, StringComparison.OrdinalIgnoreCase)
             ? "nav-item is-active"
@@ -20,6 +34,9 @@
     the pair, so the shell would take the whole panel down for as long as any one of these
     controllers is unwritten. The conventional route is {controller}/{action}/{id?} and these paths
     match it.
+
+    Every mention of an account, the pool or its quota is behind `isOperator` (M1 spec §1.4).
+    Not hidden — absent: a customer must not be able to tell from this markup that a pool exists.
 *@
 <!DOCTYPE html>
 <html dir="rtl" lang="fa" data-theme="light">
@@ -38,13 +55,18 @@
             <span class="brand-mark" aria-hidden="true">د</span>
             <span class="brand-text">
                 <span class="brand-name">درایو یونیون</span>
-                @if (shell.AccountSummary is { Length: > 0 } summary)
+                @if (isOperator)
                 {
-                    <span class="brand-sub" dir="ltr">@summary</span>
-                }
-                else
-                {
-                    <span class="skeleton" style="height: 9px; width: 88px; margin-top: 4px;"></span>
+                    @* «2 accounts · 10 TB» is a count of the pool. The skeleton is no safer: an
+                       empty placeholder still announces that a figure belongs here. *@
+                    if (shell.AccountSummary is { Length: > 0 } summary)
+                    {
+                        <span class="brand-sub" dir="ltr">@summary</span>
+                    }
+                    else
+                    {
+                        <span class="skeleton" style="height: 9px; width: 88px; margin-top: 4px;"></span>
+                    }
                 }
             </span>
         </div>
@@ -66,40 +88,58 @@
         <a class="@NavClass("Links")" href="/Links">
             <span class="nav-dot" aria-hidden="true"></span>لینک‌های اشتراک
         </a>
-        <a class="@NavClass("Accounts")" href="/Accounts">
-            <span class="nav-dot" aria-hidden="true"></span>اکانت‌های گوگل
-        </a>
+        @if (isOperator)
+        {
+            @* AccountsController already answers a customer with 403; this keeps the words
+               «اکانت‌های گوگل» out of their markup, which is the half a policy cannot do. *@
+            <a class="@NavClass("Accounts")" href="/Accounts">
+                <span class="nav-dot" aria-hidden="true"></span>اکانت‌های گوگل
+            </a>
+        }
         <span class="nav-item" aria-disabled="true" title="در نسخه‌ی بعدی">
             <span class="nav-dot" aria-hidden="true"></span>تنظیمات
         </span>
 
         <div class="sidebar-foot">
-            <div class="subcard">
-                <div class="bar-label" style="font-size: 11.5px; margin-bottom: 7px;">
-                    <span>سهمیه آپلود امروز</span>
+            @if (isOperator)
+            {
+                @* 750 GB a day is what Google allows each account in the operator's pool; it is not
+                   a customer's allowance and not a customer's business. Rendering the card empty
+                   for a tenant only defers the disclosure to whoever first fills ShellContext in on
+                   a panel page, so the whole card is absent — label, bar and skeleton. *@
+                <div class="subcard">
+                    <div class="bar-label" style="font-size: 11.5px; margin-bottom: 7px;">
+                        <span>سهمیه آپلود امروز</span>
+                        @if (shell.HasQuota)
+                        {
+                            <span class="mono" dir="ltr">@shell.DailyQuotaUsedGb / @shell.DailyQuotaLimitGb GB</span>
+                        }
+                    </div>
                     @if (shell.HasQuota)
                     {
-                        <span class="mono" dir="ltr">@shell.DailyQuotaUsedGb / @shell.DailyQuotaLimitGb GB</span>
+                        <div class="bar">
+                            <span class="@shell.QuotaFillClass"
+                                  style="width: @shell.QuotaPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                        </div>
+                    }
+                    else
+                    {
+                        @* No quota reading yet — a skeleton, never a plausible number. *@
+                        <div class="skeleton" style="height: 6px;"></div>
                     }
                 </div>
-                @if (shell.HasQuota)
-                {
-                    <div class="bar">
-                        <span class="@shell.QuotaFillClass"
-                              style="width: @shell.QuotaPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
-                    </div>
-                }
-                else
-                {
-                    @* No quota reading yet — a skeleton, never a plausible number. *@
-                    <div class="skeleton" style="height: 6px;"></div>
-                }
-            </div>
+            }
 
-            @* The comp's dashed button previews the public page, which needs a slug this shell does
-               not have; that control belongs on a row that owns one. The living style guide is what
-               is genuinely one click away from every screen. *@
-            <a class="btn btn--dashed" href="/Design">راهنمای طراحی ↗</a>
+            @if (isOperator)
+            {
+                @* The comp's dashed button previews the public page, which needs a slug this shell
+                   does not have; that control belongs on a row that owns one. The living style
+                   guide is what is genuinely one click away — for the operator. /design draws the
+                   comp's account filter, its «اکانت» column and the daily-quota rule, so a
+                   customer's shell must not point at it. The page itself is still anonymous; only
+                   DesignController can close that, and it is not this file's to change. *@
+                <a class="btn btn--dashed" href="/Design">راهنمای طراحی ↗</a>
+            }
 
             <div class="row" style="padding: 6px 4px;">
                 <span class="avatar" aria-hidden="true">@(shell.UserName is { Length: > 0 } n ? n[..1] : "؟")</span>
@@ -120,8 +160,8 @@
 
             <form class="search" method="get" action="/Files" role="search">
                 <span class="muted" aria-hidden="true">⌕</span>
-                <label class="visually-hidden" for="shell-search">جست‌وجو در همه‌ی اکانت‌ها</label>
-                <input id="shell-search" name="q" placeholder="جست‌وجو در همه‌ی اکانت‌ها…" />
+                <label class="visually-hidden" for="shell-search">@searchLabel</label>
+                <input id="shell-search" name="q" placeholder="@(searchLabel + "…")" />
                 <span class="kbd" aria-hidden="true">⌘K</span>
             </form>
 

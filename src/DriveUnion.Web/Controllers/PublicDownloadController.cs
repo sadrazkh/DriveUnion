@@ -127,6 +127,8 @@ public sealed class PublicDownloadController(
 
         await using (download)
         {
+            // Only a GET arrives here — HEAD is routed to Probe, which has no recorder in it — so
+            // the Range header is the whole question, which is exactly what DownloadCounting takes.
             if (DownloadCounting.CountsAsDownload(rangeHeader))
             {
                 await RecordAsync(ticket.ShareLinkId, cancellationToken);
@@ -135,11 +137,7 @@ public sealed class PublicDownloadController(
             Response.StatusCode = download.IsPartial
                 ? StatusCodes.Status206PartialContent
                 : StatusCodes.Status200OK;
-            Response.ContentType = string.IsNullOrWhiteSpace(ticket.MimeType)
-                ? "application/octet-stream"
-                : ticket.MimeType;
-            Response.Headers.AcceptRanges = "bytes";
-            Response.Headers.ContentDisposition = Disposition(ticket.FileName);
+            WriteFileHeaders(ticket);
 
             if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
             if (download.ContentLength is { } contentLength) Response.ContentLength = contentLength;
@@ -163,6 +161,58 @@ public sealed class PublicDownloadController(
         }
 
         return new EmptyResult();
+    }
+
+    /// <summary>
+    /// The probe.
+    ///
+    /// Video players ask HEAD for the length and for <c>Accept-Ranges</c> before they open a stream,
+    /// and a 405 is enough to make some of them give up on a file that plays perfectly. It answers
+    /// with the headers <see cref="Download"/> would send for an unranged GET, and no body.
+    ///
+    /// A probe is not a download, and this action is where that is enforced rather than remembered:
+    /// there is no call to the recorder in it to guard or to forget. It does not reach Drive either.
+    /// The size, name and type are all on the ticket, so a probe costs one row read instead of a
+    /// connection to Google on the one anonymous, publicly-guessable route in the product.
+    ///
+    /// A <c>Range</c> on a HEAD is ignored — there is no content to partition, and honouring it
+    /// would mean asking Drive for a 206 whose body is thrown away.
+    /// </summary>
+    [HttpHead("/d/{slug}/file")]
+    [EnableRateLimiting(DriveUnionRateLimits.PublicDownload)]
+    public async Task<IActionResult> Probe(
+        string slug,
+        [FromQuery(Name = "lang")] string? lang,
+        CancellationToken cancellationToken)
+    {
+        var language = ResolveLanguage(lang);
+
+        if (!SlugGenerator.IsWellFormed(slug)) return Unavailable(language);
+
+        var ticket = await links.ResolveForDownloadAsync(slug, cancellationToken);
+        if (ticket is null) return Unavailable(language);
+
+        Response.StatusCode = StatusCodes.Status200OK;
+        WriteFileHeaders(ticket);
+
+        // StoredFile.SizeBytes is what Drive reported when the upload completed, which is the same
+        // number an unranged GET gets back in Content-Length.
+        Response.ContentLength = ticket.SizeBytes;
+
+        return new EmptyResult();
+    }
+
+    /// <summary>
+    /// The headers the stream and the probe agree on, in one place — a player must not be told two
+    /// different things about the same file depending on which verb it used.
+    /// </summary>
+    private void WriteFileHeaders(PublicDownloadTicket ticket)
+    {
+        Response.ContentType = string.IsNullOrWhiteSpace(ticket.MimeType)
+            ? "application/octet-stream"
+            : ticket.MimeType;
+        Response.Headers.AcceptRanges = "bytes";
+        Response.Headers.ContentDisposition = Disposition(ticket.FileName);
     }
 
     private async Task RecordAsync(Guid shareLinkId, CancellationToken cancellationToken)

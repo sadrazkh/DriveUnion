@@ -1,0 +1,53 @@
+@model AccessDeniedViewModel
+@{
+    ViewData["Title"] = Model.HasWorkspace || Model.IsOperator ? "دسترسی ندارید" : "بدون فضای کاری";
+}
+
+<div class="stack" style="gap: 16px; max-width: 520px;">
+    @if (!Model.HasWorkspace && !Model.IsOperator)
+    {
+        <div class="stack" style="gap: 4px;">
+            <h1 class="page-title">حساب شما هنوز به فضای کاری وصل نیست</h1>
+            <p class="page-sub">ورود انجام شد، ولی این حساب هنوز جایی برای کار کردن ندارد.</p>
+        </div>
+
+        <div class="card card--pad">
+            <p class="page-sub" style="margin: 0;">
+                تا وقتی اپراتور این حساب را به یک فضای کاری وصل نکند، صفحه‌های پنل باز نمی‌شوند.
+                این خطای شما نیست و با ورود دوباره درست نمی‌شود.
+            </p>
+        </div>
+    }
+    else if (Model.IsOperator)
+    {
+        @* Operator staff have no tenant, so every customer screen refuses them — correctly, and
+           confusingly if it is not said out loud. *@
+        <div class="stack" style="gap: 4px;">
+            <h1 class="page-title">این صفحه متعلق به یک فضای کاری است</h1>
+            <p class="page-sub">حساب شما اپراتور است و به هیچ فضای کاری تعلق ندارد.</p>
+        </div>
+
+        <div class="card card--pad">
+            <a class="btn btn--primary btn--lg" href="/Accounts">رفتن به اکانت‌های گوگل</a>
+        </div>
+    }
+    else
+    {
+        @* A customer. Nothing here names the operator's screens or what is on them: the product
+           rests on a customer never learning that a Google account is involved (spec §1), and a
+           refusal that explains what it is refusing gives that away. *@
+        <div class="stack" style="gap: 4px;">
+            <h1 class="page-title">این بخش در دسترس شما نیست</h1>
+            <p class="page-sub">حساب شما اجازه‌ی باز کردن این صفحه را ندارد.</p>
+        </div>
+
+        <div class="card card--pad">
+            <a class="btn btn--primary btn--lg" href="/Files">بازگشت به فایل‌ها</a>
+        </div>
+    }
+
+    <p class="page-sub" style="font-size: 12px;">
+        با حساب دیگری وارد شده‌اید؟
+        <a href="@Url.Action("Logout", "Account", new { area = "Identity" })">خروج از حساب</a>
+    </p>
+</div>

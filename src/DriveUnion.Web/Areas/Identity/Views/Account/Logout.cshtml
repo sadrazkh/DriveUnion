@@ -1,0 +1,20 @@
+@{
+    ViewData["Title"] = "خروج";
+}
+
+<div class="stack" style="gap: 16px; max-width: 420px;">
+    <h1 class="page-title">خروج از حساب</h1>
+
+    <div class="card card--pad stack" style="gap: 14px;">
+        <p class="page-sub" style="margin: 0;">
+            با خروج، این نشست بسته می‌شود و برای باز کردن پنل باید دوباره وارد شوید.
+        </p>
+
+        @* A form, not a link. Signing out on a GET means any image tag on any page can end the
+           session for you. *@
+        <form method="post" action="@Url.Action("Logout", "Account", new { area = "Identity" })">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn--danger btn--lg">خروج</button>
+        </form>
+    </div>
+</div>

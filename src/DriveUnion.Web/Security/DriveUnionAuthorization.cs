@@ -31,6 +31,16 @@ public static class DriveUnionPolicies
     /// involved, and a hidden button is not an access control.
     /// </summary>
     public const string Operator = "DriveUnion.Operator";
+
+    /// <summary>
+    /// The style guide at /design. Operator-only unless <c>DriveUnion:PublicDesignGuide</c> opens
+    /// it, because the guide draws the account filter, the account column and the pool's capacity —
+    /// a customer who reaches it learns exactly what the rest of the product hides.
+    ///
+    /// Registered in Program.cs rather than beside the other two: whether it is public is a
+    /// deployment decision read from configuration, and this file must not read configuration.
+    /// </summary>
+    public const string DesignGuide = "DriveUnion.DesignGuide";
 }
 
 public static class DriveUnionPrincipalExtensions

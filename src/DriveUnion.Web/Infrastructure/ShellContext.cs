@@ -10,6 +10,13 @@ namespace DriveUnion.Web.Infrastructure;
 /// property is nullable and the layout renders a skeleton where a value is missing, so a page that
 /// has not been taught about the shell yet renders a loading sidebar rather than invented numbers.
 /// Fabricated-looking figures in a chrome nobody re-reads are how a mock ships to production.
+///
+/// <see cref="AccountSummary"/> and the two quota figures describe the operator's pool, which by
+/// §1.4 of the M1 design a customer must never see — not the numbers and not the fact that a pool
+/// exists. There is deliberately no <c>IsOperator</c> flag here to carry that decision: the layout
+/// asks the principal, which is the same claim <c>DriveUnionPolicies.Operator</c> authorises on. A
+/// flag would be a second copy of that fact, settable per page, and a page that set it wrongly
+/// would leak the pool while every test and every policy still passed.
 /// </summary>
 public sealed class ShellContext
 {

@@ -1,9 +1,11 @@
 using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.Persistence;
+using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Security;
 using System.Net;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -34,6 +36,17 @@ builder.Services
     .AddEntityFrameworkStores<DriveUnionDbContext>()
     .AddDefaultTokenProviders();
 
+// Projects TenantId and IsOperator onto the signed-in principal, and registers the first-operator
+// seeder. Without it every panel policy fails closed — correctly, and for everybody.
+builder.Services.AddDriveUnionIdentity(builder.Configuration);
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/Identity/Account/Login";
+    options.LogoutPath = "/Identity/Account/Logout";
+    options.AccessDeniedPath = "/Identity/Account/AccessDenied";
+});
+
 // The Drive client, the OAuth token service and the account directory. It has no ValidateOnStart on
 // purpose: the panel boots without Google credentials, and only connecting an account fails.
 builder.Services.AddGoogleDrive(builder.Configuration);
@@ -43,6 +56,15 @@ builder.Services.AddDriveUnionServices();
 
 // Authorization policies and the rate limiter for /d/*.
 builder.Services.AddDriveUnionWeb();
+
+// /design is operator-only unless a deployment deliberately opens it — see DesignController. The
+// flag is read here because the policy depends on configuration and the security file must not.
+var designGuideIsPublic = builder.Configuration.GetValue("DriveUnion:PublicDesignGuide", false);
+
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(DriveUnionPolicies.DesignGuide, policy => policy.RequireAssertion(context =>
+        designGuideIsPublic
+        || context.User.HasClaim(DriveUnionClaimTypes.Operator, DriveUnionClaimTypes.OperatorValue)));
 
 // Resolves hashed Vite bundles for Razor. A singleton because the manifest is read from disk once
 // and every view @injects it — without this registration every page throws before it renders a byte.
@@ -73,6 +95,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
+
+// Creates the first operator from configuration when there is none. Idempotent, and a no-op when
+// nothing is configured — the password comes from user-secrets or the environment, never a file.
+await app.SeedDriveUnionAsync();
 
 // Before everything that reads an address — routing, the rate limiter, and the download recorder.
 app.UseForwardedHeaders();
