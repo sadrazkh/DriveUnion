@@ -1,11 +1,13 @@
 # Drive Union — Telegram
 
-**Date:** 2026-08-24 · **Status:** design proposed. Three things are **decided**: the transport is our own
+**Date:** 2026-08-24 · **Status:** partly built. Three things are **decided**: the transport is our own
 `telegram-bot-api --local` (§2.3), the storage is Google Drive with Telegram as delivery only (§2.5), and
-2000 MB is the ceiling (§2.1). The rest is blocked on §14 before the first line of implementation ·
-**Depends on:** M1, plus a Linux box running the Bot API server, which is why §4 grows a T0 ·
-§13 lists what this touches in M2–M6; it redesigns none of them, and names two places where M3 and M6
-now need a change rather than an addition.
+2000 MB is the ceiling (§2.1). **Identity, linking and the operator's bot screen have shipped** — §7.1
+records what was built and where the code is the newer thought. The transport and both byte-moving
+directions are blocked on §14 · **Depends on:** M1, plus a Linux box running the Bot API server, which is
+why §4 grows a T0 · §13 lists what this touches in M2–M6 and in plans-and-quotas; it redesigns none of
+them, and names three places — M3's disk check, M6's egress measurement and the plans spec's inbound
+ceiling — where they now need a change rather than an addition.
 
 ## 1. The brief, and the two sentences it turns into
 
@@ -114,8 +116,8 @@ Two more facts that shape the code rather than the product:
   no reason for a customer or a log line to learn where that is. What replaces the perishable-URL rule is
   a stricter one: **the bytes now exist on our filesystem, so the obligation is to delete them**, and
   §2.4.2 is the whole of that. The URL form is not dead code — it is what development uses — so
-  `ITelegramClient` returns a discriminated result and both branches are tested (§12.14), rather than one
-  branch being a comment about the other.
+  the gateway returns a discriminated result and both branches are tested (§12.14), rather than one branch
+  being a comment about the other.
 - **`callback_data` on an inline button is 1–64 bytes.** §8.3 is written around it.
 
 ### 2.2 The URL escape hatch does not exist
@@ -543,9 +545,10 @@ This machine is Windows, has no Docker (M1 §4), and the panel runs here directl
 be built and verified only where it will run. That is not a small caveat for a slice whose transport is
 now that service, so:
 
-- **Nothing in the test suite talks to a Bot API server, cloud or local.** `ITelegramClient` is the seam,
-  exactly as `IDriveClient` is M1 §4's, and every test in §12 runs against the fake. Self-hosting does not
-  change this and must not be allowed to argue for an integration test that needs the box.
+- **Nothing in the test suite talks to a Bot API server, cloud or local.** `ITelegramBotGateway` — the
+  seam that shipped, §7.1 — is to Telegram what `IDriveClient` is to Google in M1 §4, and every test in
+  §12 runs against the fake. Self-hosting does not change this and must not be allowed to argue for an
+  integration test that needs the box.
 - **The fake's default shape is the local server's, not the cloud's.** Its `getFile` returns an absolute
   path by default and a URL only where a test opts in. The branch that runs in production is the branch
   the suite exercises by default; the reverse arrangement is how a production-only bug gets written.
@@ -805,6 +808,12 @@ equivalents) before we fetch anything, so again the decision is made before anyo
   the panel's chunked uploader and already carries 96 GB files. **This branch did not become dead code.**
   It now catches a Premium sender's 3 GB file rather than an ordinary 25 MB one, and it still catches
   everything the product actually exists to hold.
+- **And there is a second ceiling now, which is the tenant's and not Telegram's.** The plans-and-quotas
+  spec puts a per-file limit in `IUploadCoordinator.BeginAsync`, and it reasoned that the Telegram bridge
+  would never trip it because Telegram's own inbound cap was 20 MB. At 2000 MB that is no longer true and
+  **the plan's limit is usually the one that refuses first** (§13). The two refusals must not be the same
+  sentence: "Telegram cannot carry this" and "your plan does not allow a file this large" have different
+  next actions, and one of them is a link to the panel's uploader that would also refuse.
 
 **The "no spooling" claim has to be withdrawn, and replaced with something better.** The original text
 said `getFile` then stream the response body straight into Drive, no spooling, M1 §6's rule holding
@@ -928,6 +937,14 @@ T1 is the only application slice worth shipping alone, in the same sense M1 is: 
 two headline sentences, and it is where a mistake is a security incident rather than a missing button.
 T0 ships before it and can be verified independently, which is the main argument for separating them.
 
+**Part of T1 has already shipped, and it is the part that did not need the transport decision.** Identity,
+linking, unlinking and the operator's bot-settings screen are built (§7.1) — §5, §6, §7's first three
+tables and §9 — against `ITelegramBotGateway` with an implementation that honestly delivers nothing. That
+ordering was luck rather than planning, but it is the ordering to keep: **everything in T1 that decides
+which tenant a chat may read was buildable before anyone knew which Bot API server we would run**, and it
+is now testable independently of a component this machine cannot even compile (§2.4.5). What remains of T1
+is the transport itself, the outbox and its drainer, the file card, and both byte-moving directions.
+
 ## 5. Tenant isolation, where there is no session at all
 
 Every Telegram update arrives with no cookie, no principal and no tenant. The only identity in it is a
@@ -955,6 +972,13 @@ Everything downstream takes the resolved `TenantId` as an explicit argument, int
 `IFileCatalog` / `IShareLinkService` / `IUploadCoordinator` methods a browser request calls. There is no
 Telegram-specific repository with a wider scope, no ambient tenant, and no `Guid.Empty` anywhere near
 this path.
+
+**This shipped as designed, and gained two refusals the design had not named** (§7.1): a sender whose
+panel user has no tenant, and a sender whose panel user is operator staff, both resolve to `null` and get
+§5.3's stranger string. Operator staff have no tenant to answer out of, and the bot is a customer's
+surface — so the only alternative to `null` would have been `Guid.Empty`, which is the exact failure M1 §8
+is written about. The role is read as `Owner` for every linked customer until M5 adds a column, in one
+method rather than inlined, so that the day it exists this is the only line that changes.
 
 **`TelegramAccount` deliberately carries no `TenantId` column** (§7). It holds `AppUserId`, and the
 resolver joins to `AppUser` for the tenant and the role on every update. A denormalised tenant on the
@@ -1066,7 +1090,13 @@ Mechanics that matter:
   the resolver returns one answer, and there is no chat-level switcher anywhere in the design to express
   anything else. §14.6.
 - **Unused tokens are swept**, and the sweeper's non-zero-delete test from M4 §6.3 applies: a sweeper that
-  deletes nothing must not look like a sweeper that had nothing to do.
+  deletes nothing must not look like a sweeper that had nothing to do. **As built it sweeps consumed rows
+  too** (§7.1), which is right — after consumption a row's only job was to have been the thing that could
+  not be consumed twice, and the binding it produced outlives it.
+- **Pressing «اتصال» twice replaces the request rather than adding one.** `StartAsync` deletes the
+  user's unconsumed tokens before minting the new one, so "the pending request" is unambiguous for the
+  confirming POST and there are never two live deep links for one account. `Attempts` is deliberately not
+  reset when a deep link is re-presented to the bot, or the five-guess budget becomes unbounded (§7.1).
 
 ### 6.3 Unlinking, and what happens when a panel user is removed
 
@@ -1150,7 +1180,66 @@ The decisions inside that, in the order they will be questioned:
   what the settings card renders as «مسدود شده در تلگرام», and it is what stops the outbox retrying into
   a wall for ever.
 
-One migration. `TelegramBotSettings` is seeded with its single row, empty.
+### 7.1 What has actually been built, and where the code is the newer thought
+
+Three of these six tables now exist, in migration `20260823214553_TelegramIdentityAndLinking`:
+`TelegramAccount`, `TelegramLinkToken` and `TelegramBotSettings`, with `ITelegramIdentityReader`,
+`ITelegramLinkService`, `ITelegramBotSettingsStore`, `ITelegramOperatorView` and `TelegramController`
+behind them. **`TelegramOutbox`, `TelegramFileId` and `TelegramUpdateSeen` land with the transport, so
+"one migration" was wrong: it is two, and the split is the right one** — the identity half has no
+dependency on which Bot API server we end up talking to, which is what let it ship while §2.3 was still
+being decided.
+
+Where the implementation and this document disagree, the implementation is the later thought and this is
+the record of it:
+
+- **`TelegramBotSettings` shipped without `UpdateSource`, `WebhookPathSegment`, `WebhookSecretProtected`
+  and `WebhookRegisteredAt`.** Correct: all four describe a registration that cannot exist before there is
+  a transport, and a nullable column nothing writes is a column that gets misread as "not configured yet"
+  when it means "not built yet". They belong to the transport migration.
+- **`BotUserId` is parsed from the token rather than fetched with `getMe`** — it is the digits before the
+  colon — and this is better than the design for a reason §3.2 depends on. The `file_id` cache is keyed on
+  the bot, so the key must be knowable and must change when the bot changes: parsing gives it with no
+  network call, before any transport exists, and it moves the moment an operator pastes a *different*
+  bot's token, which is exactly the cache miss §3.2 asked for. It also survives a @BotFather token
+  *rotation* for the same bot, because the prefix is the bot's id and not the secret — so rotating a
+  leaked token does not invalidate the cache. `getMe` remains the authoritative check and arrives with the
+  transport (§9.1); until then the shape is validated at the form, which turns "the bot never answers"
+  into "this is not a token" on the screen where it can be corrected.
+- **The outbound seam shipped as `ITelegramBotGateway`, not `ITelegramClient`.** One method today,
+  `TrySendMessageAsync`, with `UnconfiguredTelegramBotGateway` returning false and saying so rather than
+  pretending a farewell was delivered. Everywhere this document says `ITelegramClient` — §10.1's polling
+  loop, §11.1's rate-limit buckets, §12's fake — read `ITelegramBotGateway`: it is the single outbound
+  seam and the transport slice widens it rather than adding a second one. The rate limiters go in front of
+  *it*, and the point of §11.1 was never the name but that there is exactly one place to put them.
+- **The resolver refuses two cases the design did not name**, and both are right. A sender whose panel
+  user has no tenant, and a sender whose panel user is operator staff, resolve to **null** — the stranger
+  reply — because the bot is a customer's surface and operator staff have no tenant to answer with.
+  `TelegramLinkService.StartAsync` refuses the same two cases at link time, so the row never gets in and
+  the resolver's check is the backstop for one that did.
+- **`TenantRole` is read as `Owner` for every linked customer until M5 lands**, in one method rather than
+  inlined, and that is an accurate reading rather than a placeholder: with no role column, every member of
+  a tenant can do everything the panel offers a tenant. §13's M5 note is what changes when the column
+  arrives.
+- **Linking gained four mechanics worth keeping.** At most one live request per user, because `StartAsync`
+  deletes the previous unconsumed rows — so pressing the button twice replaces the link rather than
+  leaving two that work. `Attempts` is **not** reset when a deep link is re-presented, or five guesses
+  becomes as many as the guesser likes. The sweeper deletes **consumed** rows as well as expired ones,
+  since a consumed row's only job was to be unconsumable twice. And expiry is deliberately kept out of the
+  SQL predicate in the consuming `UPDATE`, because SQLite stores a `DateTimeOffset` as text and will not
+  compare one — the same reason `PublicLinkReader` gives, and it keeps one rule rather than one per
+  database.
+- **`/telegram/link` is its own page for now**, not the «تنظیمات» card of §9.2, because that screen is
+  M5's and does not exist yet. The card moves when it does; nothing in the flow changes with it.
+
+**One gap against this design, which is a defect rather than a decision.** `TelegramStartRequest` carries
+the sender's `Username`, `DisplayName` and `LanguageCode`, and `PresentAsync` receives them — but nothing
+persists them, so `TelegramAccount` is written with all three null. §9.2's linked card is specified to
+show the display name and `@username` and will show neither, and §8.4's language selection has nothing to
+read. The values exist at the door and are dropped one step before the row that wants them.
+
+`TelegramBotSettings` is seeded with its single row, empty, at `UpdatedAt = UnixEpoch`, which the read
+model translates back to "never saved" rather than showing 1970 on a screen.
 
 ## 8. The bot's surface
 
@@ -1283,7 +1372,11 @@ rendered as a disabled «در نسخه‌ی بعدی» placeholder:
   configured — the same requirement `AccountsController` already meets for Google.
 - **«تأیید توکن»** → `getMe`. It is the only proof a token works, and both values it returns are stored:
   the `@username` is what every customer's deep link is built from (§6.2), and the bot id is the
-  `TelegramFileId` cache key (§3.2).
+  `TelegramFileId` cache key (§3.2). **It arrives with the transport, and until then the screen gets both
+  values without it** (§7.1): the bot id is parsed out of the token, and the `@username` is typed by the
+  operator and validated against Telegram's own 5–32 character rule. That is enough to build a working
+  deep link, which is why linking could ship before any transport existed — but it is **not** proof the
+  token works, and the screen must not imply that it is until `getMe` is there to say so.
 - **Update mode** — webhook or polling (§10). In webhook mode «ثبت وبهوک» calls `setWebhook` with a
   freshly generated secret, a fresh path segment and an explicit `allowed_updates`; «حذف وبهوک» calls
   `deleteWebhook`.
@@ -1473,7 +1566,8 @@ make the bot look broken for everybody else. The verified figures, from the Bots
 - **Globally: 25 per second**, not 30. The same reasoning as M3 §5's `DriveQueriesPerMinute = 6000`
   against a stated 12,000 budget: leave headroom and never learn where the ceiling is from a 429.
 
-Both live in one place, in front of `ITelegramClient`, so no call site can route around them.
+Both live in one place, in front of the single outbound seam — **`ITelegramBotGateway`, which is what
+shipped; §7.1** — so no call site can route around them.
 
 **A 429 is obeyed, not retried.** `retry_after` parks the outbox item until that instant and **does not
 increment `Attempt`**. That is M3 §9's rule for a quota park, and it is right for the same reason: a
@@ -1554,8 +1648,10 @@ attempt, for the reason it never did.
 
 ## 12. Tests that hold these lines
 
-Every one runs against a fake `ITelegramClient` and M1's fake `IDriveClient`. **Nothing in this suite
-reaches Telegram or Google**, for M1 §4's reason.
+Every one runs against a fake `ITelegramBotGateway` (§7.1 — the design called it `ITelegramClient`) and
+M1's fake `IDriveClient`. **Nothing in this suite reaches Telegram or Google**, for M1 §4's reason, and
+§2.4.5 adds that this holds for the local Bot API server too: no test talks to one, and the fake's default
+`getFile` shape is the local server's.
 
 1. **The uniform stranger reply.** Never-linked, unlinked, and belonged-to-a-deleted-user all produce the
    byte-identical string of §5.3.
@@ -1605,8 +1701,17 @@ reaches Telegram or Google**, for M1 §4's reason.
     `SentMessageId` — the regression test for §3.4's "the queue is the timer".
 20. **A configured TTL beyond the API's limit is refused at startup**, not silently truncated at run time
     (§3.4).
+21. **The bound row keeps the sender's profile.** A `/start` carrying a `@username`, a display name and a
+    `language_code`, confirmed through the panel, produces a `TelegramAccount` with all three set. This is
+    the regression test for §7.1's one known defect: the values arrive on `TelegramStartRequest`, are
+    read by `PresentAsync`, and are currently dropped before the row is written — so §9.2's card shows a
+    blank name and §8.4 has no language to read. It is a two-column addition to `TelegramLinkToken` plus
+    two assignments, and it is worth a test because nothing else in the product fails when it is wrong.
+22. **Operator staff and tenant-less users cannot link and cannot resolve.** Both legs refuse (§7.1), and
+    the resolver's refusal is asserted separately from the link service's — they guard different moments
+    and a test that only covers one would let the other be removed as redundant.
 
-## 13. What this touches in M2–M6, and redesigns in none of them
+## 13. What this touches in M2–M6 and in plans-and-quotas, and redesigns in none of them
 
 - **M2 — pool and quota.** Nothing in the bot chooses a Google account; inbound uploads go through
   `IUploadCoordinator` and therefore through `IUploadTargetSelector`. The one thing inherited is M2 §4's
@@ -1651,11 +1756,36 @@ reaches Telegram or Google**, for M1 §4's reason.
     accounting bug to whoever reads the chart first.
   - M6 §9's export is also, per §2.6, the only real answer to «اگر گوگل به مشکل خورد», which raises its
     priority for reasons that have nothing to do with egress.
+- **Plans and quotas — three agreements and one sentence that self-hosting made false.** That spec landed
+  after §2.3 was decided and reasons from the old numbers in one place:
+  - **The contradiction, and it is load-bearing rather than cosmetic.** Its §4.2 says *"Telegram inbound
+    is bounded by Telegram's own 20 MB ceiling (Telegram §3.3), which is below any plausible per-file
+    limit"*, and concludes the per-file check on the inbound bridge is a formality that runs anyway. **It
+    is now 2000 MB (§2.1), which is above most plausible per-file limits**, so the check is the thing that
+    actually refuses, and its refusal is a message a customer will see routinely rather than never. The
+    conclusion in that spec — run the check in `IUploadCoordinator.BeginAsync` rather than in a controller
+    — is unchanged and is now doing real work. Its sentence about the ceiling needs correcting; this spec
+    cannot edit that file.
+  - **A single «ارسال فایل» can now spend 2 GB of a tenant's monthly traffic**, where it could spend
+    50 MB. That makes the bot the cheapest way in the product to exhaust a traffic allowance, and it means
+    the plan's reserve-then-commit has to happen at **drainer claim time**, in the same pre-flight as
+    §2.4.2's free-space check and §11.5's transfer slot — not when the button is pressed, which may be
+    hours earlier. Three checks, one place, before any byte is read out of Drive.
+  - **Its §9.4 and this spec's §3.1 already agree and should stay that way**: a size ceiling makes
+    «ارسال فایل» *absent* because the customer cannot fix it; a traffic overage leaves the button
+    *present* and explains, because it clears on a known date. §3.4's «دریافت کردم، پاک کن» is neither —
+    it is on the delivered message, not on the card.
+  - **Its §4.3 meters `ToTelegram` at our `CountingStream`**, which is the same loopback-measurement
+    problem the M6 note above describes: the number is right as a 1:1 proxy and is measured somewhere that
+    will look wrong to whoever reads the code. A cached `file_id` re-send meters zero in both specs, which
+    is correct and which both already warn will read as a bug.
 
 ## 14. Before implementation starts
 
-Nine things are needed from the owner and two are engineering tasks. Items 1 and 2 block the first commit
-of real code.
+Nine things are needed from the owner and two are engineering tasks. **Items 1 and 2 block the transport,
+which is now the whole of what is left of T1** — identity, linking and the operator's screen have already
+shipped without them (§7.1), which is the strongest evidence that the seam between the two halves was
+drawn in the right place.
 
 **Three of the original questions are now answered and are recorded rather than asked**, so that a reader
 does not go looking for an open decision that has been made: **the transport** is our own
