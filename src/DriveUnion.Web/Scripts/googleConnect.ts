@@ -62,7 +62,9 @@ export function mountGoogleConnect(): void {
     const child = window.open('', WINDOW_NAME, features());
 
     if (!child) {
-      form.target = '';
+      // Removed rather than blanked, and reset every time: a target left over from an earlier click
+      // would aim this submission at a window that is no longer there.
+      form.removeAttribute('target');
       flag.value = 'false';
       return;
     }

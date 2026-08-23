@@ -69,11 +69,10 @@
             // Cross-origin or already gone. Treated as no opener, which is the safe reading.
         }
 
-        if (!opener || opener.closed) {
-            close.hidden = true;
-            back.hidden = false;
-            return;
-        }
+        // Nobody to tell, and window.close() would not work either. The markup already renders this
+        // case — the close button hidden, the link back to the panel showing — so there is nothing
+        // to undo and no reason to go on.
+        if (!opener || opener.closed) return;
 
         close.hidden = false;
         back.hidden = true;

@@ -77,15 +77,7 @@ public sealed class AccountsController(
     [ValidateAntiForgeryToken]
     public IActionResult Connect([FromForm] bool popup)
     {
-        if (Google() is not { } google)
-        {
-            return Finish(
-                popup,
-                succeeded: false,
-                title: "پیکربندی گوگل کامل نیست",
-                message: "پیکربندی OAuth گوگل کامل نیست.",
-                hint: "Google:ClientId · Google:ClientSecret · Google:RedirectUri");
-        }
+        if (Google() is not { } google) return Unconfigured(popup);
 
         var state = (popup ? PopupStatePrefix : TopLevelStatePrefix)
             + WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
@@ -133,15 +125,7 @@ public sealed class AccountsController(
                 message: "اتصال اکانت لغو شد.");
         }
 
-        if (Google() is not { } google)
-        {
-            return Finish(
-                popup,
-                succeeded: false,
-                title: "پیکربندی گوگل کامل نیست",
-                message: "پیکربندی OAuth گوگل کامل نیست.",
-                hint: "Google:ClientId · Google:ClientSecret · Google:RedirectUri");
-        }
+        if (Google() is not { } google) return Unconfigured(popup);
 
         if (string.IsNullOrEmpty(code) || !StateMatches(state, expected))
         {
@@ -213,6 +197,18 @@ public sealed class AccountsController(
 
         return RedirectToAction(nameof(Index));
     }
+
+    /// <summary>
+    /// The same refusal from either end of the flow. Naming the three settings is worth more than an
+    /// apology here: this is the state a fresh deployment starts in, so it is the first thing an
+    /// operator meets, and the fix is three configuration keys away.
+    /// </summary>
+    private IActionResult Unconfigured(bool popup) => Finish(
+        popup,
+        succeeded: false,
+        title: "پیکربندی گوگل کامل نیست",
+        message: "پیکربندی OAuth گوگل کامل نیست.",
+        hint: "Google:ClientId · Google:ClientSecret · Google:RedirectUri");
 
     /// <summary>
     /// How the consent flow ends, told once and shown twice.
