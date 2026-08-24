@@ -47,8 +47,16 @@
 
                 @* Written by the popup enhancement only. Rendered hidden and empty so no reader meets a
                    label for a window that was never opened, and here rather than across the page so the
-                   sentence lands under the button it is about. *@
-                <p class="page-sub" role="status" data-google-connect-status hidden></p>
+                   sentence lands under the button it is about.
+
+                   The sentence itself rides on the element as data-*: the bundle is compiled once and
+                   cannot ask which language this request is in, and it used to answer an English
+                   operator in Persian. *@
+                <p class="page-sub"
+                   role="status"
+                   data-google-connect-status
+                   data-said-opened="@UiText.Accounts.ConnectPopupOpened"
+                   hidden></p>
             }
             else
             {

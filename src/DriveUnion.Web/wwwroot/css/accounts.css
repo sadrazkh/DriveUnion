@@ -243,6 +243,12 @@
   font-size: 13px;
   line-height: 2.1;
   color: var(--text);
+
+  /* Google's own strings are set into these sentences — a console menu path, a scope, a redirect
+     URI — and none of them has a break opportunity in it. On a 375px window the effective redirect
+     URI measured 317px inside a 289px box and hung 28px out over the card's edge. `anywhere` breaks
+     them only when the line would otherwise overflow, which is the only time it should. */
+  overflow-wrap: anywhere;
 }
 
 .setup-steps li + li {
@@ -287,12 +293,29 @@
   overflow: hidden;
 }
 
+/*
+ * Label · value · badge.
+ *
+ * It wraps because the badge does not shrink and the label is fixed, so on a narrow window the only
+ * thing left to give is the value — which is the one part of the row anybody came to read. Measured
+ * in English at 375px before this rule: the label held its 96px, «From the server configuration»
+ * held its 164.5px, and the Client ID, the stored-secret state and the redirect URI were each laid
+ * out 2.5px wide. Persian never showed it — «از پیکربندی سرور» is short enough to leave room.
+ *
+ * The 140px basis is what decides when: below it the badge takes the next line instead.
+ */
 .setup-state-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 9px 12px;
   font-size: 12px;
+}
+
+/* Keeps the badge at the row's inline end on whichever line it lands. */
+.setup-state-row > .badge {
+  margin-inline-start: auto;
 }
 
 .setup-state-row + .setup-state-row {
@@ -306,7 +329,7 @@
 }
 
 .setup-state-value {
-  flex: 1;
+  flex: 1 1 140px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -318,6 +341,10 @@
   line-height: 1.9;
   color: var(--muted);
   text-wrap: pretty;
+
+  /* Same reason as .setup-steps: a note here names a redirect URI or a configuration key, and one
+     unbreakable token is enough to widen the card past the window. */
+  overflow-wrap: anywhere;
 }
 
 /* A note inside a step hangs 6px under its line; a note that is a section of the body is spaced by

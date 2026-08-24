@@ -77,7 +77,10 @@ export function mountGoogleConnect(): void {
     child.focus();
 
     if (status) {
-      status.textContent = 'پنجره‌ی ورود به گوگل باز شد. اگر آن را نمی‌بینید، پشت این صفحه است.';
+      // The server put the sentence on the element in the language it rendered the page in; this
+      // file never holds one. It used to hold this one in Persian, which an English panel then said
+      // to an English operator.
+      status.textContent = status.dataset.saidOpened ?? '';
       status.hidden = false;
     }
 
@@ -150,6 +153,15 @@ function mountRedirectUriCopy(): void {
   const label = button.textContent ?? '';
   let restore = 0;
 
+  // The two outcomes, in the language the server rendered the page in. They used to be Persian
+  // literals here, which meant an operator on the English panel pressed Copy and was answered
+  // «رونوشت شد» — a bundle is compiled once and cannot ask which language a request was in, so the
+  // sentences ride on the button as data-* the way the first-run screen's suggestion does.
+  const said = {
+    copied: button.dataset.copied ?? label,
+    denied: button.dataset.copyDenied ?? label,
+  };
+
   button.hidden = false;
 
   button.addEventListener('click', () => {
@@ -158,7 +170,7 @@ function mountRedirectUriCopy(): void {
 
     void navigator.clipboard.writeText(value).then(
       () => {
-        button.textContent = 'رونوشت شد';
+        button.textContent = said.copied;
         window.clearTimeout(restore);
         restore = window.setTimeout(() => {
           button.textContent = label;
@@ -168,7 +180,7 @@ function mountRedirectUriCopy(): void {
         // Denied at the browser, which is a real outcome and not an error worth a console entry.
         // Selecting the text is the fallback the markup already supports, so say that instead of
         // leaving a button that appears to have worked.
-        button.textContent = 'اجازه داده نشد — متن را انتخاب و کپی کنید';
+        button.textContent = said.denied;
       },
     );
   });

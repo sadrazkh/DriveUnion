@@ -191,11 +191,14 @@
                 <a class="btn btn--dashed" href="/Design">@UiText.Shell.DesignGuide</a>
             }
 
-            <div class="row" style="padding: 6px 4px;">
+            @* The name and role carry `title` as well as their own text: the row truncates them to
+               fit a 232px sidebar (see .sidebar-identity in app.css), and a truncated address has to
+               stay readable somewhere. *@
+            <div class="row sidebar-identity">
                 <span class="avatar" aria-hidden="true">@(shell.UserName is { Length: > 0 } n ? n[..1] : UiText.Shell.UnknownInitial)</span>
-                <span style="line-height: 1.3;">
-                    <span style="display: block; font-size: 12.5px; font-weight: 600;">@(shell.UserName ?? "—")</span>
-                    <span style="display: block; font-size: 10.5px;" class="muted">@(shell.UserRole ?? "—")</span>
+                <span class="sidebar-identity-text">
+                    <span class="sidebar-identity-name" title="@shell.UserName">@(shell.UserName ?? "—")</span>
+                    <span class="sidebar-identity-role muted" title="@shell.UserRole">@(shell.UserRole ?? "—")</span>
                 </span>
                 @if (isSignedIn)
                 {
@@ -212,7 +215,7 @@
                         is the sidebar's own control at the row's end rather than a second one bolted
                         underneath. It sits in the identity row because that is whose session it is.
                     *@
-                    <form method="post" action="/Identity/Account/Logout" class="push-end">
+                    <form method="post" action="/Identity/Account/Logout" class="push-end sidebar-identity-out">
                         @Html.AntiForgeryToken()
                         <button type="submit"
                                 class="nav-item"

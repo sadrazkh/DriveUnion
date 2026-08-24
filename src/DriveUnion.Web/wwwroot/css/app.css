@@ -233,6 +233,49 @@ a:hover {
   flex: 0 0 28px;
 }
 
+/*
+ * The signed-in row at the foot of the sidebar: avatar · name and role · sign out.
+ *
+ * The sidebar is 232px and cannot be anything else; the name is whatever address the operator signs
+ * in with and can be any length. Without min-width: 0 on the middle block the row refuses to shrink
+ * below that block's min-content — an email address has almost no break opportunity — and the
+ * excess comes off the far end, where the sign-out control is. Measured before this rule: with
+ * «operator@driveunion.test» the button started 32.7px past the sidebar's 12px padding and 20.7px
+ * past the sidebar's own border, drawn over the content column in RTL. min-width: 0 lets the block
+ * shrink; the ellipsis is what it does with the shrinking.
+ */
+.sidebar-identity {
+  padding: 6px 4px;
+}
+
+.sidebar-identity-text {
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.sidebar-identity-name,
+.sidebar-identity-role {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-identity-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.sidebar-identity-role {
+  font-size: 10.5px;
+}
+
+/* The one thing in the row that must never be the part that gives: a truncated «خروج» is a control
+   nobody can identify. */
+.sidebar-identity-out {
+  flex: 0 0 auto;
+}
+
 .app-main {
   flex: 1;
   min-width: 0;
@@ -250,6 +293,16 @@ a:hover {
   position: sticky;
   top: 0;
   z-index: 5;
+
+  /*
+    The comp draws this row on a desktop and it is one line there — nothing below wraps until it has
+    to. On a phone it has to: the search box will not shrink past its own min-content (an <input>
+    contributes its size=20 width whatever min-width says), so the three items measured 505px of
+    content in a 375px header and the whole action group — theme, language and «آپلود فایل» — was
+    laid out at x = -130 and clipped away by the shell's overflow-x. Wrapping costs one row of
+    header height on a narrow window and nothing at all on a wide one.
+  */
+  flex-wrap: wrap;
 }
 
 .app-content {
@@ -289,9 +342,17 @@ a:hover {
   padding: 1px 5px;
 }
 
-/* Off-canvas trigger. Hidden until the sidebar collapses, so it never sits in the header on a
-   desktop the way a `hidden` class left behind by a refactor would. */
-.nav-toggle {
+/*
+ * Off-canvas trigger. Hidden until the sidebar collapses, so it never sits in the header on a
+ * desktop the way a `hidden` class left behind by a refactor would.
+ *
+ * The selector names .btn as well, and that is the whole of why this rule works. The control is a
+ * .btn in the markup, .btn sets `display: inline-flex` further down this file, and at equal
+ * specificity the later rule wins — a bare `.nav-toggle { display: none }` put a 37×31px hamburger
+ * in the header at 1280 and 1440 in both directions. Matching both classes outranks it wherever
+ * either block ends up, which is what keeps this true the next time the file is reordered.
+ */
+.btn.nav-toggle {
   display: none;
 }
 
@@ -586,15 +647,53 @@ a:hover {
  * The comp's tables are CSS grids, not <table> — the column tracks differ per screen and the
  * detail panel needs cells to line up across a card edge. Each page sets its own tracks:
  *
- *   <div class="dtable" style="--cols: 28px minmax(0,2.4fr) 84px 92px 110px 118px 96px">
+ *   <div class="dtable" style="--cols: 28px minmax(var(--name-min),2.4fr) 84px 92px 110px 118px 96px">
  *
- * Rows are `display: contents` so a row wrapper can carry :hover and .is-selected while its cells
- * still participate in the one grid.
+ * A row is a `subgrid` item spanning every track, so the row wrapper can carry :hover, .is-selected
+ * and — on the two screens where it is an anchor — focus, while its cells still line up with the
+ * header's. See .dtable-row for why it is not `display: contents`.
  */
 .dtable {
   display: grid;
   grid-template-columns: var(--cols);
   align-items: center;
+
+  /*
+    The floor the name column keeps. Every page writes its name track as
+    `minmax(var(--name-min), Nfr)`, so the number lives here once instead of in each view's --cols.
+
+    It exists because `minmax(0, Nfr)` answers "there is no room" by resolving to zero. The comp's
+    files table is 348px of fixed track; the content column at a 375px viewport is 341px; so the
+    name — the only column anyone reads — was laid out 0px wide and every row showed four values
+    and a blank. The links table was worse: 404px of fixed track against the same 341px.
+
+    160px is one line of about twenty characters at the row's 12.5px, which is enough of a file
+    name to tell two of them apart.
+  */
+  --name-min: 160px;
+
+  /*
+    …and once the name has a floor the table can be wider than its card, so it becomes its own
+    scroll region rather than spilling. On the table and not on an ancestor deliberately: a scroll
+    container makes `position: sticky` inside it resolve against the container, and the shell's
+    sticky header and sticky detail panel are both above this box. Nothing inside a .dtable is
+    sticky, which is what makes this the one safe place to put it.
+
+    `overscroll-behavior-x: contain` so swiping the last column into view on a phone does not chain
+    into the browser's back gesture.
+  */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+
+  /* Named as a container so the empty state below can be as wide as what you can see rather than as
+     wide as the tracks. On a scroll container `cqi` is the scrollport, which is the whole point. */
+  container-type: inline-size;
+}
+
+/* A row spans every track, so its box starts at the scroll container's inline edge and a ring drawn
+   2px outside it is clipped away. Drawn just inside instead. */
+.dtable-row:focus-visible {
+  outline-offset: -2px;
 }
 
 .dtable-head {
@@ -610,8 +709,37 @@ a:hover {
   font-weight: 600;
 }
 
+/*
+ * A row is a grid item that spans every track and lays its own cells out on the parent's tracks.
+ *
+ * It has to be a box, because on /files and /links the row is an anchor and it is the only way to
+ * open a file's detail panel or to reach a link's file. A `display: contents` element generates no
+ * box and Chrome will not focus one: measured, `.focus()` on a row left document.activeElement
+ * where it was and adding `tabindex="0"` changed nothing, while all nine other controls on the page
+ * took focus. Clicking worked, so the failure was invisible to a mouse.
+ *
+ * `subgrid` rather than repeating var(--cols) here, so the header, the rows and the loading
+ * skeleton cannot drift into three sets of tracks that merely look alike. It is the reason the
+ * cells still line up across the row's own box.
+ */
 .dtable-row {
-  display: contents;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+
+  /*
+    …and being an anchor also means `a { color: var(--accent) }` and `a:hover { text-decoration:
+    underline }` from the base reach it. Measured: every file name in both tables rendered #0F9D77
+    instead of --text. The comp paints exactly one column in the accent — the slug — and that
+    contrast is the whole of what it is for.
+  */
+  color: var(--text);
+}
+
+.dtable-row:hover {
+  color: var(--text);
+  text-decoration: none;
 }
 
 .dtable-row > * {
@@ -620,6 +748,13 @@ a:hover {
   font-size: 12.5px;
   min-width: 0;
   transition: background 120ms ease;
+
+  /* A cell that cannot fit its content wraps rather than drawing over the column beside it — the
+     style guide's own numeral table did exactly that, 167px of `PersianDigits.Translate(…)` laid
+     over the two columns after it at 375px. The name column opts out with white-space: nowrap and
+     an ellipsis, which overflow-wrap cannot touch; everything else here is a size, a slug or a
+     status word and would rather break than overlap. */
+  overflow-wrap: anywhere;
 }
 
 .dtable-row:last-child > * {
@@ -829,9 +964,21 @@ a:hover {
   line-height: 1.9;
 }
 
-/* An empty table is a grid with one cell; without this the message sits in the first column. */
+/*
+ * An empty table is a grid with one cell; without grid-column the message sits in the first column.
+ *
+ * The other two declarations are about the table being a scroll region. A cell spanning every track
+ * is as wide as the grid, not as wide as the scrollport, so a centred message in an empty files
+ * table measured 688px against 288px of visible card and put its action button at x = -58 — the
+ * whole empty state was off the edge until you scrolled a table with nothing in it. 100cqi is the
+ * .dtable's own content box, which for a scroll container is what you can see; sticky keeps the
+ * message against the visible edge if somebody scrolls the header anyway.
+ */
 .empty--incell {
   grid-column: 1 / -1;
+  width: 100cqi;
+  position: sticky;
+  inset-inline-start: 0;
 }
 
 /* ---------------------------------------------------------------- form controls */
@@ -1202,7 +1349,8 @@ a:hover {
     border-bottom: 1px solid var(--line);
   }
 
-  .nav-toggle {
+  /* Both classes again, for the reason the desktop rule gives. */
+  .btn.nav-toggle {
     display: inline-flex;
   }
 

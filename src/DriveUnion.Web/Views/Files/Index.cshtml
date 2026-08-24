@@ -6,7 +6,10 @@
     // The comp's tracks minus «اکانت» and «دانلود»: a customer must never learn which Google
     // account holds their file, and FileListItem carries a link count rather than a download
     // total. Checkbox · name · size · modified · links.
-    const string Cols = "--cols: 28px minmax(0,2.4fr) 92px 110px 118px";
+    //
+    // The name track's floor is --name-min from app.css rather than the comp's 0: 348px of fixed
+    // track does not fit a 375px phone, and minmax(0,…) answers that by drawing no name at all.
+    const string Cols = "--cols: 28px minmax(var(--name-min),2.4fr) 92px 110px 118px";
 }
 
 @*

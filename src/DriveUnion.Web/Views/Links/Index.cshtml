@@ -3,8 +3,10 @@
 @{
     ViewData["Title"] = UiText.Links.Title;
 
-    // The comp's tracks, unchanged: فایل / آدرس / دانلود / انقضا / وضعیت.
-    const string Cols = "--cols: minmax(0,1.8fr) 118px 100px 96px 90px";
+    // The comp's tracks: فایل / آدرس / دانلود / انقضا / وضعیت — with the file column's floor taken
+    // from --name-min in app.css. 404px of fixed track cannot fit the 341px a 375px phone has, and
+    // the comp's minmax(0,…) resolved the file name to nothing rather than saying so.
+    const string Cols = "--cols: minmax(var(--name-min),1.8fr) 118px 100px 96px 90px";
 }
 
 @*

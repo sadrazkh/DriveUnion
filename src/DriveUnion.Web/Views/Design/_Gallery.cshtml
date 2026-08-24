@@ -3,7 +3,10 @@
     @* The model is the theme this copy is rendered in ("light" / "dark"). It only exists to keep
        element ids unique — the gallery is on the page twice and duplicate ids break every label. *@
     var s = Model;
-    const string Cols = "--cols: 28px minmax(0,2.4fr) 84px 92px 110px 118px 96px";
+    // The comp's seven tracks, with the name column's floor from --name-min in app.css — the same
+    // change the two real tables carry, because a specimen that cannot show the narrow case is not
+    // a specimen of it.
+    const string Cols = "--cols: 28px minmax(var(--name-min),2.4fr) 84px 92px 110px 118px 96px";
 }
 
 @*

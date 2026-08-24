@@ -1,0 +1,126 @@
+@using DriveUnion.Web.Models
+@model OperatorPlansPageViewModel
+@{
+    ViewData["Title"] = UiText.Plans.OperatorTitle;
+
+    const string PlanCols = "--cols: 110px minmax(0,1fr) 96px 96px 118px 70px 84px";
+    const string TenantCols = "--cols: minmax(0,1.6fr) 110px 150px 70px 90px";
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">@UiText.Plans.OperatorTitle</h1>
+        <p class="page-sub">@UiText.Plans.OperatorSubtitle</p>
+    </div>
+
+    @*
+        The first thing on the screen, and deliberately not a footnote. Every figure in the table
+        below is a sample: §15.2 of the design leaves the tier names and all four numbers per tier to
+        the product owner, and the owner has not answered. An operator reads a number off a table and
+        quotes it to a customer; the warning has to be where that happens, not in a document.
+    *@
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title" style="color: var(--warn);">@UiText.Plans.PlaceholderHeading</div>
+        </div>
+        <div class="card-body">
+            <p style="font-size: 12.5px; margin: 0;">@UiText.Plans.PlaceholderBody</p>
+        </div>
+    </div>
+
+    <div class="card card--flush">
+        <div class="card-head">
+            <div class="card-title">@UiText.Plans.CatalogueHeading</div>
+            <span class="muted" style="font-size: 11.5px;">@UiText.Plans.CatalogueNote</span>
+        </div>
+
+        <div class="dtable" style="@PlanCols">
+            <div class="dtable-head">
+                <div>@UiText.Plans.ColumnCode</div>
+                <div>@UiText.Plans.ColumnName</div>
+                <div>@UiText.Plans.ColumnStorage</div>
+                <div>@UiText.Plans.ColumnFile</div>
+                <div>@UiText.Plans.ColumnTraffic</div>
+                <div>@UiText.Plans.ColumnSeats</div>
+                <div>@UiText.Plans.ColumnStatus</div>
+            </div>
+
+            @foreach (var plan in Model.Plans)
+            {
+                <div class="dtable-row">
+                    <div class="cell-slug" dir="ltr">@plan.Code</div>
+                    <div class="cell-name">@plan.Name</div>
+                    <div class="cell-num">@plan.StorageText</div>
+                    <div class="cell-num">@plan.MaxFileText</div>
+                    <div class="cell-num">@plan.MonthlyTrafficText</div>
+                    <div class="cell-num">@plan.SeatsText</div>
+                    <div style="font-size: 12px; @(plan.IsRetired ? "color: var(--muted);" : string.Empty)">@plan.StatusText</div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card card--flush">
+        <div class="card-head">
+            <div class="card-title">@UiText.Plans.TenantsHeading</div>
+            @*
+                Over-commitment is shown rather than prevented: a cap is a per-customer ceiling, not
+                a reservation, and requiring the sum to fit the pool would make every new workspace
+                wait on a capacity purchase.
+            *@
+            <span class="mono" dir="ltr"
+                  style="font-size: 11.5px; @(Model.IsOverCommitted ? "color: var(--warn);" : string.Empty)">@Model.CommittedText</span>
+        </div>
+
+        <div class="dtable" style="@TenantCols">
+            <div class="dtable-head">
+                <div>@UiText.Plans.ColumnTenant</div>
+                <div>@UiText.Plans.ColumnPlan</div>
+                <div>@UiText.Plans.ColumnUsed</div>
+                <div>@UiText.Plans.ColumnFiles</div>
+                <div>@UiText.Plans.ColumnSeats</div>
+            </div>
+
+            @if (Model.Tenants.Count == 0)
+            {
+                <div class="empty empty--incell">
+                    <span>@UiText.Plans.NoTenants</span>
+                </div>
+            }
+            else
+            {
+                @foreach (var tenant in Model.Tenants)
+                {
+                    <a class="dtable-row" href="@Url.Action("OperatorTenant", "Plans", new { tenantId = tenant.TenantId })">
+                        <div class="cell-name" title="@tenant.Name">@tenant.Name</div>
+                        <div class="cell-slug" dir="ltr">@tenant.PlanText</div>
+                        <div class="stack" style="gap: 4px;">
+                            <span class="mono" dir="ltr" style="font-size: 12px;">@tenant.UsedText</span>
+                            <div class="bar">
+                                <div class="@tenant.FillClass" style="width: @tenant.Percent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;"></div>
+                            </div>
+                        </div>
+                        <div class="cell-num">@tenant.FilesText</div>
+                        <div style="font-size: 12px;">@tenant.MembersText</div>
+                    </a>
+                }
+            }
+        </div>
+
+        <div class="card-foot">
+            <div class="stack" style="gap: 4px;">
+                @if (Model.IsOverCommitted)
+                {
+                    <span style="font-size: 12px; color: var(--warn);">@UiText.Plans.OverCommittedNote</span>
+                }
+                @*
+                    Traffic gets no pool comparison, and the screen says why rather than leaving a
+                    reader hunting for the second number: the box's egress ceiling is a bandwidth
+                    figure and nobody has measured it yet.
+                *@
+                <span class="mono" dir="ltr" style="font-size: 11.5px;">@Model.SoldTrafficText</span>
+                <span class="muted" style="font-size: 12px;">@UiText.Plans.SoldTrafficNote</span>
+            </div>
+        </div>
+    </div>
+</div>

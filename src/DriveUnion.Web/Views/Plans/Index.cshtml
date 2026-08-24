@@ -1,0 +1,80 @@
+@using DriveUnion.Web.Models
+@model TenantPlanPageViewModel
+@{
+    ViewData["Title"] = UiText.Plans.Title;
+}
+
+@*
+    The customer's own card, and nothing else. Nothing here names another workspace, the pool, a
+    Google account or what the operator has committed — a customer's plan card is about their four
+    numbers and only those.
+
+    There is no upgrade button. There is no checkout for one to lead to, and a primary action that
+    goes nowhere is worse than its absence; the line under the card says who does change a plan.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="row" style="align-items: baseline; gap: 12px;">
+        <h1 class="page-title">@UiText.Plans.Title</h1>
+        <span class="page-sub">@Model.FileCountText</span>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Plans.PlanLabel — @Model.PlanName</div>
+            @if (Model.AppliedAtText is not null)
+            {
+                <span class="muted" style="font-size: 11.5px;">@Model.AppliedAtText</span>
+            }
+        </div>
+
+        <div class="card-body">
+            <div class="stack" style="gap: 14px;">
+                @* Storage: the one dimension with a real meter behind it in this slice. *@
+                <div class="stack" style="gap: 6px;">
+                    <div class="row" style="justify-content: space-between; align-items: baseline; gap: 12px;">
+                        <span style="font-size: 12.5px;">@UiText.Plans.StorageLabel</span>
+                        <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.StorageText</span>
+                    </div>
+                    <div class="bar">
+                        <div class="@Model.StorageFillClass" style="width: @Model.StoragePercent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;"></div>
+                    </div>
+                    @if (Model.IsOverStorage)
+                    {
+                        @* Said in words rather than only in red: nothing has been deleted, and the
+                           way out is deleting files, which needs the panel, which still works. *@
+                        <p class="muted" style="font-size: 12px; margin: 0;">@UiText.Plans.OverStorage</p>
+                    }
+                </div>
+
+                @* Per file. No bar: it is a ceiling on one act, not a quantity anybody fills up. *@
+                <div class="stack" style="gap: 6px;">
+                    <div class="row" style="justify-content: space-between; align-items: baseline; gap: 12px;">
+                        <span style="font-size: 12.5px;">@UiText.Plans.FileLabel</span>
+                        <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.MaxFileText</span>
+                    </div>
+                    <p class="muted" style="font-size: 12px; margin: 0;">@Model.MaxFileExplanation</p>
+                </div>
+
+                @* Traffic. The allowance is real and sold; the usage is not measured yet, and the
+                   subline says so — an unqualified figure here would read as "you have used none". *@
+                <div class="stack" style="gap: 6px;">
+                    <div class="row" style="justify-content: space-between; align-items: baseline; gap: 12px;">
+                        <span style="font-size: 12.5px;">@UiText.Plans.TrafficLabel</span>
+                        <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.MonthlyTrafficText</span>
+                    </div>
+                    <p class="muted" style="font-size: 12px; margin: 0;">@UiText.Plans.TrafficNotMeteredYet</p>
+                </div>
+
+                @* Seats: a count of people, so Persian digits rather than a monospace readout. *@
+                <div class="row" style="justify-content: space-between; align-items: baseline; gap: 12px;">
+                    <span style="font-size: 12.5px;">@UiText.Plans.MembersLabel</span>
+                    <span style="font-size: 12.5px;">@Model.MembersText</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-foot">
+            <span class="muted" style="font-size: 12px;">@UiText.Plans.PlanChangeIsOperator</span>
+        </div>
+    </div>
+</div>

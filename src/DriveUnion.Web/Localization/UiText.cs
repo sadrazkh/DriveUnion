@@ -525,6 +525,28 @@ public static class UiText
 
         public static string CopyUri => Pick("رونوشت", "Copy");
 
+        /// <summary>
+        /// What the copy button says once it has copied, and what it says when the browser refuses.
+        ///
+        /// They are entries rather than literals in <c>Scripts/googleConnect.ts</c> because that is
+        /// where they were, in Persian, on an English panel: a bundle cannot ask which language the
+        /// request was in, so the server puts them on the button as <c>data-*</c> and the script
+        /// reads them back — the same arrangement the first-run screen's password suggestion uses.
+        /// </summary>
+        public static string CopyUriDone => Pick("رونوشت شد", "Copied");
+
+        public static string CopyUriDenied => Pick(
+            "اجازه داده نشد — متن را انتخاب و کپی کنید",
+            "Not allowed — select the text and copy it");
+
+        /// <summary>
+        /// Said once the consent window is open, for the operator whose window opened behind the
+        /// panel. On the element rather than in <c>googleConnect.ts</c> for the reason above.
+        /// </summary>
+        public static string ConnectPopupOpened => Pick(
+            "پنجره‌ی ورود به گوگل باز شد. اگر آن را نمی‌بینید، پشت این صفحه است.",
+            "The Google sign-in window is open. If you cannot see it, it is behind this page.");
+
         public static string RedirectUriDiffers => Pick(
             "توجه: آدرس بازگشتی که هم‌اکنون اعمال می‌شود با نشانی بالا فرق دارد. همان که اعمال "
             + "می‌شود باید در گوگل ثبت شده باشد:",
@@ -1138,6 +1160,316 @@ public static class UiText
         public static string PublicPasswordLabel => Pick("رمز", "Password");
 
         public static string PublicContinue => Pick("ادامه", "Continue");
+    }
+
+    /// <summary>
+    /// «پلن و مصرف» — the customer's own limits, and the operator's catalogue behind them.
+    ///
+    /// <para>Two audiences in one section because they say the same nouns: a storage cap is «فضای
+    /// مصرفی» on both screens, and two entries for it would drift into two different words for one
+    /// number. What is not shared is the detail — a customer never sees another tenant, the pool, or
+    /// the commitment against it.</para>
+    ///
+    /// <para>Digits follow the product's rule: a quantity carrying a unit is a left-to-right
+    /// technical readout and stays Latin in both languages, and a count in prose takes that prose's
+    /// numerals. So «۳ از ۵» for seats and <c>124 / 500 GB</c> for bytes.</para>
+    /// </summary>
+    public static class Plans
+    {
+        public static string Title => Pick("پلن و مصرف", "Plan and usage");
+
+        /// <summary>The plan's own name comes from the row, so this is only its label.</summary>
+        public static string PlanLabel => Pick("پلن", "Plan");
+
+        /// <summary>
+        /// A workspace nobody has applied a plan to. It still has limits — the four numbers it was
+        /// created with — so this says "no tier", never "no limit".
+        /// </summary>
+        public static string NoPlan => Pick("بدون پلن", "No tier");
+
+        /// <param name="when">Already in this language's own numerals — see <c>DisplayFormats.PanelDateTime</c>.</param>
+        public static string AppliedAt(string when) => Pick($"اعمال‌شده: {when}", $"Applied: {when}");
+
+        public static string StorageLabel => Pick("فضای مصرفی", "Storage used");
+
+        public static string FileLabel => Pick("سقف حجم هر فایل", "Largest file");
+
+        public static string TrafficLabel => Pick("سقف ترافیک ماهانه", "Monthly traffic allowance");
+
+        public static string MembersLabel => Pick("اعضا", "Members");
+
+        /// <summary>
+        /// Spent against the cap: <c>124 / 500 GB</c>.
+        ///
+        /// <para>Both halves arrive already formatted by <c>DisplayFormats.Bytes</c>, which keeps a
+        /// quantity carrying a unit in Latin digits in every language — those are the values somebody
+        /// copies into a support message. «۱۲۴ / ۵۰۰ GB» would break that rule, and a panel with two
+        /// digit systems for one kind of number is what the rule exists to prevent.</para>
+        /// </summary>
+        [VerbatimText("both halves are already-formatted byte quantities, which stay Latin in either language")]
+        public static string OfCap(string used, string cap) => Pick($"{used} / {cap}", $"{used} / {cap}");
+
+        public static string MembersOfCap(long used, long cap) => Pick(
+            $"{Numerals.Count(used)} از {Numerals.Count(cap)}",
+            $"{Numerals.Count(used)} of {Numerals.Count(cap)}");
+
+        public static string FileCount(int files) => Pick(
+            $"{Numerals.Count(files)} فایل",
+            files == 1 ? "1 file" : $"{Numerals.Count(files)} files");
+
+        /// <summary>
+        /// The per-file limit, said as the refusal it will become.
+        ///
+        /// <para>It carries <b>no link to an uploader</b>, and that absence is the point: over this
+        /// number nothing in the product accepts the file — not the panel's chunked uploader, not the
+        /// bot — so pointing the customer at a second uploader would be a dead end. The next action it
+        /// does offer is the only real one, which is a smaller file or a different tier.</para>
+        ///
+        /// <para>It is deliberately not «آپلود موقتاً در دسترس نیست». That sentence belongs to a full
+        /// pool and it promises that waiting will help; waiting does nothing to a file that is too
+        /// big, and a customer who retries for an hour on that advice is a support ticket.</para>
+        /// </summary>
+        public static string RefusedFileTooLarge(string limit) => Pick(
+            $"فایل بزرگ‌تر از {limit} از هیچ راهی ذخیره نمی‌شود — نه از پنل و نه از تلگرام. "
+            + "فایل کوچک‌تری بفرستید یا برای بالا بردن این سقف با ما تماس بگیرید.",
+            $"A file larger than {limit} will not be stored by any route — not the panel and not "
+            + "Telegram. Send a smaller file, or ask us to raise this limit.");
+
+        /// <summary>
+        /// The over-cap state, in words rather than only in red. Nothing has been deleted and nothing
+        /// will be; uploads stop and the way out is deleting files, which needs the panel, which
+        /// keeps working.
+        /// </summary>
+        public static string OverStorage => Pick(
+            "حجم مصرفی بیشتر از سقف پلن فعلی است — آپلود جدید تا آزادسازی فضا ممکن نیست. "
+            + "هیچ فایلی حذف نشده و لینک‌ها و دانلودها کار می‌کنند.",
+            "Storage is over this plan's cap, so new uploads are refused until space is freed. "
+            + "Nothing has been deleted, and links and downloads keep working.");
+
+        /// <summary>
+        /// Why there is no upgrade button. There is no checkout, so a button here would have nowhere
+        /// to go, and an affordance that goes nowhere is worse than its absence.
+        /// </summary>
+        public static string PlanChangeIsOperator => Pick(
+            "تغییر پلن از طریق ما انجام می‌شود؛ در پنل خریدی وجود ندارد.",
+            "A plan is changed by us; there is no checkout in the panel.");
+
+        /// <summary>
+        /// Said where the traffic allowance is shown, because a number with no meter behind it would
+        /// otherwise read as «شما هیچ ترافیکی مصرف نکرده‌اید», which is not what it means.
+        /// </summary>
+        public static string TrafficNotMeteredYet => Pick(
+            "مصرف ترافیک هنوز اندازه‌گیری نمی‌شود؛ این عدد سقف فروخته‌شده است.",
+            "Traffic usage is not being measured yet; this figure is the allowance, not the usage.");
+
+        // ── The operator's side ──────────────────────────────────────────────────────────────────
+
+        public static string OperatorTitle => Pick("پلن‌ها", "Plans");
+
+        public static string OperatorSubtitle => Pick(
+            "کاتالوگ پلن‌ها و مصرف همه‌ی فضاهای کاری.",
+            "The plan catalogue, and usage across every workspace.");
+
+        /// <summary>
+        /// The one thing an operator must read before they quote any of these numbers to anybody.
+        /// It is on the screen rather than in a document because a document is not where somebody
+        /// reads a number off a table.
+        /// </summary>
+        public static string PlaceholderHeading => Pick(
+            "این اعداد موقت‌اند و تأیید نشده‌اند",
+            "These figures are provisional and unconfirmed");
+
+        public static string PlaceholderBody => Pick(
+            "نام پلن‌ها و هر چهار عدد هر پلن هنوز توسط مالک محصول تعیین نشده است. آنچه اینجا هست "
+            + "شکل درست پلن‌بندی با مقادیر نمونه است، نه فهرست نهایی. هیچ قیمتی هم در کار نیست: این "
+            + "بخش فقط محدودیت می‌گذارد و چیزی نمی‌فروشد.",
+            "The tier names and all four numbers per tier are still the product owner's to decide. "
+            + "What is here is the right shape with sample values, not the final list. There is no "
+            + "price either: this part of the product limits usage and sells nothing.");
+
+        public static string CatalogueHeading => Pick("کاتالوگ پلن‌ها", "The plan catalogue");
+
+        public static string CatalogueNote => Pick(
+            "پلن یک الگوست. ویرایش یک پلن هیچ فضای کاری‌ای را تغییر نمی‌دهد تا وقتی دوباره روی آن "
+            + "اعمال شود؛ اعداد هر مشتری روی ردیف خودش است.",
+            "A plan is a template. Editing one changes no workspace until it is applied again — every "
+            + "customer's numbers live on their own row.");
+
+        public static string ColumnCode => Pick("کد", "Code");
+
+        public static string ColumnName => Pick("نام", "Name");
+
+        public static string ColumnStorage => Pick("فضا", "Storage");
+
+        public static string ColumnFile => Pick("هر فایل", "Per file");
+
+        public static string ColumnTraffic => Pick("ترافیک ماهانه", "Traffic / month");
+
+        public static string ColumnSeats => Pick("اعضا", "Seats");
+
+        public static string ColumnStatus => Pick("وضعیت", "Status");
+
+        public static string StatusLive => Pick("فعال", "Live");
+
+        /// <summary>Hidden from new assignment; every tenant on it keeps working.</summary>
+        public static string StatusRetired => Pick("بازنشسته", "Retired");
+
+        public static string TenantsHeading => Pick("مصرف فضاهای کاری", "Usage across workspaces");
+
+        public static string ColumnTenant => Pick("فضای کاری", "Workspace");
+
+        public static string ColumnPlan => Pick("پلن", "Plan");
+
+        public static string ColumnUsed => Pick("مصرف / سقف", "Used / cap");
+
+        public static string ColumnFiles => Pick("فایل", "Files");
+
+        public static string NoTenants => Pick("هنوز فضای کاری‌ای وجود ندارد.", "There is no workspace yet.");
+
+        /// <summary>
+        /// Over-commitment is shown, not prevented: caps are ceilings rather than reservations, and
+        /// requiring the sum to fit would make every new sign-up wait on a capacity purchase.
+        /// </summary>
+        public static string Committed(string committed, string pool) => Pick(
+            $"تعهدشده: {committed} از {pool}",
+            $"Committed: {committed} of {pool}");
+
+        public static string OverCommittedNote => Pick(
+            "مجموع سقف‌ها از ظرفیت متصل بیشتر است. این عمدی است و جلوی آن گرفته نمی‌شود — سقف یک "
+            + "ظرفیت رزروشده نیست.",
+            "The caps add up to more than the connected capacity. That is deliberate and is not "
+            + "prevented — a cap is a ceiling, not a reservation.");
+
+        public static string SoldTraffic(string sold) => Pick(
+            $"ترافیک فروخته‌شده: {sold} در ماه",
+            $"Traffic sold: {sold} a month");
+
+        /// <summary>
+        /// No pool comparison for traffic, and the screen says why rather than leaving a reader to
+        /// wonder where the second number went.
+        /// </summary>
+        public static string SoldTrafficNote => Pick(
+            "این عدد «فروخته‌شده» است، نه «رزروشده»، و هیچ عدد واقعی‌ای برای مقایسه ندارد: سقف "
+            + "خروجی سرور یک عدد پهنای‌باند است و هنوز اندازه‌گیری نشده.",
+            "That figure is sold, not reserved, and it has nothing real to sit beside yet: the box's "
+            + "egress ceiling is a bandwidth number and nobody has measured it.");
+
+        public static string TenantHeading(string tenant) => Pick(
+            $"فضای کاری {tenant}",
+            $"Workspace {tenant}");
+
+        public static string BackToPlans => Pick("بازگشت به پلن‌ها", "Back to the plans");
+
+        public static string AssignHeading => Pick("اعمال پلن", "Apply a plan");
+
+        public static string AssignPlanField => Pick("پلن", "Plan");
+
+        public static string AssignReasonField => Pick("دلیل", "Reason");
+
+        public static string AssignReasonHint => Pick(
+            "در تاریخچه‌ی همین فضای کاری ذخیره می‌شود و پاسخ «چرا سهمیه‌ام عوض شد» است.",
+            "Stored in this workspace's history, and it is the answer to «why did my quota change».");
+
+        public static string Preview => Pick("پیش‌نمایش", "Preview");
+
+        public static string Apply => Pick("اعمال", "Apply");
+
+        public static string PreviewHeading => Pick("نتیجه‌ی این تغییر", "What this change would do");
+
+        /// <summary>
+        /// The one line that covers all four dimensions, said before the operator confirms rather
+        /// than after the customer notices.
+        /// </summary>
+        public static string PreviewRule => Pick(
+            "کاهش سقف فقط کار بعدی را محدود می‌کند، نه کاری که قبلاً انجام شده: هیچ فایلی حذف "
+            + "نمی‌شود، هیچ عضوی حذف نمی‌شود و فایل‌های بزرگ‌تر از سقف جدید دست‌نخورده می‌مانند.",
+            "A downgrade constrains the next action, never an existing one: nothing is deleted, no "
+            + "member is removed, and files larger than the new per-file limit are left alone.");
+
+        public static string PreviewFits => Pick(
+            "این فضای کاری در سقف‌های جدید جا می‌شود.",
+            "This workspace fits inside the new limits.");
+
+        public static string PreviewStorageOverage(string overage) => Pick(
+            $"بلافاصله {overage} بیشتر از سقف فضا خواهد بود — آپلود جدید رد می‌شود.",
+            $"Immediately {overage} over the storage cap — new uploads will be refused.");
+
+        public static string PreviewFilesOver(int files, string limit) => Pick(
+            $"{Numerals.Count(files)} فایل بزرگ‌تر از {limit} است. این‌ها دست‌نخورده می‌مانند و "
+            + "دانلود و اشتراکشان کار می‌کند.",
+            files == 1
+                ? $"1 file is larger than {limit}. It is left alone and keeps downloading and sharing."
+                : $"{Numerals.Count(files)} files are larger than {limit}. They are left alone and "
+                  + "keep downloading and sharing.");
+
+        public static string PreviewMembersOver(int seats) => Pick(
+            $"{Numerals.Count(seats)} عضو بیشتر از سقف جدید. کسی حذف نمی‌شود؛ دعوت تازه رد می‌شود.",
+            seats == 1
+                ? "1 member over the new limit. Nobody is removed; a new invitation is refused."
+                : $"{Numerals.Count(seats)} members over the new limit. Nobody is removed; a new "
+                  + "invitation is refused.");
+
+        public static string OverrideHeading => Pick("تغییر یک عدد", "Move one number");
+
+        public static string OverrideNote => Pick(
+            "برای مشتری‌ای که عددش با پلنش فرق دارد. فضای کاری روی همان پلن می‌ماند.",
+            "For a customer whose number differs from their tier. The workspace stays on its plan.");
+
+        public static string OverrideField => Pick("کدام عدد", "Which number");
+
+        public static string OverrideValue => Pick("مقدار", "Value");
+
+        public static string OverrideValueHint => Pick(
+            "بایت. برای اعضا، تعداد نفر.",
+            "Bytes. For seats, a number of people.");
+
+        public static string FieldStorage => Pick("سقف فضا", "Storage cap");
+
+        public static string FieldMaxFile => Pick("سقف حجم هر فایل", "Per-file limit");
+
+        public static string FieldTraffic => Pick("سقف ترافیک ماهانه", "Monthly traffic");
+
+        public static string FieldMembers => Pick("سقف اعضا", "Seats");
+
+        public static string HistoryHeading => Pick("تاریخچه‌ی سهمیه", "Quota history");
+
+        public static string HistoryNote => Pick(
+            "این تاریخچه‌ی همین فضای کاری است، نه گزارش کلی سامانه.",
+            "This is one workspace's history, not a system-wide log.");
+
+        public static string HistoryEmpty => Pick(
+            "هنوز چیزی تغییر نکرده است.",
+            "Nothing has changed yet.");
+
+        public static string ColumnWhen => Pick("زمان", "When");
+
+        public static string ColumnField => Pick("عدد", "Number");
+
+        public static string ColumnFrom => Pick("از", "From");
+
+        public static string ColumnTo => Pick("به", "To");
+
+        public static string ColumnReason => Pick("دلیل", "Reason");
+
+        public static string PlanApplied(string plan) => Pick(
+            $"پلن «{plan}» اعمال شد.",
+            $"The «{plan}» plan was applied.");
+
+        public static string OverrideApplied => Pick(
+            "عدد این فضای کاری تغییر کرد.",
+            "This workspace's number was changed.");
+
+        public static string ReasonRequired => Pick(
+            "دلیل را بنویسید؛ بدون آن این تغییر در تاریخچه بی‌معنی است.",
+            "Write a reason; without one this change is useless in the history.");
+
+        public static string PlanNotFound => Pick("این پلن پیدا نشد.", "That plan was not found.");
+
+        public static string TenantNotFound => Pick("این فضای کاری پیدا نشد.", "That workspace was not found.");
+
+        public static string ChangeRefused(string why) => Pick(
+            $"این تغییر انجام نشد: {why}",
+            $"That change was not made: {why}");
     }
 
     /// <summary>

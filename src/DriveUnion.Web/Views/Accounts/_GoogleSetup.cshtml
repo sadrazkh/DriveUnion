@@ -69,7 +69,18 @@
                 *@
                 <span class="setup-copy">
                     <code class="setup-uri mono" dir="ltr" data-copy-value>@Model.SuggestedRedirectUri</code>
-                    <button type="button" class="btn btn--sm" data-copy hidden>@UiText.Accounts.CopyUri</button>
+                    @*
+                        The two sentences the script says afterwards travel on the button rather
+                        than living inside the bundle: a bundle is compiled once and cannot ask which
+                        language this request is in, and the panel is bilingual. Same arrangement as
+                        the first-run screen's password suggestion, and for the same reason.
+                    *@
+                    <button type="button"
+                            class="btn btn--sm"
+                            data-copy
+                            data-copied="@UiText.Accounts.CopyUriDone"
+                            data-copy-denied="@UiText.Accounts.CopyUriDenied"
+                            hidden>@UiText.Accounts.CopyUri</button>
                 </span>
 
                 @if (Model.RedirectUriSource is not GoogleCredentialSource.None

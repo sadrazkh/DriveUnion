@@ -1,3 +1,4 @@
+using DriveUnion.Core.Plans;
 using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
 using DriveUnion.Core.Telegram;
@@ -20,6 +21,19 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
     public DbSet<DownloadEvent> DownloadEvents => Set<DownloadEvent>();
+
+    /// <summary>
+    /// The operator's catalogue of tiers. It carries no <c>TenantId</c>, like
+    /// <see cref="GoogleAccounts"/> and <see cref="TelegramBotSettings"/>, and <b>nothing on any
+    /// enforcement path joins to it</b> — assigning a plan copies its numbers onto the tenant's row.
+    /// </summary>
+    public DbSet<Plan> Plans => Set<Plan>();
+
+    /// <summary>
+    /// Who moved a tenant's ceiling, when, and why. The answer to «چرا سهمیه‌ام عوض شد», which a
+    /// template edit could never have produced per tenant.
+    /// </summary>
+    public DbSet<TenantQuotaChange> TenantQuotaChanges => Set<TenantQuotaChange>();
 
     /// <summary>The operator's bot. One row, seeded empty by the migration that created this table.</summary>
     public DbSet<TelegramBotSettings> TelegramBotSettings => Set<TelegramBotSettings>();
@@ -70,6 +84,72 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.Property(t => t.Name).HasMaxLength(200);
             e.Property(t => t.Slug).HasMaxLength(64);
             e.HasIndex(t => t.Slug).IsUnique();
+
+            // The four effective limits carry the smallest seeded tier as their column default, so a
+            // row inserted by something that has not been taught about plans — the sign-up path, a
+            // support insert, a fixture — is capped rather than either uncapped or capped at zero.
+            // Zero would refuse every upload in the product; unlimited is the shape §3 refuses.
+            //
+            // ValueGeneratedNever beside each: HasDefaultValue alone makes EF omit the property from
+            // an INSERT whenever it holds the CLR type's default, so an explicit zero would silently
+            // become the tier's number. The DDL default stays for the inserts EF does not write; the
+            // value the code holds is always the value that is sent.
+            e.Property(t => t.StorageQuotaBytes)
+                .HasDefaultValue(PlanCatalogue.Default.StorageBytes)
+                .ValueGeneratedNever();
+            e.Property(t => t.MaxFileBytes)
+                .HasDefaultValue(PlanCatalogue.Default.MaxFileBytes)
+                .ValueGeneratedNever();
+            e.Property(t => t.MonthlyEgressBytes)
+                .HasDefaultValue(PlanCatalogue.Default.MonthlyEgressBytes)
+                .ValueGeneratedNever();
+            e.Property(t => t.MaxMembers)
+                .HasDefaultValue(PlanCatalogue.Default.MaxMembers)
+                .ValueGeneratedNever();
+
+            // No navigation and no cascade. The plan is a label on the row, not a source of numbers,
+            // and a foreign key with a delete rule would be the first thing a reader mistook for a
+            // join the enforcement path makes. Retirement, not deletion, is how a plan goes away.
+            e.HasOne<Plan>()
+                .WithMany()
+                .HasForeignKey(t => t.PlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Plan>(e =>
+        {
+            e.Property(p => p.Code).HasMaxLength(32);
+            e.Property(p => p.Name).HasMaxLength(120);
+
+            // The code is what a configuration file and an operator name a tier by, so two rows
+            // sharing one would make Plans:DefaultPlanCode depend on row order.
+            e.HasIndex(p => p.Code).IsUnique();
+
+            // The catalogue exists from the first migration that knows about plans, because the
+            // alternative — create it on first use — means every read has to cope with its absence,
+            // and Plans:DefaultPlanCode has to name something on the day the product boots.
+            //
+            // Every figure in PlanCatalogue is a placeholder: §15.2 leaves the names and all four
+            // numbers per tier to the owner, and the operator's screen says so in words.
+            e.HasData(PlanCatalogue.Seed());
+        });
+
+        builder.Entity<TenantQuotaChange>(e =>
+        {
+            e.Property(c => c.PlanCodeBefore).HasMaxLength(32);
+            e.Property(c => c.PlanCodeAfter).HasMaxLength(32);
+            e.Property(c => c.Reason).HasMaxLength(512);
+
+            // The only query over this table: one tenant's history, on the operator's page for that
+            // tenant. It is never read across tenants, because it is not an audit log.
+            e.HasIndex(c => new { c.TenantId, c.ChangedAt });
+
+            // Cascade, unlike the plan reference above: a tenant's quota history is about that tenant
+            // and outlives nothing.
+            e.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(c => c.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<GoogleAccount>(e =>

@@ -2,6 +2,7 @@ using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.LocalStorage;
 using DriveUnion.Infrastructure.Persistence;
+using DriveUnion.Infrastructure.Plans;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Infrastructure.Telegram;
@@ -69,6 +70,10 @@ builder.Services.AddLocalDiskDrive(builder.Configuration);
 
 // The application layer — file catalogue, uploads, share links, and the public reader.
 builder.Services.AddDriveUnionServices();
+
+// Plans, the per-file cap and the tenant's storage numbers. It replaces the standalone default
+// quota setting rather than sitting beside it — two sources for one number is one of them wrong.
+builder.Services.AddDriveUnionPlans();
 
 // Telegram identity, account linking and the operator's bot settings. After AddGoogleDrive, which
 // registers the ITokenProtector the bot token is encrypted with. No transport yet: the gateway

@@ -16,18 +16,33 @@ export function mountNavToggle(): void {
   const scrim = document.querySelector<HTMLElement>('[data-nav-scrim]');
   if (!shell || !toggle) return;
 
-  const set = (open: boolean) => {
+  const sidebar = document.querySelector<HTMLElement>('.app-sidebar');
+
+  const set = (open: boolean, moveFocus = false) => {
+    // Focus is moved before the attribute flips on the way out, because the closed sidebar is
+    // `visibility: hidden` and a browser will not leave focus on a hidden element — it drops it on
+    // the body, and the next Tab starts the page again from the top.
+    if (!open && moveFocus && sidebar?.contains(document.activeElement)) toggle.focus();
+
     shell.dataset.nav = open ? 'open' : 'closed';
     toggle.setAttribute('aria-expanded', String(open));
+
+    // The sidebar is before the header in the document, so Tab from the button that just opened the
+    // menu lands in the search box — behind the scrim, on a page the reader cannot see. Moving
+    // focus to the first item makes the next Tab continue down the menu. Not a focus trap: Tab past
+    // the last item leaves for the page behind, which is what Escape and the scrim are also for.
+    // a/button and not `.nav-item`: two of the slots are <span aria-disabled> placeholders for
+    // screens that have no controller yet, and focus() on one of those does nothing at all.
+    if (open && moveFocus) sidebar?.querySelector<HTMLElement>('a.nav-item, button.nav-item')?.focus();
   };
 
   set(false);
 
-  toggle.addEventListener('click', () => set(shell.dataset.nav !== 'open'));
-  scrim?.addEventListener('click', () => set(false));
+  toggle.addEventListener('click', () => set(shell.dataset.nav !== 'open', true));
+  scrim?.addEventListener('click', () => set(false, true));
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && shell.dataset.nav === 'open') set(false);
+    if (event.key === 'Escape' && shell.dataset.nav === 'open') set(false, true);
   });
 
   // Above 900px the media query stops applying and the sidebar is a column again; leaving the
