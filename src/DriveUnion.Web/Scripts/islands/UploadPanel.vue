@@ -6,9 +6,6 @@ import { computed, ref } from 'vue';
  *
  * The server can take a 96 GB file and has been able to since M1 — `POST /api/uploads` opens a
  * resumable session, `PUT /api/uploads/{id}/chunk` forwards one piece to Drive without buffering it.
- * Nothing was calling it. `Views/Files/Upload.cshtml` renders a `data-island="upload-panel"` mount
- * point with a no-JavaScript fallback inside, and `main.ts` registered no island by that name, so
- * every visitor saw the fallback and the API had no client at all.
  *
  * A `<form enctype="multipart/form-data">` is the thing this deliberately is not. That posts the
  * whole file as one request, which is the 96 GB body that must not exist: it cannot resume, it
@@ -35,18 +32,36 @@ const fa = computed(() => props.lang !== 'en');
  */
 const MaxConcurrentFiles = 2;
 
-/** Three attempts per chunk, and only for failures that a fourth could plausibly survive. */
+/** Three attempts per chunk, and only for failures a fourth could plausibly survive. */
 const MaxChunkAttempts = 3;
 
+/**
+ * How far back the speed reading looks.
+ *
+ * The first version divided everything sent by everything elapsed, which is an average over the
+ * whole transfer: it starts wrong, converges slowly, and never shows that the line just slowed down.
+ * Three seconds is long enough to ride out one stalled packet and short enough to be the number the
+ * word "speed" implies.
+ */
+const SpeedWindowMs = 3000;
+
 type ItemStatus = 'queued' | 'uploading' | 'done' | 'failed' | 'cancelled';
+
+interface Sample {
+  at: number;
+  bytes: number;
+}
 
 interface Item {
   key: number;
   file: File;
   status: ItemStatus;
-  sent: number;
+  /** Bytes Drive has acknowledged, via the server. Authoritative, and only moves per chunk. */
+  confirmed: number;
+  /** Bytes of the chunk in flight that have left the browser. Smooth, and not yet committed. */
+  inFlight: number;
   error: string;
-  startedAt: number;
+  samples: Sample[];
   bytesPerSecond: number;
   abort: AbortController;
 }
@@ -77,6 +92,8 @@ const text = computed(() =>
         backToFiles: 'رفتن به فایل‌ها',
         emptyFile: 'این فایل خالی است و چیزی برای فرستادن ندارد.',
         networkError: 'ارتباط با سرور قطع شد.',
+        signedOut: 'نشست شما تمام شده. دوباره وارد شوید و آپلود را از سر بگیرید.',
+        remaining: 'باقی‌مانده',
       }
     : {
         drop: 'Drop files here',
@@ -94,9 +111,11 @@ const text = computed(() =>
         backToFiles: 'Go to files',
         emptyFile: 'This file is empty and has nothing to send.',
         networkError: 'The connection to the server was lost.',
+        signedOut: 'Your session has ended. Sign in again and restart the upload.',
+        remaining: 'left',
       });
 
-const statusText = (item: Item) => text.value[item.status === 'uploading' ? 'uploading' : item.status];
+const statusText = (item: Item) => text.value[item.status];
 
 /**
  * Decimal, because every operating system's file properties dialog is decimal and this number is
@@ -105,7 +124,7 @@ const statusText = (item: Item) => text.value[item.status === 'uploading' ? 'upl
  * about 1024.
  */
 function bytes(value: number): string {
-  if (value < 1000) return `${value} B`;
+  if (value < 1000) return `${Math.round(value)} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
   let n = value;
   let unit = -1;
@@ -116,8 +135,32 @@ function bytes(value: number): string {
   return `${n.toFixed(n < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
+function duration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '';
+  if (seconds < 60) return `${Math.ceil(seconds)}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+}
+
+const sent = (item: Item) => Math.min(item.confirmed + item.inFlight, item.file.size);
+
 const percent = (item: Item) =>
-  item.file.size === 0 ? 0 : Math.min(100, Math.round((item.sent / item.file.size) * 100));
+  item.file.size === 0 ? 0 : Math.min(100, (sent(item) / item.file.size) * 100);
+
+const eta = (item: Item) =>
+  item.bytesPerSecond > 0 ? duration((item.file.size - sent(item)) / item.bytesPerSecond) : '';
+
+/** A rolling reading, recomputed wherever bytes move — from a chunk tick or from a server answer. */
+function sample(item: Item) {
+  const now = performance.now();
+  item.samples.push({ at: now, bytes: sent(item) });
+
+  while (item.samples.length > 2 && now - item.samples[0].at > SpeedWindowMs) item.samples.shift();
+
+  const first = item.samples[0];
+  const span = (now - first.at) / 1000;
+  if (span > 0.2) item.bytesPerSecond = Math.max(0, (sent(item) - first.bytes) / span);
+}
 
 function add(files: FileList | null) {
   if (!files) return;
@@ -129,9 +172,10 @@ function add(files: FileList | null) {
       // A zero-byte file has no chunk to send, so the session would open and never complete. Refused
       // here, where it can be said, rather than left to look like a stall.
       status: file.size === 0 ? 'failed' : 'queued',
-      sent: 0,
+      confirmed: 0,
+      inFlight: 0,
       error: file.size === 0 ? text.value.emptyFile : '',
-      startedAt: 0,
+      samples: [],
       bytesPerSecond: 0,
       abort: new AbortController(),
     });
@@ -155,6 +199,7 @@ function onPicked(event: Event) {
 function cancel(item: Item) {
   item.abort.abort();
   item.status = 'cancelled';
+  item.inFlight = 0;
   pump();
 }
 
@@ -166,7 +211,10 @@ function retry(item: Item) {
   if (item.file.size === 0) return;
   item.abort = new AbortController();
   item.status = 'queued';
-  item.sent = 0;
+  item.confirmed = 0;
+  item.inFlight = 0;
+  item.samples = [];
+  item.bytesPerSecond = 0;
   item.error = '';
   pump();
 }
@@ -180,7 +228,7 @@ function pump() {
 
     active++;
     next.status = 'uploading';
-    next.startedAt = performance.now();
+    next.samples = [{ at: performance.now(), bytes: 0 }];
 
     void upload(next).finally(() => {
       active--;
@@ -189,8 +237,61 @@ function pump() {
   }
 }
 
-function headers(extra: Record<string, string> = {}): Record<string, string> {
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   return { [props.antiforgeryHeader]: props.antiforgeryToken, ...extra };
+}
+
+interface Answer {
+  status: number;
+  statusText: string;
+  body: string;
+  retryAfterSeconds: number;
+}
+
+/**
+ * The chunk goes out over XMLHttpRequest rather than fetch, and that is the whole reason the
+ * progress bar moves.
+ *
+ * fetch has no upload progress event — a request body is opaque until the response arrives. So the
+ * bar could only step once per finished chunk, and a chunk is 32 MiB: on a 202 MB file that is
+ * seven movements for the entire transfer, which reads as a frozen bar and an idle connection.
+ * `xhr.upload.onprogress` reports bytes as they leave, several times a second.
+ */
+function putChunk(
+  url: string,
+  body: Blob,
+  headers: Record<string, string>,
+  onProgress: (sentBytes: number) => void,
+  signal: AbortSignal,
+): Promise<Answer> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url, true);
+
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+
+    xhr.upload.onprogress = (event) => onProgress(event.loaded);
+
+    xhr.onload = () =>
+      resolve({
+        status: xhr.status,
+        statusText: xhr.statusText,
+        body: xhr.responseText,
+        retryAfterSeconds: Number(xhr.getResponseHeader('Retry-After') ?? 0),
+      });
+
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.ontimeout = () => reject(new Error('network'));
+    xhr.onabort = () => reject(new DOMException('aborted', 'AbortError'));
+
+    if (signal.aborted) {
+      xhr.abort();
+      return;
+    }
+    signal.addEventListener('abort', () => xhr.abort(), { once: true });
+
+    xhr.send(body);
+  });
 }
 
 /**
@@ -200,12 +301,12 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
  * prose, because the wording belongs to the client. Everything else is a ProblemDetails whose
  * `detail` is already a finished sentence. Neither ever carries an exception message.
  */
-async function describe(response: Response): Promise<string> {
+function describe(status: number, statusText: string, raw: string): string {
   let body: Record<string, unknown> = {};
   try {
-    body = (await response.json()) as Record<string, unknown>;
+    body = JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    return `${response.status} ${response.statusText}`.trim();
+    return `${status} ${statusText}`.trim();
   }
 
   const code = typeof body.error === 'string' ? body.error : '';
@@ -228,7 +329,7 @@ async function describe(response: Response): Promise<string> {
   if (typeof body.detail === 'string' && body.detail.length > 0) return body.detail;
   if (typeof body.title === 'string' && body.title.length > 0) return body.title;
 
-  return `${response.status} ${response.statusText}`.trim();
+  return `${status} ${statusText}`.trim();
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -237,7 +338,7 @@ async function upload(item: Item) {
   try {
     const begun = await fetch(props.beginUrl, {
       method: 'POST',
-      headers: headers({ 'Content-Type': 'application/json' }),
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         fileName: item.file.name,
         // Browsers leave `type` empty for anything they do not recognise, and the server requires
@@ -250,7 +351,7 @@ async function upload(item: Item) {
 
     if (!begun.ok) {
       item.status = 'failed';
-      item.error = await describe(begun);
+      item.error = describe(begun.status, begun.statusText, await begun.text());
       return;
     }
 
@@ -258,27 +359,33 @@ async function upload(item: Item) {
     const total = item.file.size;
     const chunkUrl = `${props.beginUrl.replace(/\/$/, '')}/${id}/chunk`;
 
-    while (item.sent < total) {
-      const from = item.sent;
+    while (item.confirmed < total) {
+      const from = item.confirmed;
       const to = Math.min(from + chunkSize, total);
 
       let attempt = 0;
       for (;;) {
         attempt++;
-        let response: Response;
+        item.inFlight = 0;
 
+        let answer: Answer;
         try {
-          response = await fetch(chunkUrl, {
-            method: 'PUT',
-            headers: headers({
+          answer = await putChunk(
+            chunkUrl,
+            item.file.slice(from, to),
+            authHeaders({
               'Content-Type': 'application/octet-stream',
               'Content-Range': `bytes ${from}-${to - 1}/${total}`,
             }),
-            body: item.file.slice(from, to),
-            signal: item.abort.signal,
-          });
+            (loaded) => {
+              item.inFlight = loaded;
+              sample(item);
+            },
+            item.abort.signal,
+          );
         } catch (error) {
           if (item.abort.signal.aborted) return;
+          item.inFlight = 0;
           if (attempt >= MaxChunkAttempts) {
             item.status = 'failed';
             item.error = text.value.networkError;
@@ -288,19 +395,26 @@ async function upload(item: Item) {
           continue;
         }
 
-        if (response.ok) {
-          const progress = (await response.json()) as {
-            bytesConfirmed: number;
-            status: string;
-            failureReason: string | null;
-          };
+        if (answer.status >= 200 && answer.status < 300) {
+          // A 2xx that is not JSON is the sign-in page. XHR follows redirects, so a session that
+          // expired mid-transfer comes back as 200 and a login form rather than as a 401 — and
+          // parsing it as progress would report the connection as lost, sending the customer to
+          // look at their network instead of at the header where the sign-in button is.
+          let progress: { bytesConfirmed: number; status: string; failureReason: string | null };
+          try {
+            progress = JSON.parse(answer.body);
+          } catch {
+            item.status = 'failed';
+            item.error = text.value.signedOut;
+            return;
+          }
 
-          // The server's figure, not ours. It asks Drive what it actually acknowledged, and our
-          // record of what we sent is not evidence — a chunk can be sent and not committed.
-          item.sent = progress.bytesConfirmed;
-
-          const elapsed = (performance.now() - item.startedAt) / 1000;
-          if (elapsed > 0) item.bytesPerSecond = item.sent / elapsed;
+          // The server's figure, not ours. It asks Drive what it actually acknowledged, and what we
+          // sent is not evidence — a chunk can leave the browser and not be committed. Which is
+          // also why inFlight is a separate number: it is honest about being provisional.
+          item.confirmed = progress.bytesConfirmed;
+          item.inFlight = 0;
+          sample(item);
 
           if (progress.status === 'Failed') {
             item.status = 'failed';
@@ -311,20 +425,22 @@ async function upload(item: Item) {
           break;
         }
 
+        item.inFlight = 0;
+
         // 5xx and 429 are worth another try; a 4xx is the server saying the same thing again.
-        const again = response.status >= 500 || response.status === 429;
+        const again = answer.status >= 500 || answer.status === 429;
         if (!again || attempt >= MaxChunkAttempts) {
           item.status = 'failed';
-          item.error = await describe(response);
+          item.error = describe(answer.status, answer.statusText, answer.body);
           return;
         }
 
-        const retryAfter = Number(response.headers.get('Retry-After') ?? 0);
-        await wait(retryAfter > 0 ? retryAfter * 1000 : attempt * 1000);
+        await wait(answer.retryAfterSeconds > 0 ? answer.retryAfterSeconds * 1000 : attempt * 1000);
       }
     }
 
     item.status = 'done';
+    item.inFlight = 0;
   } catch (error) {
     if (item.abort.signal.aborted) return;
     item.status = 'failed';
@@ -354,16 +470,28 @@ async function upload(item: Item) {
       <li v-for="item in items" :key="item.key" class="upload-row" :class="`upload-row--${item.status}`">
         <div class="upload-head">
           <span class="upload-name" :title="item.file.name">{{ item.file.name }}</span>
-          <span class="upload-state mono">{{ statusText(item) }}</span>
+          <span class="upload-state">{{ statusText(item) }}</span>
         </div>
 
-        <div class="bar" role="progressbar" :aria-valuenow="percent(item)" aria-valuemin="0" aria-valuemax="100">
+        <div class="bar" role="progressbar" :aria-valuenow="Math.round(percent(item))" aria-valuemin="0" aria-valuemax="100">
           <span class="bar-fill" :style="{ width: `${percent(item)}%` }"></span>
         </div>
 
-        <div class="upload-meta mono">
-          <span>{{ bytes(item.sent) }} / {{ bytes(item.file.size) }}</span>
-          <span v-if="item.status === 'uploading' && item.bytesPerSecond > 0">{{ bytes(item.bytesPerSecond) }}/s</span>
+        <!--
+          dir="ltr" on every run of digits and Latin units, and it is not decoration. In an RTL
+          container the browser reorders a bidirectional run by its own rules, so "0 B / 202 MB"
+          renders as "0 MB 202 / B" — which is what the owner saw and called unreadable. The
+          direction has to be stated where the number is, not on an ancestor.
+        -->
+        <div class="upload-meta">
+          <span class="upload-percent mono" dir="ltr">{{ Math.round(percent(item)) }}%</span>
+          <span class="mono" dir="ltr">{{ bytes(sent(item)) }} / {{ bytes(item.file.size) }}</span>
+          <span v-if="item.status === 'uploading' && item.bytesPerSecond > 0" class="mono" dir="ltr">
+            {{ bytes(item.bytesPerSecond) }}/s
+          </span>
+          <span v-if="item.status === 'uploading' && eta(item)" class="upload-eta">
+            <span class="mono" dir="ltr">{{ eta(item) }}</span> {{ text.remaining }}
+          </span>
           <span class="push-end">
             <button v-if="item.status === 'uploading'" type="button" class="btn btn--sm" @click="cancel(item)">
               {{ text.cancel }}
@@ -483,12 +611,28 @@ async function upload(item: Item) {
   color: var(--danger);
 }
 
+/* The bar moves several times a second now, so a transition would lag behind the number beside it
+   rather than smooth it. Width is set directly and the browser paints it. */
 .upload-meta {
   display: flex;
   align-items: center;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   font-size: 11px;
   color: var(--muted);
+}
+
+/* The one figure the eye goes to first, so it is the one that is not muted. */
+.upload-percent {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 4ch;
+}
+
+.upload-eta {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
 }
 
 .push-end {
