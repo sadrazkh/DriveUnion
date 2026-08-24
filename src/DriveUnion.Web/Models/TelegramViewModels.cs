@@ -32,6 +32,14 @@ public sealed record TelegramOperatorPageViewModel(
     string? UpdatedText,
     string LinkedCountText,
     string PendingCountText,
+    string OutboxDepthText,
+    string UpdatesLastDayText,
+    string SendsFailedLastDayText,
+    bool HasWebhook,
+    string? WebhookRegisteredText,
+    string UpdateModeText,
+    TelegramWebhookHealthViewModel? Webhook,
+    TelegramServerHealthViewModel Server,
     string? Notice,
     string? Error)
 {
@@ -41,11 +49,16 @@ public sealed record TelegramOperatorPageViewModel(
     public static TelegramOperatorPageViewModel From(
         StoredTelegramBot bot,
         TelegramOperatorHealth health,
+        TelegramServerHealth server,
+        TelegramWebhookInfo? webhook,
+        TelegramOptions options,
         string? notice,
         string? error)
     {
         ArgumentNullException.ThrowIfNull(bot);
         ArgumentNullException.ThrowIfNull(health);
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(options);
 
         return new TelegramOperatorPageViewModel(
             bot.HasToken,
@@ -54,8 +67,99 @@ public sealed record TelegramOperatorPageViewModel(
             bot.UpdatedAt is { } updated ? DisplayFormats.PersianDateTime(updated) : null,
             PersianDigits.Count(health.LinkedAccounts),
             PersianDigits.Count(health.PendingRequests),
+            PersianDigits.Count(health.OutboxDepth),
+            PersianDigits.Count(health.UpdatesLastDay),
+            PersianDigits.Count(health.SendsFailedLastDay),
+            bot.HasWebhook,
+            bot.WebhookRegisteredAt is { } registered
+                ? DisplayFormats.PersianDateTime(registered)
+                : null,
+            options.UpdateSource is TelegramUpdateSource.Webhook ? "وبهوک" : "دریافت دوره‌ای",
+            webhook is null ? null : TelegramWebhookHealthViewModel.From(webhook),
+            TelegramServerHealthViewModel.From(server),
             notice,
             error);
+    }
+}
+
+/// <summary>
+/// Telegram's own answer about the registration.
+///
+/// <para><see cref="LastErrorMessage"/> is rendered <b>verbatim</b>, and that is the single most
+/// useful thing on the page: it is Telegram saying why it could not reach us, in its own words, and
+/// paraphrasing it throws away the only diagnosis available.</para>
+///
+/// <para><see cref="IsBacklogged"/> is an alarm rather than a statistic. A rising pending count is
+/// what a broken webhook looks like from the outside while everything on this box appears perfectly
+/// healthy.</para>
+/// </summary>
+public sealed record TelegramWebhookHealthViewModel(
+    bool IsRegistered,
+    string PendingUpdateCountText,
+    bool IsBacklogged,
+    string? LastErrorMessage,
+    string? LastErrorText,
+    string? IpAddress,
+    string? MaxConnectionsText)
+{
+    /// <summary>Enough queued updates that something is wrong rather than merely busy.</summary>
+    private const int BacklogAlarm = 20;
+
+    public static TelegramWebhookHealthViewModel From(TelegramWebhookInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+
+        return new TelegramWebhookHealthViewModel(
+            !string.IsNullOrEmpty(info.Url),
+            PersianDigits.Count(info.PendingUpdateCount),
+            info.PendingUpdateCount >= BacklogAlarm,
+            info.LastErrorMessage,
+            info.LastErrorDate is { } when ? DisplayFormats.PersianDateTime(when) : null,
+            info.IpAddress,
+            info.MaxConnections is { } max ? PersianDigits.Count(max) : null);
+    }
+
+    // The registered URL is deliberately absent from this record. It carries the unguessable path
+    // segment, which is a stored secret; a screen that could print it is a screen that eventually
+    // will, into a bug-report screenshot.
+}
+
+/// <summary>
+/// The Bot API server, which nothing else in the product can see.
+///
+/// <para><see cref="IsHoarding"/> is the second alarm and the one that ends the feature: a working
+/// directory whose size stays above zero across several minutes is what a stopped delete-on-success
+/// looks like while everything about the bot appears perfectly healthy. The good state is zero, which
+/// is why a sweep count is not what is rendered here.</para>
+/// </summary>
+public sealed record TelegramServerHealthViewModel(
+    string ApiBaseUrl,
+    string ModeText,
+    bool HasWorkDirectory,
+    string WorkDirectoryBytesText,
+    string WorkDirectoryFilesText,
+    string? OldestFileAgeText,
+    string? FreeBytesText,
+    bool IsHoarding)
+{
+    public static TelegramServerHealthViewModel From(TelegramServerHealth health)
+    {
+        ArgumentNullException.ThrowIfNull(health);
+
+        return new TelegramServerHealthViewModel(
+            health.ApiBaseUrl,
+            health.LocalBotServer ? "سرور اختصاصی" : "سرویس ابری تلگرام",
+            health.WorkDirectory is { Length: > 0 },
+            DisplayFormats.Bytes(health.WorkDirectoryBytes),
+            PersianDigits.Count(health.WorkDirectoryFiles),
+            health.OldestFileAge is { } age
+                ? PersianDigits.Translate($"{(int)age.TotalMinutes} دقیقه")
+                : null,
+            health.FreeBytes is { } free ? DisplayFormats.Bytes(free) : null,
+            health.WorkDirectoryBytes > 0);
+
+        // The path itself is not rendered. It names the Bot API working directory and there is no
+        // reason for a browser, a screenshot or a log to learn where that is.
     }
 }
 
@@ -74,6 +178,8 @@ public sealed record TelegramLinkPageViewModel(
     string? AttemptsLeftText,
     string? DeepLink,
     string? QrSvg,
+    string SendCeilingText,
+    string ReceiveCeilingText,
     string? Notice,
     string? Error)
 {
@@ -87,10 +193,12 @@ public sealed record TelegramLinkPageViewModel(
     /// </summary>
     public static TelegramLinkPageViewModel Issued(
         TelegramLinkState state,
+        TelegramOptions options,
         string deepLink,
         string? notice = null)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(options);
 
         return new TelegramLinkPageViewModel(
             state.BotConfigured,
@@ -100,16 +208,20 @@ public sealed record TelegramLinkPageViewModel(
             AttemptsText(state.Pending?.AttemptsLeft),
             deepLink,
             QrCode.ToSvg(deepLink, "کد QR برای باز کردن ربات تلگرام"),
+            TelegramFormats.Bytes(options.MaxSendBytes),
+            TelegramFormats.Bytes(options.MaxReceiveBytes),
             notice,
             null);
     }
 
     public static TelegramLinkPageViewModel From(
         TelegramLinkState state,
+        TelegramOptions options,
         string? notice = null,
         string? error = null)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(options);
 
         return new TelegramLinkPageViewModel(
             state.BotConfigured,
@@ -119,6 +231,12 @@ public sealed record TelegramLinkPageViewModel(
             AttemptsText(state.Pending?.AttemptsLeft),
             null,
             null,
+
+            // Read from configuration rather than typed into the copy, because the two numbers are
+            // different in development and in production on purpose — and a card that stated the
+            // wrong one would be the product's own promise about what it can carry.
+            TelegramFormats.Bytes(options.MaxSendBytes),
+            TelegramFormats.Bytes(options.MaxReceiveBytes),
             notice,
             error);
     }

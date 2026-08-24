@@ -83,6 +83,28 @@
                     دارید را می‌توانید از تلگرام بخواهید.
                 </p>
                 @*
+                    What it cannot carry, with the numbers read from configuration rather than typed
+                    into the copy — they differ between deployments on purpose, and a card that
+                    stated the wrong one would be the product's own promise about its limits.
+                *@
+                <p class="page-sub">
+                    فایل تا <span class="mono" dir="ltr">@Model.SendCeilingText</span> در تلگرام
+                    فرستاده می‌شود و بزرگ‌تر از آن با لینک. فایل تا
+                    <span class="mono" dir="ltr">@Model.ReceiveCeilingText</span> از تلگرام گرفته
+                    می‌شود و بزرگ‌تر از آن را از بارگذارِ همین پنل بفرستید.
+                </p>
+                @*
+                    What the bot is for beyond convenience — and worded so it never implies
+                    independence from where the files actually live, because it is not independent
+                    and nothing in this design can make it so. A delivery reads the file first; what
+                    the bot removes from the equation is the customer's own network and this box's
+                    web surface, which is most of the value and all of the honest claim.
+                *@
+                <p class="page-sub">
+                    ربات راه دومی برای رسیدن به فایل‌هایتان است، برای وقتی که باز کردن این پنل
+                    برایتان ممکن نیست.
+                </p>
+                @*
                     Above the button, not below it: a data-residency fact belongs before the decision
                     it is about. Sending a file through the bot means the file passes through
                     Telegram's servers and stays cached on them, which is not true of anything else

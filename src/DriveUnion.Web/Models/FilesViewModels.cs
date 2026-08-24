@@ -1,4 +1,4 @@
-using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Localization;
 
 namespace DriveUnion.Web.Models;
 
@@ -21,9 +21,10 @@ public sealed record FileRowViewModel(
     int ActiveLinkCount,
     bool IsSelected)
 {
+    /// <summary>«—» is a dash and not a word, so it has no language and stays a literal.</summary>
     public string LinkText => ActiveLinkCount == 0
         ? "—"
-        : $"{PersianDigits.Count(ActiveLinkCount)} لینک";
+        : UiText.Files.LinkCount(ActiveLinkCount);
 }
 
 public sealed record ShareLinkViewModel(

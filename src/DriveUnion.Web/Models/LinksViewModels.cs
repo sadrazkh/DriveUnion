@@ -1,5 +1,6 @@
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Sharing;
+using DriveUnion.Web.Localization;
 
 namespace DriveUnion.Web.Models;
 
@@ -67,11 +68,11 @@ public sealed record LinkRowViewModel(
 {
     public string StatusText => Status switch
     {
-        LinkStatus.Active => "فعال",
-        LinkStatus.NearCap => "نزدیک سقف",
-        LinkStatus.CapReached => "سقف تکمیل",
-        LinkStatus.Expired => "منقضی",
-        _ => "غیرفعال",
+        LinkStatus.Active => UiText.Links.StatusActive,
+        LinkStatus.NearCap => UiText.Links.StatusNearCap,
+        LinkStatus.CapReached => UiText.Links.StatusCapReached,
+        LinkStatus.Expired => UiText.Links.StatusExpired,
+        _ => UiText.Links.StatusRevoked,
     };
 
     /// <summary>

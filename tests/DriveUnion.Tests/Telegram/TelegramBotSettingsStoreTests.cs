@@ -168,6 +168,19 @@ public class TelegramBotSettingsStoreTests
         typeof(TelegramOperatorHealth).GetProperties()
             .Should().OnlyContain(p => p.PropertyType == typeof(int));
 
-        typeof(ITelegramOperatorView).GetMethods().Should().HaveCount(1);
+        // The transport slice added the Bot API server's own numbers beside these counts. Nothing on
+        // it names a customer either — a base URL, a byte total, a file count, an age and free space
+        // — so the rule is restated as a shape rather than as a count of methods: every value either
+        // read model can produce is a number, a flag, a timespan or a path this process owns.
+        typeof(TelegramServerHealth).GetProperties()
+            .Should().NotContain(
+                p => p.PropertyType != typeof(string)
+                     && typeof(System.Collections.IEnumerable).IsAssignableFrom(p.PropertyType),
+                "a collection on this record is the directory the design refuses to build");
+
+        // And the interface still cannot express a listing: neither method returns a collection.
+        typeof(ITelegramOperatorView).GetMethods()
+            .Should().OnlyContain(m => !typeof(System.Collections.IEnumerable).IsAssignableFrom(
+                m.ReturnType.IsGenericType ? m.ReturnType.GetGenericArguments()[0] : m.ReturnType));
     }
 }

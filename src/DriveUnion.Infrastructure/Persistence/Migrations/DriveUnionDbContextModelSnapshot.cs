@@ -264,6 +264,17 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UpdatedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("WebhookPathSegmentProtected")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<DateTimeOffset?>("WebhookRegisteredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WebhookSecretProtected")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
                     b.HasKey("Id");
 
                     b.ToTable("TelegramBotSettings");
@@ -274,6 +285,35 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                             Id = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
+                });
+
+            modelBuilder.Entity("DriveUnion.Core.Telegram.TelegramFileId", b =>
+                {
+                    b.Property<Guid>("StoredFileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("BotUserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("CachedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("FileUniqueId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("StoredFileId", "BotUserId");
+
+                    b.ToTable("TelegramFileIds");
                 });
 
             modelBuilder.Entity("DriveUnion.Core.Telegram.TelegramLinkToken", b =>
@@ -335,6 +375,81 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                     b.HasIndex("AppUserId", "ConsumedAt");
 
                     b.ToTable("TelegramLinkTokens");
+                });
+
+            modelBuilder.Entity("DriveUnion.Core.Telegram.TelegramOutbox", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ErrorDetail")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<byte>("Kind")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("SentMessageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte>("Status")
+                        .HasColumnType("smallint");
+
+                    b.Property<Guid?>("StoredFileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.ToTable("TelegramOutbox");
+                });
+
+            modelBuilder.Entity("DriveUnion.Core.Telegram.TelegramUpdateSeen", b =>
+                {
+                    b.Property<long>("UpdateId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UpdateId");
+
+                    b.ToTable("TelegramUpdatesSeen");
                 });
 
             modelBuilder.Entity("DriveUnion.Core.Tenancy.Tenant", b =>
@@ -669,6 +784,15 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                     b.HasOne("DriveUnion.Infrastructure.Identity.AppUser", null)
                         .WithMany()
                         .HasForeignKey("AppUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DriveUnion.Core.Telegram.TelegramFileId", b =>
+                {
+                    b.HasOne("DriveUnion.Core.Storage.StoredFile", null)
+                        .WithMany()
+                        .HasForeignKey("StoredFileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

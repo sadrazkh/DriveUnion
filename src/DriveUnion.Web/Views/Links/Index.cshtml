@@ -1,7 +1,7 @@
 @using DriveUnion.Web.Models
 @model LinksPageViewModel
 @{
-    ViewData["Title"] = "لینک‌های اشتراک";
+    ViewData["Title"] = UiText.Links.Title;
 
     // The comp's tracks, unchanged: فایل / آدرس / دانلود / انقضا / وضعیت.
     const string Cols = "--cols: minmax(0,1.8fr) 118px 100px 96px 90px";
@@ -17,21 +17,25 @@
 *@
 <div class="stack" style="gap: 16px;">
     <div class="row" style="align-items: baseline; gap: 12px;">
-        <h1 class="page-title">لینک‌های اشتراک</h1>
-        <span class="page-sub">@PersianDigits.Count(Model.Rows.Count) لینک</span>
+        <h1 class="page-title">@UiText.Links.Title</h1>
+        <span class="page-sub">@UiText.Links.LinkCount(Model.Rows.Count)</span>
     </div>
 
     <div class="card card--flush">
         <div class="dtable" style="@Cols">
             <div class="dtable-head">
-                <div>فایل</div><div>آدرس</div><div>دانلود</div><div>انقضا</div><div>وضعیت</div>
+                <div>@UiText.Links.ColumnFile</div>
+                <div>@UiText.Links.ColumnAddress</div>
+                <div>@UiText.Links.ColumnDownloads</div>
+                <div>@UiText.Links.ColumnExpiry</div>
+                <div>@UiText.Links.ColumnStatus</div>
             </div>
 
             @if (Model.Rows.Count == 0)
             {
                 <div class="empty empty--incell">
-                    <span>هنوز لینکی ساخته نشده است.</span>
-                    <a class="btn btn--primary" href="@Url.Action("Index", "Files")">رفتن به فایل‌ها</a>
+                    <span>@UiText.Links.EmptyStateHeading</span>
+                    <a class="btn btn--primary" href="@Url.Action("Index", "Files")">@UiText.Links.EmptyStateAction</a>
                 </div>
             }
             else

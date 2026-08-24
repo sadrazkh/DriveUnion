@@ -20,26 +20,32 @@
     connect with. It is what makes that button a route rather than a dead end, with no script
     involved: the browser's own fragment navigation lands here, and the panel is already unfolded
     because it is incomplete.
+
+    Every step below is a sentence with a Google term set into it, and the term lands in a different
+    place in each language — so the catalogue supplies the sentence in the fragments either side of
+    it rather than one string with a placeholder. What is inside the mono, dir="ltr" boxes is
+    Google's own spelling of a screen, a menu path, a mode or a scope, and it is never translated:
+    the operator is going to hunt for exactly those characters in Google Cloud.
 *@
 <details class="setup" id="google-setup" @(expanded ? "open" : null)>
     <summary class="setup-summary">
         <span class="setup-summary-text">
-            <span class="setup-summary-title">راه‌اندازی اتصال به گوگل</span>
+            <span class="setup-summary-title">@UiText.Accounts.SetUpGoogle</span>
             <span class="setup-summary-sub">
                 @if (Model.IsComplete)
                 {
-                    <text>کلاینت OAuth تنظیم شده است. برای تغییر یا بررسی، باز کنید.</text>
+                    <text>@UiText.Accounts.SetupComplete</text>
                 }
                 else
                 {
                     @* Why the client is needed is said once, next to the button that cannot connect
                        without it. This says what is inside the panel instead of repeating it. *@
-                    <text>مرحله‌های ساخت آن در Google Cloud، و نشانی‌ای که باید همان‌جا ثبت شود.</text>
+                    <text>@UiText.Accounts.SetupIncomplete</text>
                 }
             </span>
         </span>
         <span class="@(Model.IsComplete ? "badge" : "badge badge--warn")">
-            @(Model.IsComplete ? "آماده" : "ناقص")
+            @(Model.IsComplete ? UiText.Accounts.SetupReady : UiText.Accounts.SetupUnfinished)
         </span>
     </summary>
 
@@ -50,21 +56,11 @@
             without notice, and does not know what this panel's redirect URI is.
         *@
         <ol class="setup-steps">
+            <li>@UiText.Accounts.StepProjectBefore<a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener noreferrer">Google Cloud Console</a>@UiText.Accounts.StepProjectAfter</li>
+            <li>@UiText.Accounts.StepApiBefore<span class="mono" dir="ltr">APIs &amp; Services → Library</span>@UiText.Accounts.StepApiMiddle<span class="mono" dir="ltr">Google Drive API</span>@UiText.Accounts.StepApiAfter</li>
+            <li>@UiText.Accounts.StepClientBefore<span class="mono" dir="ltr">Credentials → Create credentials → OAuth client ID</span>@UiText.Accounts.StepClientMiddle<span class="mono" dir="ltr">Web application</span>@UiText.Accounts.StepClientAfter</li>
             <li>
-                در <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener noreferrer">Google Cloud Console</a>
-                یک پروژه‌ی جدید بسازید.
-            </li>
-            <li>
-                از بخش <span class="mono" dir="ltr">APIs &amp; Services → Library</span> سرویس
-                <span class="mono" dir="ltr">Google Drive API</span> را فعال کنید.
-            </li>
-            <li>
-                در <span class="mono" dir="ltr">Credentials → Create credentials → OAuth client ID</span>
-                نوع <span class="mono" dir="ltr">Web application</span> را انتخاب کنید — نه Desktop و نه TV.
-            </li>
-            <li>
-                در همان صفحه، این نشانی را دقیقاً در
-                <span class="mono" dir="ltr">Authorised redirect URIs</span> اضافه کنید:
+                @UiText.Accounts.StepRedirectBefore<span class="mono" dir="ltr">Authorised redirect URIs</span>@UiText.Accounts.StepRedirectAfter
 
                 @*
                     Rendered from this request's own scheme, host and port. Google compares the two
@@ -73,36 +69,29 @@
                 *@
                 <span class="setup-copy">
                     <code class="setup-uri mono" dir="ltr" data-copy-value>@Model.SuggestedRedirectUri</code>
-                    <button type="button" class="btn btn--sm" data-copy hidden>رونوشت</button>
+                    <button type="button" class="btn btn--sm" data-copy hidden>@UiText.Accounts.CopyUri</button>
                 </span>
 
                 @if (Model.RedirectUriSource is not GoogleCredentialSource.None
                      && !string.Equals(Model.RedirectUri, Model.SuggestedRedirectUri, StringComparison.Ordinal))
                 {
                     <span class="setup-note">
-                        توجه: آدرس بازگشتی که هم‌اکنون اعمال می‌شود با نشانی بالا فرق دارد. همان که اعمال
-                        می‌شود باید در گوگل ثبت شده باشد:
+                        @UiText.Accounts.RedirectUriDiffers
                         <span class="mono" dir="ltr">@Model.RedirectUri</span>
                     </span>
                 }
             </li>
             <li>
-                <strong>صفحه‌ی رضایت (OAuth consent screen) را از حالت
-                <span class="mono" dir="ltr">Testing</span> به
-                <span class="mono" dir="ltr">In production</span> ببرید.</strong>
-                تا وقتی در حالت Testing باشد، گوگل توکن تازه‌سازی را بعد از هفت روز باطل می‌کند و اتصال
-                اکانت درست یک هفته بعد از کار می‌افتد — بدون آنکه چیزی در پنل تغییر کرده باشد.
+                <strong>@UiText.Accounts.StepConsentBefore<span class="mono" dir="ltr">Testing</span>@UiText.Accounts.StepConsentMiddle<span class="mono" dir="ltr">In production</span>@UiText.Accounts.StepConsentAfter</strong>
+                @UiText.Accounts.StepConsentWhy
             </li>
-            <li>
-                دسترسی درخواستی <span class="mono" dir="ltr">@GoogleSetupViewModel.Scope</span> است و
-                گوگل آن را «restricted» می‌داند. چون فقط اکانت‌های خودِ شما وصل می‌شوند، یک‌بار هشدار
-                «unverified app» را می‌بینید و رد می‌کنید؛ مشتری‌ها هرگز این صفحه را نمی‌بینند.
-            </li>
+            <li>@UiText.Accounts.StepScopeBefore<span class="mono" dir="ltr">@GoogleSetupViewModel.Scope</span>@UiText.Accounts.StepScopeAfter</li>
         </ol>
 
         @* What is in force right now, and why. Three rows, because the operator's next question
-           after "it does not work" is always "which of the three is missing". *@
-        <div class="setup-state" role="group" aria-label="وضعیت فعلی">
+           after "it does not work" is always "which of the three is missing". The row labels are
+           Google's own names for the three values and are not translated. *@
+        <div class="setup-state" role="group" aria-label="@UiText.Accounts.CurrentState">
             <div class="setup-state-row">
                 <span class="setup-state-label">Client ID</span>
                 <span class="setup-state-value mono" dir="ltr">@(Model.ClientId.Length > 0 ? Model.ClientId : "—")</span>
@@ -111,7 +100,7 @@
             <div class="setup-state-row">
                 <span class="setup-state-label">Client Secret</span>
                 @* Never the value. «ذخیره شده» is the whole of what a browser is ever told. *@
-                <span class="setup-state-value">@(Model.SecretIsSet ? "ذخیره شده" : "—")</span>
+                <span class="setup-state-value">@(Model.SecretIsSet ? UiText.Accounts.SecretStored : "—")</span>
                 <span class="@SourceClass(Model.SecretSource)">@GoogleSetupViewModel.SourceText(Model.SecretSource)</span>
             </div>
             <div class="setup-state-row">
@@ -128,12 +117,7 @@
         @if (Model.ConfigurationOutranksPanel)
         {
             <p class="setup-note setup-note--warn" role="status">
-                مقداری که در این فرم ذخیره کرده‌اید توسط پیکربندی سرور
-                (<span class="mono" dir="ltr">Google:ClientId</span>،
-                <span class="mono" dir="ltr">Google:ClientSecret</span>،
-                <span class="mono" dir="ltr">Google:RedirectUri</span>)
-                بازنویسی شده است. پیکربندی سرور همیشه اولویت دارد؛ برای اعمال مقدار این فرم باید آن
-                متغیر را از سرور بردارید.
+                @UiText.Accounts.ConfigurationOutranksBefore<span class="mono" dir="ltr">@UiText.Accounts.ConfigurationKeys</span>@UiText.Accounts.ConfigurationOutranksAfter
             </p>
         }
         else
@@ -145,11 +129,7 @@
                 know the environment is an option, and that it wins.
             *@
             <p class="setup-note">
-                همین سه مقدار را می‌توان به‌جای این فرم از پیکربندی سرور داد:
-                <span class="mono" dir="ltr">Google:ClientId</span>،
-                <span class="mono" dir="ltr">Google:ClientSecret</span> و
-                <span class="mono" dir="ltr">Google:RedirectUri</span>.
-                اگر آنجا مقداری باشد، همان اعمال می‌شود.
+                @UiText.Accounts.EnvironmentAlternativeBefore<span class="mono" dir="ltr">@UiText.Accounts.ConfigurationKeys</span>@UiText.Accounts.EnvironmentAlternativeAfter
             </p>
         }
 
@@ -186,7 +166,7 @@
                            dir="ltr"
                            autocomplete="off"
                            spellcheck="false"
-                           placeholder="@(Model.StoredSecretIsSet ? "ذخیره شده — برای تغییر مقدار تازه وارد کنید" : "GOCSPX-…")" />
+                           placeholder="@(Model.StoredSecretIsSet ? UiText.Accounts.SecretPlaceholder : "GOCSPX-…")" />
                 </span>
             </div>
 
@@ -200,15 +180,15 @@
                            spellcheck="false"
                            value="@Model.FormRedirectUri" />
                 </span>
-                <span class="setup-hint">باید مو‌به‌مو با آنچه در گوگل ثبت کرده‌اید یکی باشد.</span>
+                <span class="setup-hint">@UiText.Accounts.RedirectUriHint</span>
             </div>
 
             <div class="row" style="gap: 8px;">
-                <button type="submit" class="btn btn--primary">ذخیره</button>
+                <button type="submit" class="btn btn--primary">@UiText.Accounts.Save</button>
 
                 @if (Model.HasStoredClient)
                 {
-                    <span class="setup-hint push-end">آخرین تغییر: @Model.StoredUpdatedText</span>
+                    <span class="setup-hint push-end">@UiText.Accounts.LastChanged(Model.StoredUpdatedText ?? string.Empty)</span>
                 }
             </div>
         </form>
@@ -219,7 +199,7 @@
                being the button that submits. *@
             <form method="post" action="@Url.Action("ClearGoogleCredentials", "Accounts")">
                 @Html.AntiForgeryToken()
-                <button type="submit" class="btn btn--danger btn--sm">حذف اطلاعات ذخیره‌شده</button>
+                <button type="submit" class="btn btn--danger btn--sm">@UiText.Accounts.DeleteStored</button>
             </form>
         }
     </div>

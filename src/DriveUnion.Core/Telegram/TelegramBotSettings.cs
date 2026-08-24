@@ -37,6 +37,26 @@ public sealed class TelegramBotSettings
     /// </summary>
     public long? BotUserId { get; set; }
 
+    /// <summary>
+    /// The random path segment the webhook is registered at, encrypted.
+    ///
+    /// <para>Obscurity is not the control — the secret token below is — but an unguessable path keeps
+    /// the route out of scanners' logs and off anything that lists the panel's routes. It is stored
+    /// rather than derived because Telegram is already POSTing at whatever was registered, and a
+    /// process that recomputed it differently after a redeploy would answer 404 to every update with
+    /// nothing in any log to say why.</para>
+    /// </summary>
+    public string? WebhookPathSegmentProtected { get; set; }
+
+    /// <summary>
+    /// What Telegram is told to send back in <c>X-Telegram-Bot-Api-Secret-Token</c>, encrypted.
+    /// <b>This is the control.</b> Missing or wrong is 401, and nothing is processed.
+    /// </summary>
+    public string? WebhookSecretProtected { get; set; }
+
+    /// <summary>When <c>setWebhook</c> last succeeded. Null when no webhook is registered.</summary>
+    public DateTimeOffset? WebhookRegisteredAt { get; set; }
+
     public DateTimeOffset UpdatedAt { get; set; }
 
     public Guid? UpdatedByUserId { get; set; }

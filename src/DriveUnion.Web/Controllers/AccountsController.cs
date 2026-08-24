@@ -4,6 +4,7 @@ using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
 using DriveUnion.Infrastructure.Google;
 using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Localization;
 using DriveUnion.Web.Models;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -67,7 +68,7 @@ public sealed class AccountsController(
         {
             AccountSummary = $"{accounts.Count} accounts · {DisplayFormats.Bytes(accounts.Sum(a => a.QuotaTotalBytes))}",
             UserName = User.Identity?.Name,
-            UserRole = "اپراتور",
+            UserRole = UiText.Shell.RoleOperator,
         };
 
         return View(new AccountsPageViewModel(
@@ -122,7 +123,7 @@ public sealed class AccountsController(
             // The message is not shown: it carries the path of the store, and the operator cannot
             // act on it from a browser anyway.
             logger.LogError(exception, "Saving the Google OAuth client failed");
-            TempData["Error"] = "ذخیره‌ی اطلاعات گوگل ناموفق بود. لاگ سرور را ببینید.";
+            TempData["Error"] = UiText.Accounts.SaveFailed;
             return RedirectToAction(nameof(Index));
         }
 
@@ -130,8 +131,8 @@ public sealed class AccountsController(
         // client id and is about to wonder why Google sees a different one deserves the sentence,
         // not a colour.
         TempData["Notice"] = credentials.Describe().ConfigurationOutranksPanel
-            ? "اطلاعات ذخیره شد، اما پیکربندی سرور اولویت دارد و همان اعمال می‌شود."
-            : "اطلاعات OAuth گوگل ذخیره شد. حالا می‌توانید اکانت را متصل کنید.";
+            ? UiText.Accounts.SavedButOverridden
+            : UiText.Accounts.Saved;
 
         return RedirectToAction(nameof(Index));
     }
@@ -145,13 +146,13 @@ public sealed class AccountsController(
             var removed = credentials.Clear();
 
             TempData[removed ? "Notice" : "Error"] = removed
-                ? "اطلاعات OAuth ذخیره‌شده حذف شد."
-                : "چیزی برای حذف وجود نداشت.";
+                ? UiText.Accounts.Cleared
+                : UiText.Accounts.NothingToClear;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             logger.LogError(exception, "Removing the stored Google OAuth client failed");
-            TempData["Error"] = "حذف اطلاعات ذخیره‌شده ناموفق بود. لاگ سرور را ببینید.";
+            TempData["Error"] = UiText.Accounts.ClearFailed;
         }
 
         return RedirectToAction(nameof(Index));
@@ -179,29 +180,29 @@ public sealed class AccountsController(
         string redirectUri,
         bool secretAlreadyStored)
     {
-        if (clientId.Length == 0) return "شناسه‌ی کلاینت (Client ID) را وارد کنید.";
+        if (clientId.Length == 0) return UiText.Accounts.ClientIdRequired;
 
         if (clientSecret is not { Length: > 0 } && !secretAlreadyStored)
         {
-            return "کلید محرمانه (Client Secret) را وارد کنید.";
+            return UiText.Accounts.ClientSecretRequired;
         }
 
-        if (redirectUri.Length == 0) return "آدرس بازگشت (Redirect URI) را وارد کنید.";
+        if (redirectUri.Length == 0) return UiText.Accounts.RedirectUriRequired;
 
         if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
         {
-            return "آدرس بازگشت باید یک نشانی کامل با http یا https باشد.";
+            return UiText.Accounts.RedirectUriNotAbsolute;
         }
 
         // Google rejects a redirect URI with a fragment outright, and does it after the operator has
         // already left the panel and reached the consent screen.
-        if (uri.Fragment.Length > 0) return "آدرس بازگشت نباید بخش # داشته باشد.";
+        if (uri.Fragment.Length > 0) return UiText.Accounts.RedirectUriHasFragment;
 
         // http is allowed only for a loopback address; anything else must be https.
         if (uri.Scheme == Uri.UriSchemeHttp && !uri.IsLoopback)
         {
-            return "گوگل http را فقط برای localhost می‌پذیرد؛ برای بقیه‌ی آدرس‌ها https لازم است.";
+            return UiText.Accounts.RedirectUriNeedsHttps;
         }
 
         return null;
@@ -264,8 +265,8 @@ public sealed class AccountsController(
             return Finish(
                 popup,
                 succeeded: false,
-                title: "اتصال لغو شد",
-                message: "اتصال اکانت لغو شد.");
+                title: UiText.Accounts.ConnectCancelledTitle,
+                message: UiText.Accounts.ConnectCancelled);
         }
 
         if (Google() is not { } google) return Unconfigured(popup);
@@ -277,8 +278,8 @@ public sealed class AccountsController(
             return Finish(
                 popup,
                 succeeded: false,
-                title: "بازگشت نامعتبر",
-                message: "بازگشت از گوگل معتبر نبود. دوباره تلاش کنید.");
+                title: UiText.Accounts.CallbackInvalidTitle,
+                message: UiText.Accounts.CallbackInvalid);
         }
 
         try
@@ -294,15 +295,15 @@ public sealed class AccountsController(
             return Finish(
                 popup,
                 succeeded: false,
-                title: "تبادل با گوگل ناموفق بود",
-                message: "تبادل کد با گوگل ناموفق بود.");
+                title: UiText.Accounts.ExchangeFailedTitle,
+                message: UiText.Accounts.ExchangeFailed);
         }
 
         return Finish(
             popup,
             succeeded: true,
-            title: "اکانت متصل شد",
-            message: "اکانت گوگل متصل شد.");
+            title: UiText.Accounts.ConnectedTitle,
+            message: UiText.Accounts.Connected);
     }
 
     [HttpPost("{id:guid}/disconnect")]
@@ -313,11 +314,11 @@ public sealed class AccountsController(
 
         if (disconnected)
         {
-            TempData["Notice"] = "اکانت قطع شد. فایل‌های موجود روی آن دست‌نخورده می‌مانند.";
+            TempData["Notice"] = UiText.Accounts.Disconnected;
         }
         else
         {
-            TempData["Error"] = "اکانت پیدا نشد.";
+            TempData["Error"] = UiText.Accounts.AccountNotFound;
         }
 
         return RedirectToAction(nameof(Index));
@@ -330,7 +331,7 @@ public sealed class AccountsController(
         try
         {
             await directory.RefreshQuotaAsync(id, cancellationToken);
-            TempData["Notice"] = "فضای اکانت به‌روزرسانی شد.";
+            TempData["Notice"] = UiText.Accounts.QuotaRefreshed;
         }
         catch (DriveApiException exception)
         {
@@ -339,7 +340,7 @@ public sealed class AccountsController(
             // DriveAccountUnavailableException — which is a DriveApiException — from the token
             // service, naming the settings that are missing.
             logger.LogError(exception, "Refreshing the storage quota failed");
-            TempData["Error"] = "به‌روزرسانی فضا ناموفق بود.";
+            TempData["Error"] = UiText.Accounts.QuotaRefreshFailed;
         }
 
         return RedirectToAction(nameof(Index));
@@ -354,9 +355,9 @@ public sealed class AccountsController(
     private IActionResult Unconfigured(bool popup) => Finish(
         popup,
         succeeded: false,
-        title: "پیکربندی گوگل کامل نیست",
-        message: "پیکربندی OAuth گوگل کامل نیست. اطلاعات آن را در صفحه‌ی اکانت‌ها وارد کنید.",
-        hint: "Google:ClientId · Google:ClientSecret · Google:RedirectUri");
+        title: UiText.Accounts.UnconfiguredTitle,
+        message: UiText.Accounts.Unconfigured,
+        hint: UiText.Accounts.ConfigurationKeys);
 
     /// <summary>
     /// How the consent flow ends, told once and shown twice.

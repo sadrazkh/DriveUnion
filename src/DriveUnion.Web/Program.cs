@@ -75,6 +75,12 @@ builder.Services.AddDriveUnionServices();
 // registered here reports that nothing was delivered, which is the truth rather than a placeholder.
 builder.Services.AddDriveUnionTelegram();
 
+// The drainer, the update poller and the work-directory sweeper. Separate from the line above on
+// purpose: every in-process test host calls that one, and a drainer opening scopes against a shared
+// SQLite connection turns unrelated suites into "database is locked". Without this line the queue
+// never drains and the bot answers nothing.
+builder.Services.AddDriveUnionTelegramTransport();
+
 // Authorization policies and the rate limiter for /d/*.
 builder.Services.AddDriveUnionWeb();
 

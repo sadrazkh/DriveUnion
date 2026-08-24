@@ -11,13 +11,17 @@
     and the sidebar and search bar would be absurd inside it. _HeadAssets is shared verbatim so the
     theme is settled before first paint here too — a popup that flashes white over a dark panel is
     the one place the flash is unmissable.
+
+    lang and dir come from PanelCulture like the panel's own layout, because this window is opened
+    from the panel by the operator who set that language: a Persian card in an English panel is the
+    one screen where nobody can switch back.
 *@
 <!DOCTYPE html>
-<html dir="rtl" lang="fa" data-theme="light">
+<html dir="@PanelCulture.Direction" lang="@PanelCulture.Code" data-theme="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>@Model.Title · درایو یونیون</title>
+    <title>@UiText.Brand.PageTitle(Model.Title)</title>
     <partial name="_HeadAssets" />
     <link rel="stylesheet" href="~/css/accounts.css" asp-append-version="true" />
 </head>
@@ -40,14 +44,17 @@
     <div class="oauth-actions">
         @* Hidden until the script confirms there is an opener: window.close() only works on a window
            script opened, so a close button in a window that has no opener is a button that lies. *@
-        <button type="button" class="btn btn--lg" data-oauth-close hidden>بستن پنجره</button>
+        <button type="button" class="btn btn--lg" data-oauth-close hidden>@UiText.Accounts.ClosePopup</button>
 
         @* The other half of the same choice, and the default: with no opener this page is a dead end
            without a way back to the panel. The script hides whichever one is wrong. *@
-        <a class="btn btn--lg" href="/accounts" data-oauth-back>بازگشت به اکانت‌ها</a>
+        <a class="btn btn--lg" href="/accounts" data-oauth-back>@UiText.Accounts.BackToAccounts</a>
     </div>
 
-    <p class="oauth-foot" data-oauth-foot hidden></p>
+    @* The one sentence the script writes, carried in an attribute rather than interpolated into the
+       block below: Razor's HTML encoder would turn the whole of it into character references inside
+       a JavaScript string literal, which is correct escaping and unreadable output. *@
+    <p class="oauth-foot" data-oauth-foot data-closing="@UiText.Accounts.PopupClosing" hidden></p>
 </main>
 <script>
     // Tells the accounts page that opened this window how the flow ended, then gets out of the way.
@@ -92,7 +99,7 @@
         // will meet again in ten seconds, having learned nothing; the button is how they leave.
         if (!succeeded) return;
 
-        foot.textContent = 'این پنجره خودش بسته می‌شود…';
+        foot.textContent = foot.dataset.closing;
         foot.hidden = false;
         window.setTimeout(function () { window.close(); }, 1200);
     })();

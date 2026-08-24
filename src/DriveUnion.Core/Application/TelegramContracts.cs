@@ -42,18 +42,244 @@ public interface ITelegramIdentityReader
     Task<TelegramIdentity?> ResolveAsync(long telegramUserId, CancellationToken cancellationToken);
 }
 
+/// <summary>One entry in the menu Telegram renders for the bot.</summary>
+public sealed record TelegramBotCommand(string Command, string Description);
+
 /// <summary>
-/// What the bot can be asked to do from this side. One method, because linking is the only thing in
-/// this slice that has to reach a chat.
+/// Everything this product asks of Telegram, and the single place the two rate limiters sit in front
+/// of.
 ///
-/// <para>This is the seam the transport plugs into, and nothing here implements Telegram. The only
-/// implementation that ships with this slice reports that it delivered nothing, which is the truth
-/// until a transport exists — see <c>UnconfiguredTelegramBotGateway</c>.</para>
+/// <para><b>It is to Telegram what <c>IDriveClient</c> is to Google</b>, and for the same reason: this
+/// machine has no bot token, no <c>api_id</c> and no Bot API server, so every rule worth testing —
+/// which tenant a chat may read, what a 429 does to a queued item, whether an oversized file ever
+/// reaches an upload, whether the local copy is deleted when the send throws — has to be provable
+/// without a network. Every test in the suite runs against a hand-written in-memory Telegram.</para>
+///
+/// <para>Nothing here throws for an ordinary refusal. A 429, a 403 from a customer who blocked the
+/// bot and a 400 from a stale message id are all things a caller must <em>do</em> something about, and
+/// an exception is the shape that makes "retry for ever" the accidental default.</para>
 /// </summary>
 public interface ITelegramBotGateway
 {
-    /// <summary>False when the message did not reach Telegram. Never throws for an ordinary failure.</summary>
-    Task<bool> TrySendMessageAsync(long chatId, string text, CancellationToken cancellationToken);
+    Task<TelegramCall<TelegramSentMessage>> SendMessageAsync(
+        TelegramOutgoingMessage message,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Edits a message in place. A slow action edits the message it started from rather than
+    /// appending new ones, so a chat does not fill up with progress.
+    /// </summary>
+    Task<TelegramCall<TelegramSentMessage>> EditMessageAsync(
+        TelegramMessageEdit edit,
+        CancellationToken cancellationToken);
+
+    Task<TelegramCall<TelegramAck>> DeleteMessageAsync(
+        long chatId,
+        long messageId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The «uploading…» indicator, which lasts about five seconds and therefore has to be repeated
+    /// for the life of a long transfer. Sent once at the start of a four-minute upload, the chat
+    /// looks idle for the other three minutes and fifty-five seconds — the exact appearance of a
+    /// broken bot. It is not a message and does not spend the per-chat message budget.
+    /// </summary>
+    Task<TelegramCall<TelegramAck>> SendChatActionAsync(
+        long chatId,
+        string action,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Called on every callback without exception. A button that spins for ever is the most common
+    /// way a bot looks broken.
+    /// </summary>
+    Task<TelegramCall<TelegramAck>> AnswerCallbackQueryAsync(
+        string callbackQueryId,
+        string? text,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The one call that moves bytes. <paramref name="content"/> is null when
+    /// <c>TelegramDocumentSend.CachedFileId</c> is set — a re-send from a cached handle reads nothing,
+    /// costs no egress and touches no disk.
+    /// </summary>
+    Task<TelegramCall<TelegramSentMessage>> SendDocumentAsync(
+        TelegramDocumentSend send,
+        Stream? content,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Where an inbound file's bytes are. The answer is a local path against our own server and a URL
+    /// against the cloud API, and both branches are live.
+    /// </summary>
+    Task<TelegramCall<TelegramFileHandle>> GetFileAsync(
+        string fileId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Opens the URL branch of <see cref="GetFileAsync"/>. The URL carries the bot token in its path,
+    /// so it goes from that call straight into this one and is never logged, persisted or rendered.
+    /// </summary>
+    Task<TelegramCall<Stream>> OpenRemoteFileAsync(Uri url, CancellationToken cancellationToken);
+
+    /// <summary>The only proof a token works, and where the bot's real @username and id come from.</summary>
+    Task<TelegramCall<TelegramBotProfile>> GetMeAsync(CancellationToken cancellationToken);
+
+    Task<TelegramCall<TelegramAck>> SetWebhookAsync(
+        string url,
+        string secretToken,
+        int maxConnections,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes the registration. <c>drop_pending_updates</c> is never set: updates arriving during a
+    /// change window are held by Telegram for 24 hours, and dropping them is the one way to turn a
+    /// short outage into lost customer files.
+    /// </summary>
+    Task<TelegramCall<TelegramAck>> DeleteWebhookAsync(CancellationToken cancellationToken);
+
+    Task<TelegramCall<TelegramWebhookInfo>> GetWebhookInfoAsync(CancellationToken cancellationToken);
+
+    Task<TelegramCall<IReadOnlyList<TelegramUpdate>>> GetUpdatesAsync(
+        long offset,
+        int timeoutSeconds,
+        CancellationToken cancellationToken);
+
+    Task<TelegramCall<TelegramAck>> SetMyCommandsAsync(
+        IReadOnlyList<TelegramBotCommand> commands,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The convenience the linking flow has always used: send one line and say whether it arrived.
+    ///
+    /// It is a default implementation rather than a method every gateway repeats, because there is
+    /// exactly one correct way to write it and a second copy is a second place to get the failure
+    /// direction backwards.
+    /// </summary>
+    async Task<bool> TrySendMessageAsync(long chatId, string text, CancellationToken cancellationToken)
+    {
+        var sent = await SendMessageAsync(
+            new TelegramOutgoingMessage(chatId, text),
+            cancellationToken).ConfigureAwait(false);
+
+        return sent.Ok;
+    }
+}
+
+/// <summary>
+/// The dedup ledger. <see cref="TryClaimAsync"/> returns false for an update that has been handled
+/// before, and false is the good answer: the correct response to a redelivery is 200 and stop.
+/// </summary>
+public interface ITelegramUpdateLedger
+{
+    Task<bool> TryClaimAsync(long updateId, CancellationToken cancellationToken);
+
+    /// <summary>Drops rows past their usefulness. Returns how many went, so a sweeper that deletes
+    /// nothing is distinguishable from one that had nothing to do.</summary>
+    Task<int> SweepAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Turns the body of a webhook POST into an update, and returns null for anything that is not one.
+///
+/// It is an interface so the endpoint that answers an anonymous POST holds no knowledge of the wire
+/// format, and so a malformed body is a null rather than an exception on a route that anybody on the
+/// box can reach.
+/// </summary>
+public interface ITelegramUpdateParser
+{
+    TelegramUpdate? Parse(string json);
+}
+
+/// <summary>What an update turned into, so a transport can report it without knowing what happened.</summary>
+public enum TelegramUpdateOutcome
+{
+    /// <summary>Handled, or deliberately ignored. Either way, answer 200 and advance the offset.</summary>
+    Handled = 0,
+
+    /// <summary>Already seen. The action was performed exactly once, by the first delivery.</summary>
+    Duplicate = 1,
+}
+
+/// <summary>
+/// One update in, one outcome out — and everything between is short. Byte-moving work is queued and
+/// the caller returns immediately: a handler that uploads two gigabytes before replying is a handler
+/// Telegram will redeliver on top of, and each redelivery would start its own multi-gigabyte transfer.
+/// </summary>
+public interface ITelegramUpdateHandler
+{
+    Task<TelegramUpdateOutcome> HandleAsync(TelegramUpdate update, CancellationToken cancellationToken);
+}
+
+public enum TelegramEnqueueStatus
+{
+    Queued = 0,
+
+    /// <summary>Over the item bound or the byte bound. A bounded queue with an honest message beats
+    /// an unbounded one that looks like it is working.</summary>
+    QueueFull = 1,
+}
+
+public sealed record TelegramEnqueueResult(TelegramEnqueueStatus Status, Guid? ItemId);
+
+/// <summary>The queue's writing end, which is all a chat handler ever needs.</summary>
+public interface ITelegramOutboxWriter
+{
+    Task<TelegramEnqueueResult> EnqueueAsync(
+        Guid tenantId,
+        long chatId,
+        TelegramOutboxKind kind,
+        Guid? storedFileId,
+        string? payload,
+        long sizeBytes,
+        DateTimeOffset? notBefore,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Everything the drainer needs to read one file's bytes: which account physically holds it and what
+/// it is called there.
+///
+/// <para><b>This record never leaves the drainer</b>, and there is deliberately no path from a chat to
+/// any of it. <c>IFileCatalog</c> is what the bot's surface reads, and it names no account on purpose
+/// — the customer must never learn that a pool exists. This is the same shape and the same discipline
+/// as the public download path's server-side ticket: the two identifying fields exist because
+/// <c>IDriveClient</c> needs them, and they must never reach a message, a log line or a card.</para>
+/// </summary>
+public sealed record TelegramDeliveryTicket(
+    Guid StoredFileId,
+    Guid GoogleAccountId,
+    string DriveFileId,
+    string FileName,
+    string MimeType,
+    long SizeBytes);
+
+/// <summary>
+/// Resolves a queued delivery back to the bytes it names, scoped to the tenant on the outbox row.
+///
+/// Null for a file that is not this tenant's, is soft-deleted, or never existed — the same answer for
+/// all three, because the drainer's caller is ultimately a button press from a client we do not
+/// control.
+/// </summary>
+public interface ITelegramDeliverySource
+{
+    Task<TelegramDeliveryTicket?> ResolveAsync(
+        Guid tenantId,
+        Guid storedFileId,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Free space on the volume the Bot API server writes into.
+///
+/// It is an interface because the arithmetic it feeds — refuse a transfer that cannot fit, before a
+/// single byte is read out of storage — is the most important thing in this slice to be able to test,
+/// and there is no way to make a real volume nearly full inside a unit test.
+/// </summary>
+public interface ITelegramDiskSpace
+{
+    /// <summary>Null when the path names nothing this process can measure.</summary>
+    long? FreeBytesOn(string path);
 }
 
 /// <summary>
@@ -66,12 +292,51 @@ public sealed record StoredTelegramBot(
     bool HasToken,
     string? BotUsername,
     long? BotUserId,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    bool HasWebhook = false,
+    DateTimeOffset? WebhookRegisteredAt = null);
+
+/// <summary>
+/// The registration, as the code that answers a webhook POST needs it: an unguessable path segment
+/// and the secret Telegram is told to send back in a header.
+///
+/// Both are read here and nowhere else. Neither ever reaches a view, a log line or a response.
+/// </summary>
+public sealed record TelegramWebhookRegistration(string PathSegment, string Secret);
 
 public interface ITelegramBotSettingsStore
 {
     /// <summary>What the panel may see.</summary>
     Task<StoredTelegramBot> ReadAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The registered path segment and secret, or null when no webhook has been registered. For the
+    /// endpoint that has to check an inbound POST, and for nothing else.
+    /// </summary>
+    Task<TelegramWebhookRegistration?> ReadWebhookAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records a fresh registration. Both values are generated by the caller and stored encrypted;
+    /// the previous pair is replaced, which is what makes re-registering a rotation rather than an
+    /// addition.
+    /// </summary>
+    Task SaveWebhookAsync(
+        string pathSegment,
+        string secret,
+        CancellationToken cancellationToken);
+
+    /// <summary>Forgets the registration. False when there was none.</summary>
+    Task<bool> ClearWebhookAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// What <c>getMe</c> said, which is the authoritative answer to both questions the token was only
+    /// guessed at for: the bot's numeric id — the cache key every stored <c>file_id</c> hangs off —
+    /// and the @username every customer's deep link is built from.
+    /// </summary>
+    Task SaveVerifiedProfileAsync(
+        long botUserId,
+        string botUsername,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// The token in the clear, for the code that actually talks to Telegram and nothing else. Null
@@ -102,11 +367,43 @@ public interface ITelegramBotSettingsStore
 /// cheapest way to keep it from being built by accident is for the read model to be incapable of
 /// expressing it.
 /// </summary>
-public sealed record TelegramOperatorHealth(int LinkedAccounts, int PendingRequests);
+public sealed record TelegramOperatorHealth(
+    int LinkedAccounts,
+    int PendingRequests,
+    int OutboxDepth = 0,
+    int UpdatesLastDay = 0,
+    int SendsFailedLastDay = 0);
+
+/// <summary>
+/// The Bot API server, which nothing else in the product can see.
+///
+/// <para>Two of these are alarms rather than statistics. A rising <c>pending_update_count</c> is what
+/// a broken webhook looks like from the outside while everything on this box appears perfectly
+/// healthy. A working directory whose size stays above zero across several minutes is what a stopped
+/// delete-on-success looks like while everything about the bot appears perfectly healthy — and it is
+/// the one that fills the volume.</para>
+///
+/// <para>Here the good state is <see cref="WorkDirectoryBytes"/> at or near zero, so a delete count is
+/// deliberately not the signal: deletion on success is the normal path and the sweeper is the crash
+/// path, so a sweeper finding nothing is health rather than a fault. The test suite asserts the
+/// opposite — seed old files, sweep, insist on a non-zero count — because that is what proves the code
+/// can delete at all.</para>
+/// </summary>
+public sealed record TelegramServerHealth(
+    string ApiBaseUrl,
+    bool LocalBotServer,
+    string? WorkDirectory,
+    long WorkDirectoryBytes,
+    int WorkDirectoryFiles,
+    TimeSpan? OldestFileAge,
+    long? FreeBytes);
 
 public interface ITelegramOperatorView
 {
     Task<TelegramOperatorHealth> ReadAsync(CancellationToken cancellationToken);
+
+    /// <summary>What is on this box, read from the filesystem rather than from a table.</summary>
+    TelegramServerHealth ReadServerHealth();
 }
 
 /// <summary>How the linking card should be drawn for one customer.</summary>

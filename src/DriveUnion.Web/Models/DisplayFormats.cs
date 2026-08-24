@@ -1,5 +1,6 @@
 using System.Globalization;
 using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Localization;
 
 namespace DriveUnion.Web.Models;
 
@@ -66,6 +67,34 @@ public static class DisplayFormats
     public static string IsoDate(DateTimeOffset value) =>
         ToDisplayZone(value).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    public static string IsoDateTime(DateTimeOffset value) =>
+        ToDisplayZone(value).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// A moment, in the language the panel is being read in: «۱۴۰۵/۰۵/۳۱ — ۱۴:۳۰» or
+    /// <c>2026-08-22 14:30</c>.
+    ///
+    /// English gets the ISO shape rather than a Gregorian transcription of the Jalali one, because
+    /// that is already what the public download page writes for an English visitor — one product,
+    /// one date shape per language.
+    /// </summary>
+    public static string PanelDateTime(DateTimeOffset value) => PanelCulture.IsPersian
+        ? PersianDateTime(value)
+        : IsoDateTime(value);
+
+    /// <summary>
+    /// The file table's modified column, in the language the row is read in.
+    ///
+    /// Both halves live here rather than in <c>UiText</c>, and that is deliberate: this is one
+    /// formatting decision — which bucket a moment falls into and what the fallback date looks like
+    /// — expressed twice, and splitting the sentences away from the arithmetic that chooses them
+    /// would let the two drift. The Persian half is also the shipped one, pinned character for
+    /// character by <c>PersianDigitsTests</c>.
+    /// </summary>
+    public static string Relative(DateTimeOffset value, DateTimeOffset now) => PanelCulture.IsPersian
+        ? RelativeFa(value, now)
+        : RelativeEn(value, now);
+
     /// <summary>The table's «تغییر» column: «امروز ۱۰:۲۲» · «دیروز» · «۳ روز پیش».</summary>
     public static string RelativeFa(DateTimeOffset value, DateTimeOffset now)
     {
@@ -80,6 +109,30 @@ public static class DisplayFormats
             < 7 => $"{PersianDigits.Plain(days)} روز پیش",
             < 35 => $"{PersianDigits.Plain(days / 7)} هفته پیش",
             _ => PersianDate(value),
+        };
+    }
+
+    /// <summary>
+    /// The same column in English: <c>Today 14:30</c> · <c>Yesterday</c> · <c>3 days ago</c>.
+    ///
+    /// Past five weeks it falls back to the ISO date rather than to a Jalali one — an English reader
+    /// cannot date «۱۴۰۵/۰۵/۳۱», and the ISO shape is the one the product already hands English
+    /// visitors on the public page.
+    /// </summary>
+    public static string RelativeEn(DateTimeOffset value, DateTimeOffset now)
+    {
+        var moment = ToDisplayZone(value).Date;
+        var today = ToDisplayZone(now).Date;
+        var days = (today - moment).Days;
+
+        return days switch
+        {
+            <= 0 => string.Create(CultureInfo.InvariantCulture, $"Today {ToDisplayZone(value):HH\\:mm}"),
+            1 => "Yesterday",
+            < 7 => string.Create(CultureInfo.InvariantCulture, $"{days} days ago"),
+            < 14 => "1 week ago",
+            < 35 => string.Create(CultureInfo.InvariantCulture, $"{days / 7} weeks ago"),
+            _ => IsoDate(value),
         };
     }
 

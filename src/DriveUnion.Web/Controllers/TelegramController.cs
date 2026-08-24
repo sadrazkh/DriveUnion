@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Telegram;
 using DriveUnion.Web.Infrastructure;
@@ -6,6 +6,7 @@ using DriveUnion.Web.Models;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace DriveUnion.Web.Controllers;
 
@@ -28,6 +29,7 @@ public sealed class TelegramController(
     ITelegramOperatorView operatorView,
     ITelegramLinkService links,
     ITelegramBotGateway gateway,
+    IOptions<TelegramOptions> telegramOptions,
     ILogger<TelegramController> logger) : Controller
 {
     [HttpGet("")]
@@ -38,12 +40,147 @@ public sealed class TelegramController(
 
         var bot = await botSettings.ReadAsync(cancellationToken);
         var health = await operatorView.ReadAsync(cancellationToken);
+        var server = operatorView.ReadServerHealth();
+
+        // Telegram's own account of why it cannot reach us. It is only asked for when a webhook is
+        // registered — against a bot with no token every page view would otherwise spend a failed
+        // call to learn what the screen already knows.
+        var webhook = bot.HasWebhook
+            ? (await gateway.GetWebhookInfoAsync(cancellationToken)).Value
+            : null;
 
         return View(TelegramOperatorPageViewModel.From(
             bot,
             health,
+            server,
+            webhook,
+            telegramOptions.Value,
             TempData["Notice"] as string,
             TempData["Error"] as string));
+    }
+
+    /// <summary>
+    /// «تأیید توکن» — <c>getMe</c>, which is the only proof a token works.
+    ///
+    /// <para>Both values it returns are stored: the @username is what every customer's deep link is
+    /// built from, and the bot id is the key every cached file handle hangs off. Until this button
+    /// existed the screen had both without it — the id parsed out of the token, the @username typed
+    /// by the operator — which was enough to build a working deep link but was never proof the token
+    /// works, and the screen said so.</para>
+    /// </summary>
+    [HttpPost("bot/verify")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> VerifyBot(CancellationToken cancellationToken)
+    {
+        var profile = await gateway.GetMeAsync(cancellationToken);
+
+        if (!profile.Ok)
+        {
+            // Telegram's own words, verbatim. Paraphrasing throws away the only diagnosis available,
+            // and this is an operator's screen rather than a customer's.
+            TempData["Error"] = $"تلگرام توکن را نپذیرفت: {profile.Failure.Description}";
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        await botSettings.SaveVerifiedProfileAsync(
+            profile.Value.BotUserId,
+            profile.Value.Username,
+            cancellationToken);
+
+        // The menu Telegram draws beside the message box. It is registered here rather than at
+        // startup because this is the first moment the product knows the token works — and a
+        // setMyCommands against a token that does not is one more failure with nowhere to be seen.
+        // Its failure is not the operator's problem: the commands work whether or not the menu lists
+        // them, so it is not allowed to turn a successful verification into an error.
+        await gateway.SetMyCommandsAsync(BotCommands, cancellationToken);
+
+        TempData["Notice"] = $"توکن تأیید شد. ربات: @{profile.Value.Username}";
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Five, and there is deliberately no <c>/upload</c>: uploading is "send the bot a file", which is
+    /// what a person does without being told.
+    /// </summary>
+    private static readonly TelegramBotCommand[] BotCommands =
+    [
+        new("start", "شروع"),
+        new("files", "فایل‌های من"),
+        new("quota", "فضای مصرفی"),
+        new("help", "راهنما"),
+        new("unlink", "قطع اتصال"),
+    ];
+
+    /// <summary>
+    /// «ثبت وبهوک» — a fresh secret, a fresh path segment and an explicit list of update kinds.
+    ///
+    /// <para>Both values are generated here and stored encrypted; neither is ever rendered. Rotating
+    /// them on every registration is deliberate — re-registering after a leak has to be one button
+    /// rather than a procedure.</para>
+    /// </summary>
+    [HttpPost("bot/webhook")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RegisterWebhook(CancellationToken cancellationToken)
+    {
+        var baseUrl = (telegramOptions.Value.PanelBaseUrl ?? string.Empty).TrimEnd('/');
+
+        if (baseUrl.Length == 0)
+        {
+            TempData["Error"] =
+                "نشانی عمومی پنل تنظیم نشده است؛ بدون آن نمی‌توان وبهوک ثبت کرد.";
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        var segment = TelegramWebhookSecrets.NewValue();
+        var secret = TelegramWebhookSecrets.NewValue();
+
+        var registered = await gateway.SetWebhookAsync(
+            $"{baseUrl}/telegram/{segment}",
+            secret,
+            telegramOptions.Value.MaxWebhookConnections,
+            cancellationToken);
+
+        if (!registered.Ok)
+        {
+            TempData["Error"] = $"ثبت وبهوک انجام نشد: {registered.Failure.Description}";
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Stored only after Telegram accepted it. The reverse order would leave this process
+        // answering on a path Telegram was never told about, which is indistinguishable from a
+        // working webhook until the first update fails to arrive.
+        await botSettings.SaveWebhookAsync(segment, secret, cancellationToken);
+
+        TempData["Notice"] = "وبهوک ثبت شد.";
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("bot/webhook/clear")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ClearWebhook(CancellationToken cancellationToken)
+    {
+        var removed = await gateway.DeleteWebhookAsync(cancellationToken);
+
+        if (!removed.Ok)
+        {
+            TempData["Error"] = $"حذف وبهوک انجام نشد: {removed.Failure.Description}";
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        await botSettings.ClearWebhookAsync(cancellationToken);
+
+        TempData["Notice"] = "وبهوک حذف شد. برای دریافت پیام‌ها باید دوباره ثبت شود.";
+
+        return RedirectToAction(nameof(Index));
     }
 
     /// <summary>
@@ -105,6 +242,7 @@ public sealed class TelegramController(
 
         return View(TelegramLinkPageViewModel.From(
             state,
+            telegramOptions.Value,
             TempData["Notice"] as string,
             TempData["Error"] as string));
     }
@@ -131,10 +269,10 @@ public sealed class TelegramController(
 
         if (start is { Status: TelegramLinkStartStatus.Issued, DeepLink: { } deepLink })
         {
-            return View(nameof(Link), TelegramLinkPageViewModel.Issued(state, deepLink));
+            return View(nameof(Link), TelegramLinkPageViewModel.Issued(state, telegramOptions.Value, deepLink));
         }
 
-        return View(nameof(Link), TelegramLinkPageViewModel.From(state, error: start.Status switch
+        return View(nameof(Link), TelegramLinkPageViewModel.From(state, telegramOptions.Value, error: start.Status switch
         {
             TelegramLinkStartStatus.BotNotConfigured =>
                 "ربات تلگرام هنوز راه‌اندازی نشده است. با پشتیبانی تماس بگیرید.",

@@ -43,7 +43,87 @@ public sealed class TelegramBotSettingsStore(
             token is not null,
             row.BotUsername,
             row.BotUserId,
-            row.UpdatedAt == DateTimeOffset.UnixEpoch ? null : row.UpdatedAt);
+            row.UpdatedAt == DateTimeOffset.UnixEpoch ? null : row.UpdatedAt,
+            Unprotect(row.WebhookSecretProtected) is not null,
+            row.WebhookRegisteredAt);
+    }
+
+    public async Task<TelegramWebhookRegistration?> ReadWebhookAsync(CancellationToken cancellationToken)
+    {
+        var row = await RowAsync(tracked: false, cancellationToken);
+
+        if (row is null) return null;
+
+        // Both or neither. Half a registration cannot authenticate anything, and answering an
+        // inbound POST on a path with no secret to compare against is the one arrangement that would
+        // turn the endpoint into an anonymous command channel.
+        if (Unprotect(row.WebhookPathSegmentProtected) is not { Length: > 0 } segment) return null;
+        if (Unprotect(row.WebhookSecretProtected) is not { Length: > 0 } secret) return null;
+
+        return new TelegramWebhookRegistration(segment, secret);
+    }
+
+    public async Task SaveWebhookAsync(
+        string pathSegment,
+        string secret,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pathSegment);
+        ArgumentException.ThrowIfNullOrWhiteSpace(secret);
+
+        var row = await RowAsync(tracked: true, cancellationToken)
+                  ?? throw new InvalidOperationException(
+                      "There is no Telegram bot row to register a webhook against.");
+
+        row.WebhookPathSegmentProtected = protector.Protect(pathSegment);
+        row.WebhookSecretProtected = protector.Protect(secret);
+        row.WebhookRegisteredAt = clock.GetUtcNow();
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        // No segment and no secret. Both are credentials, and this line exists only so that "the
+        // webhook was re-registered" is findable in a log.
+        logger.LogInformation("A Telegram webhook registration was recorded.");
+    }
+
+    public async Task<bool> ClearWebhookAsync(CancellationToken cancellationToken)
+    {
+        var row = await RowAsync(tracked: true, cancellationToken);
+
+        if (row is null) return false;
+        if (row.WebhookPathSegmentProtected is null && row.WebhookSecretProtected is null) return false;
+
+        row.WebhookPathSegmentProtected = null;
+        row.WebhookSecretProtected = null;
+        row.WebhookRegisteredAt = null;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("The Telegram webhook registration was removed.");
+
+        return true;
+    }
+
+    public async Task SaveVerifiedProfileAsync(
+        long botUserId,
+        string botUsername,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(botUsername);
+
+        var row = await RowAsync(tracked: true, cancellationToken)
+                  ?? throw new InvalidOperationException("There is no Telegram bot row to verify.");
+
+        // getMe is authoritative for both values, and one of them is a cache key: every stored
+        // file_id belongs to a bot id, so a token that turns out to be a different bot has to move
+        // this column — which is exactly the cache miss the key was designed to produce.
+        row.BotUserId = botUserId;
+        row.BotUsername = Normalise(botUsername);
+        row.UpdatedAt = clock.GetUtcNow();
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("The Telegram bot identity was confirmed against Telegram.");
     }
 
     public async Task<string?> ReadBotTokenAsync(CancellationToken cancellationToken)
@@ -96,11 +176,24 @@ public sealed class TelegramBotSettingsStore(
         var row = await RowAsync(tracked: true, cancellationToken);
 
         if (row is null) return false;
-        if (row.BotTokenProtected is null && row.BotUsername is null) return false;
+        if (row.BotTokenProtected is null
+            && row.BotUsername is null
+            && row.WebhookSecretProtected is null)
+        {
+            return false;
+        }
 
         row.BotTokenProtected = null;
         row.BotUsername = null;
         row.BotUserId = null;
+
+        // The registration goes with the bot. A path and a secret left behind would keep answering
+        // updates for a token this process no longer has, which is the one state where the endpoint
+        // is live and nothing behind it can do anything.
+        row.WebhookPathSegmentProtected = null;
+        row.WebhookSecretProtected = null;
+        row.WebhookRegisteredAt = null;
+
         row.UpdatedAt = clock.GetUtcNow();
         row.UpdatedByUserId = null;
 

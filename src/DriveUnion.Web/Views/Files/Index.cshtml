@@ -1,7 +1,7 @@
 @using DriveUnion.Web.Models
 @model FilesPageViewModel
 @{
-    ViewData["Title"] = "فایل‌ها";
+    ViewData["Title"] = UiText.Files.Title;
 
     // The comp's tracks minus «اکانت» and «دانلود»: a customer must never learn which Google
     // account holds their file, and FileListItem carries a link count rather than a download
@@ -20,8 +20,8 @@
      data-antiforgery-token="@Model.Antiforgery.Token">
 
     <div class="row" style="align-items: baseline; gap: 12px;">
-        <h1 class="page-title">فایل‌ها</h1>
-        <span class="page-sub">@PersianDigits.Count(Model.Rows.Count) فایل</span>
+        <h1 class="page-title">@UiText.Files.Title</h1>
+        <span class="page-sub">@UiText.Files.FileCount(Model.Rows.Count)</span>
     </div>
 
     @if (!string.IsNullOrEmpty(Model.Notice))
@@ -33,14 +33,18 @@
         <div class="card card--flush">
             <div class="dtable" style="@Cols">
                 <div class="dtable-head">
-                    <div></div><div>نام</div><div>حجم</div><div>تغییر</div><div>لینک</div>
+                    <div></div>
+                    <div>@UiText.Files.ColumnName</div>
+                    <div>@UiText.Files.ColumnSize</div>
+                    <div>@UiText.Files.ColumnModified</div>
+                    <div>@UiText.Files.ColumnLinks</div>
                 </div>
 
                 @if (Model.Rows.Count == 0)
                 {
                     <div class="empty empty--incell">
-                        <span>هنوز فایلی آپلود نشده است.</span>
-                        <a class="btn btn--primary" href="@Url.Action("Upload", "Files")">آپلود اولین فایل</a>
+                        <span>@UiText.Files.EmptyStateHeading</span>
+                        <a class="btn btn--primary" href="@Url.Action("Upload", "Files")">@UiText.Files.EmptyStateAction</a>
                     </div>
                 }
                 else
@@ -69,7 +73,7 @@
                     <span class="row" style="gap: 8px;">
                         <form method="post" action="@Url.Action("Delete", "Files", new { id = Model.Selected.Id })">
                             @Html.AntiForgeryToken()
-                            <button type="submit" class="btn btn--danger btn--sm">حذف</button>
+                            <button type="submit" class="btn btn--danger btn--sm">@UiText.Files.Delete</button>
                         </form>
                     </span>
                 </div>
@@ -81,7 +85,7 @@
                 @if (Model.Selected is null)
                 {
                     <div class="empty">
-                        <span>برای دیدن جزئیات، یک فایل را انتخاب کنید.</span>
+                        <span>@UiText.Files.DetailEmptyState</span>
                     </div>
                 }
                 else
@@ -99,7 +103,7 @@
                         </p>
 
                         <div class="row" style="font-size: 12.5px; margin-bottom: 16px;">
-                            <span class="muted">ساخته شده</span>
+                            <span class="muted">@UiText.Files.CreatedLabel</span>
                             <span class="push-end">@Model.Selected.CreatedText</span>
                         </div>
 
@@ -107,15 +111,15 @@
                         {
                             <div class="subcard" style="margin-bottom: 14px;">
                                 <div class="row" style="margin-bottom: 9px;">
-                                    <span style="font-size: 12.5px; font-weight: 700;">لینک فعال</span>
-                                    <span class="badge push-end">عمومی</span>
+                                    <span style="font-size: 12.5px; font-weight: 700;">@UiText.Files.ActiveLinkHeading</span>
+                                    <span class="badge push-end">@UiText.Files.PublicBadge</span>
                                 </div>
                                 <div class="field" dir="ltr">
                                     <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@link.DisplayUrl</span>
                                     <button type="button"
                                             class="btn btn--sm"
                                             data-island="copy-link"
-                                            data-value="@link.PublicUrl">کپی</button>
+                                            data-value="@link.PublicUrl">@UiText.Files.Copy</button>
                                 </div>
                                 <div class="row mono muted" style="gap: 14px; font-size: 11px; margin-top: 9px;">
                                     <span>@link.DownloadsText</span>
@@ -128,19 +132,19 @@
                                       style="flex: 1;"
                                       action="@Url.Action("RevokeLink", "Files", new { fileId = Model.Selected.Id, linkId = link.Id })">
                                     @Html.AntiForgeryToken()
-                                    <button type="submit" class="btn btn--block">ابطال لینک</button>
+                                    <button type="submit" class="btn btn--block">@UiText.Files.RevokeLink</button>
                                 </form>
                                 <a class="btn btn--primary" style="flex: 1;" href="@link.PublicUrl" target="_blank" rel="noopener">
-                                    دیدن صفحه عمومی
+                                    @UiText.Files.OpenPublicPage
                                 </a>
                             </div>
                         }
                         else
                         {
-                            <p class="muted" style="font-size: 12.5px; margin: 0 0 12px;">این فایل هنوز لینک عمومی ندارد.</p>
+                            <p class="muted" style="font-size: 12.5px; margin: 0 0 12px;">@UiText.Files.NoPublicLink</p>
                             <form method="post" action="@Url.Action("CreateLink", "Files", new { id = Model.Selected.Id })">
                                 @Html.AntiForgeryToken()
-                                <button type="submit" class="btn btn--primary btn--block">ساخت لینک</button>
+                                <button type="submit" class="btn btn--primary btn--block">@UiText.Files.CreateLink</button>
                             </form>
                         }
                     </div>

@@ -143,6 +143,18 @@
             </div>
         </form>
 
+        @if (Model.HasToken)
+        {
+            @* getMe is the only proof a token works. Until this button existed the screen had the
+               bot id (parsed out of the token) and the @username (typed by the operator), which is
+               enough to build a working deep link and is not evidence the token is live. *@
+            <form method="post" action="@Url.Action("VerifyBot", "Telegram")" style="margin-top: 12px;">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn--sm">تأیید توکن</button>
+                <span class="setup-hint">از تلگرام می‌پرسد این توکن به کدام ربات تعلق دارد.</span>
+            </form>
+        }
+
         @if (Model.HasToken || !string.IsNullOrEmpty(Model.BotUsername))
         {
             @* A separate form, because a delete inside the save form is one stray Enter away from
@@ -152,6 +164,112 @@
                 <button type="submit" class="btn btn--danger btn--sm">حذف اطلاعات ربات</button>
             </form>
         }
+    </div>
+
+    <div class="card card--pad" style="max-width: 900px;">
+        <div class="row" style="gap: 12px; align-items: baseline;">
+            <span style="font-size: 14px; font-weight: 700;">دریافت پیام‌ها</span>
+            <span class="badge badge--muted push-end">@Model.UpdateModeText</span>
+        </div>
+
+        @*
+            Which server we talk to is deployment configuration and is shown here, not editable. A
+            dropdown whose wrong value is an irreversible ten-minute logOut — and whose right value
+            nobody can verify from a browser — is a control that should not exist.
+        *@
+        <div class="setup-state" role="group" aria-label="وبهوک" style="margin-top: 12px;">
+            <div class="setup-state-row">
+                <span class="setup-state-label">وبهوک</span>
+                <span class="setup-state-value">@(Model.WebhookRegisteredText ?? "—")</span>
+                <span class="@(Model.HasWebhook ? "badge" : "badge badge--warn")">
+                    @(Model.HasWebhook ? "ثبت شده" : "ثبت نشده")
+                </span>
+            </div>
+
+            @if (Model.Webhook is { } hook)
+            {
+                <div class="setup-state-row">
+                    <span class="setup-state-label">در انتظار</span>
+                    <span class="setup-state-value">@hook.PendingUpdateCountText</span>
+                    <span class="@(hook.IsBacklogged ? "badge badge--warn" : "badge badge--muted")">
+                        @(hook.IsBacklogged ? "انباشته شده" : "عادی")
+                    </span>
+                </div>
+
+                @if (hook.LastErrorMessage is { Length: > 0 } lastError)
+                {
+                    @* Verbatim, in Telegram's own words and its own language. It is Telegram saying
+                       why it could not reach us, and paraphrasing it throws away the only diagnosis
+                       there is. *@
+                    <div class="setup-state-row">
+                        <span class="setup-state-label">آخرین خطا</span>
+                        <span class="setup-state-value mono" dir="ltr">@lastError</span>
+                        <span class="badge badge--warn">@(hook.LastErrorText ?? "—")</span>
+                    </div>
+                }
+            }
+        </div>
+
+        @if (Model.HasToken)
+        {
+            <div class="row" style="gap: 8px; margin-top: 12px;">
+                <form method="post" action="@Url.Action("RegisterWebhook", "Telegram")">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn--sm">ثبت وبهوک</button>
+                </form>
+
+                @if (Model.HasWebhook)
+                {
+                    <form method="post" action="@Url.Action("ClearWebhook", "Telegram")">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn--sm btn--danger">حذف وبهوک</button>
+                    </form>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="card card--pad" style="max-width: 900px;">
+        <span style="font-size: 14px; font-weight: 700;">سرور تلگرام</span>
+
+        <div class="setup-state" role="group" aria-label="سرور" style="margin-top: 12px;">
+            <div class="setup-state-row">
+                <span class="setup-state-label">نقطه‌ی اتصال</span>
+                <span class="setup-state-value mono" dir="ltr">@Model.Server.ApiBaseUrl</span>
+                <span class="badge badge--muted">@Model.Server.ModeText</span>
+            </div>
+
+            @if (Model.Server.HasWorkDirectory)
+            {
+                @*
+                    The alarm that ends the feature. In a healthy production this is at or near zero,
+                    because the local copy is deleted the instant a transfer finishes; a size that
+                    stays above zero across several minutes means that has stopped, and the volume
+                    this shares with the upload spool and the database is what fills.
+                *@
+                <div class="setup-state-row">
+                    <span class="setup-state-label">پوشه‌ی کاری</span>
+                    <span class="setup-state-value mono" dir="ltr">@Model.Server.WorkDirectoryBytesText</span>
+                    <span class="@(Model.Server.IsHoarding ? "badge badge--warn" : "badge")">
+                        @(Model.Server.IsHoarding ? "خالی نمی‌شود" : "خالی")
+                    </span>
+                </div>
+                <div class="setup-state-row">
+                    <span class="setup-state-label">تعداد فایل</span>
+                    <span class="setup-state-value">@Model.Server.WorkDirectoryFilesText</span>
+                    <span class="badge badge--muted">@(Model.Server.OldestFileAgeText ?? "—")</span>
+                </div>
+                <div class="setup-state-row">
+                    <span class="setup-state-label">فضای آزاد</span>
+                    <span class="setup-state-value mono" dir="ltr">@(Model.Server.FreeBytesText ?? "—")</span>
+                    <span class="badge badge--muted">مشترک با فضای موقت آپلود</span>
+                </div>
+            }
+        </div>
+
+        <p class="setup-note" style="margin-top: 12px;">
+            مسیر پوشه‌ی کاری اینجا نشان داده نمی‌شود؛ نامش به کار هیچ صفحه‌ای نمی‌آید.
+        </p>
     </div>
 
     <div class="card card--pad" style="max-width: 900px;">
@@ -167,6 +285,21 @@
                 <span class="setup-state-label">درخواست‌های در جریان</span>
                 <span class="setup-state-value">@Model.PendingCountText</span>
                 <span class="badge badge--muted">۱۰ دقیقه‌ای</span>
+            </div>
+            <div class="setup-state-row">
+                <span class="setup-state-label">صف ارسال</span>
+                <span class="setup-state-value">@Model.OutboxDepthText</span>
+                <span class="badge badge--muted">در انتظار</span>
+            </div>
+            <div class="setup-state-row">
+                <span class="setup-state-label">پیام‌های پردازش‌شده</span>
+                <span class="setup-state-value">@Model.UpdatesLastDayText</span>
+                <span class="badge badge--muted">۲۴ ساعت</span>
+            </div>
+            <div class="setup-state-row">
+                <span class="setup-state-label">ارسال‌های ناموفق</span>
+                <span class="setup-state-value">@Model.SendsFailedLastDayText</span>
+                <span class="badge badge--muted">۲۴ ساعت</span>
             </div>
         </div>
 

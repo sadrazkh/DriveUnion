@@ -27,6 +27,39 @@ public class MigratedScreensTests
         "src/DriveUnion.Web/Views/Shared",
         "src/DriveUnion.Web/Areas/Identity",
         "src/DriveUnion.Web/Localization",
+        "src/DriveUnion.Web/Views/Home",
+        "src/DriveUnion.Web/Views/Files",
+        "src/DriveUnion.Web/Views/Links",
+        "src/DriveUnion.Web/Views/Accounts",
+        "src/DriveUnion.Web/Views/Design",
+    ];
+
+    /// <summary>
+    /// The other half of a screen, named one file at a time.
+    ///
+    /// A sentence a controller puts in <c>TempData</c> and a status word a view model maps an enum
+    /// to are as much a part of the screen as its markup — «فایل حذف شد.» never appeared in a
+    /// <c>.cshtml</c> at all. They are listed individually rather than by folder because
+    /// <c>Controllers/</c> and <c>Models/</c> also hold the Telegram surface, which is another
+    /// agent's and is migrated after it settles.
+    ///
+    /// <c>Models/DisplayFormats.cs</c> is deliberately not among them. It is the other half of
+    /// <c>PersianDigits</c> — the implementation of the numeral rule rather than a screen — and its
+    /// Persian output is pinned character for character by <c>PersianDigitsTests</c>.
+    /// </summary>
+    private static readonly string[] MigratedSources =
+    [
+        "src/DriveUnion.Web/Controllers/HomeController.cs",
+        "src/DriveUnion.Web/Controllers/FilesController.cs",
+        "src/DriveUnion.Web/Controllers/FilesApiController.cs",
+        "src/DriveUnion.Web/Controllers/LinksController.cs",
+        "src/DriveUnion.Web/Controllers/AccountsController.cs",
+        "src/DriveUnion.Web/Controllers/UploadsController.cs",
+        "src/DriveUnion.Web/Controllers/ShareLinksController.cs",
+        "src/DriveUnion.Web/Controllers/DesignController.cs",
+        "src/DriveUnion.Web/Models/FilesViewModels.cs",
+        "src/DriveUnion.Web/Models/LinksViewModels.cs",
+        "src/DriveUnion.Web/Models/AccountsViewModels.cs",
     ];
 
     /// <summary>
@@ -35,6 +68,13 @@ public class MigratedScreensTests
     /// on purpose — Localization/README.md says what folding it in costs and why it is its own
     /// change. Until then this file is the boundary between the two, and it is named here rather
     /// than silently skipped.
+    ///
+    /// <c>Views/Public/**</c> is the rest of it and is absent from <see cref="Migrated"/> for the
+    /// same reason: its layout is <c>Views/Shared/_PublicLayout.cshtml</c>, which builds the
+    /// document's language, its FA/EN control and its <c>hreflang</c> alternates from
+    /// <c>ViewData["Lang"]</c> rather than from <c>PanelCulture</c>. Folding the two views in while
+    /// the layout around them still answers to the other mechanism would leave the page saying one
+    /// thing in its card and another in its chrome.
     /// </summary>
     private static readonly string[] NotMigrated =
     [
@@ -94,6 +134,21 @@ public class MigratedScreensTests
         files.Should().Contain("src/DriveUnion.Web/Areas/Identity/Views/Account/AccessDenied.cshtml");
         files.Should().Contain("src/DriveUnion.Web/Areas/Identity/Controllers/AccountController.cs");
         files.Should().NotContain("src/DriveUnion.Web/Views/Shared/_PublicLayout.cshtml");
+
+        // The screens this slice migrated, one from each folder, plus the two halves a folder list
+        // on its own would miss: a controller's TempData sentence and a view model's status word.
+        files.Should().Contain("src/DriveUnion.Web/Views/Files/Index.cshtml");
+        files.Should().Contain("src/DriveUnion.Web/Views/Links/Index.cshtml");
+        files.Should().Contain("src/DriveUnion.Web/Views/Accounts/_GoogleSetup.cshtml");
+        files.Should().Contain("src/DriveUnion.Web/Views/Design/_Gallery.cshtml");
+        files.Should().Contain("src/DriveUnion.Web/Views/Home/Error.cshtml");
+        files.Should().Contain("src/DriveUnion.Web/Controllers/AccountsController.cs");
+        files.Should().Contain("src/DriveUnion.Web/Models/LinksViewModels.cs");
+
+        // And the two that are deliberately outside it, so "not listed" stays a decision rather
+        // than an oversight.
+        files.Should().NotContain("src/DriveUnion.Web/Models/DisplayFormats.cs");
+        files.Should().NotContain("src/DriveUnion.Web/Views/Public/Download.cshtml");
     }
 
     private static List<string> MigratedFiles()
@@ -115,6 +170,15 @@ public class MigratedScreensTests
 
                 files.Add(Path.GetRelativePath(root.FullName, file.FullName).Replace('\\', '/'));
             }
+        }
+
+        foreach (var source in MigratedSources)
+        {
+            Assert.True(
+                File.Exists(Path.Combine(root.FullName, source)),
+                $"{source} is listed as migrated and does not exist.");
+
+            files.Add(source);
         }
 
         return files;

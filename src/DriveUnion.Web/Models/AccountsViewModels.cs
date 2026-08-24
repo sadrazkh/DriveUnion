@@ -1,6 +1,7 @@
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Storage;
 using DriveUnion.Infrastructure.Google;
+using DriveUnion.Web.Localization;
 
 namespace DriveUnion.Web.Models;
 
@@ -30,9 +31,9 @@ public sealed record AccountCardViewModel(
             account.Label,
             account.Status switch
             {
-                GoogleAccountStatus.Healthy => "سالم",
-                GoogleAccountStatus.Paused => "متوقف",
-                _ => "قطع شده",
+                GoogleAccountStatus.Healthy => UiText.Accounts.StatusHealthy,
+                GoogleAccountStatus.Paused => UiText.Accounts.StatusPaused,
+                _ => UiText.Accounts.StatusDisconnected,
             },
             account.Status,
             DisplayFormats.Bytes(account.QuotaUsedBytes),
@@ -123,16 +124,16 @@ public sealed record GoogleSetupViewModel(
             stored?.RedirectUri ?? suggestedRedirectUri,
             stored is not null,
             stored?.HasClientSecret ?? false,
-            stored is null ? null : DisplayFormats.PersianDateTime(stored.UpdatedAt),
+            stored is null ? null : DisplayFormats.PanelDateTime(stored.UpdatedAt),
             state.ConfigurationOutranksPanel);
     }
 
     /// <summary>Where a value comes from, in the words the screen uses for it.</summary>
     public static string SourceText(GoogleCredentialSource source) => source switch
     {
-        GoogleCredentialSource.Configuration => "از پیکربندی سرور",
-        GoogleCredentialSource.Panel => "ذخیره‌شده در پنل",
-        _ => "تنظیم نشده",
+        GoogleCredentialSource.Configuration => UiText.Accounts.SourceConfiguration,
+        GoogleCredentialSource.Panel => UiText.Accounts.SourcePanel,
+        _ => UiText.Accounts.SourceUnset,
     };
 }
 

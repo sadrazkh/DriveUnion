@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Threading.RateLimiting;
+using DriveUnion.Web.Controllers;
 using DriveUnion.Web.Security;
 
 namespace DriveUnion.Web.Hosting;
@@ -64,6 +65,21 @@ public static class DriveUnionWebServiceCollectionExtensions
                         ReplenishmentPeriod = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                         AutoReplenishment = true,
+                    }));
+
+            // Telegram's own retries land here, so the limit is generous — it exists to bound a
+            // forged flood at an endpoint that answers before it does any work, not to shape
+            // Telegram. Partitioned on the peer address, which behind the loopback Bot API server
+            // is one key; that is the point, because nothing else should be reaching it.
+            options.AddPolicy(
+                TelegramWebhookController.RateLimitPolicy,
+                context => RateLimitPartition.GetFixedWindowLimiter(
+                    ClientPartitionKey(context),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 600,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
                     }));
 
             options.OnRejected = (context, _) =>

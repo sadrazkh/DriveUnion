@@ -1,10 +1,15 @@
 @{
-    ViewData["Title"] = "راهنمای طراحی";
+    ViewData["Title"] = UiText.Design.Title;
 
     @*
         The printed value beside each swatch is documentation copied from the handoff; the swatch
         itself is painted with var(--name), so it is always the truth. If the two ever disagree,
         tokens.css is right and this list is stale — fix the list.
+
+        Nothing in these two arrays is translated and nothing in them should be: a hex value, an
+        oklch(), a pixel size and a font weight are the stylesheet quoted back, and quoting it in
+        two languages would give this page two chances to be wrong about one file. Only the role
+        beside each row is a word, and that is the one column the catalogue supplies.
     *@
     (string Name, string Light, string Dark)[] colours =
     [
@@ -25,42 +30,40 @@
 
     (string Size, string Weight, string Role)[] typeScale =
     [
-        ("22px", "800", "عنوان صفحه"),
-        ("24px", "800", "عنوان فایل در صفحه‌ی عمومی"),
-        ("15px", "800", "نام برند و عنوان پنل کناری"),
-        ("14.5px", "700", "عنوان پنل جزئیات"),
-        ("14px", "700", "عنوان کارت"),
-        ("13.5px", "700", "عنوان ردیف اصلی"),
-        ("13px", "600", "برچسب ردیف"),
-        ("12.5px", "400", "بدنه‌ی جدول"),
-        ("12px", "400", "متادیتا"),
-        ("11.5px", "600", "هدر جدول و زیرنویس"),
-        ("11px", "400", "ریزنویس مونواسپیس"),
+        ("22px", "800", UiText.Design.RolePageTitle),
+        ("24px", "800", UiText.Design.RolePublicFileTitle),
+        ("15px", "800", UiText.Design.RoleBrand),
+        ("14.5px", "700", UiText.Design.RoleDetailTitle),
+        ("14px", "700", UiText.Design.RoleCardTitle),
+        ("13.5px", "700", UiText.Design.RoleRowTitle),
+        ("13px", "600", UiText.Design.RoleRowLabel),
+        ("12.5px", "400", UiText.Design.RoleTableBody),
+        ("12px", "400", UiText.Design.RoleMetadata),
+        ("11.5px", "600", UiText.Design.RoleTableHead),
+        ("11px", "400", UiText.Design.RoleMonoFinePrint),
     ];
 }
 
 <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
-    <h1 class="page-title">راهنمای طراحی</h1>
+    <h1 class="page-title">@UiText.Design.Title</h1>
     <span class="mono muted" style="font-size: 11.5px;" dir="ltr">wwwroot/css/tokens.css · app.css</span>
 </div>
 <p class="page-sub" style="margin-bottom: 18px; max-width: 70ch;">
-    مرجع زنده‌ی توکن‌ها و اجزای پایه. بدون دیتابیس و بدون ورود کار می‌کند تا هرکسی بتواند یک پیکسل را
-    بسنجد. رنگ هر نمونه از <span class="mono" dir="ltr">var(--token)</span> می‌آید، پس همیشه همان چیزی
-    است که مرورگر واقعاً می‌کشد.
+    @UiText.Design.IntroBefore<span class="mono" dir="ltr">var(--token)</span>@UiText.Design.IntroAfter
 </p>
 
-<nav class="row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 26px;" aria-label="پرش به بخش‌ها">
-    <a class="chip" href="#tokens">رنگ‌ها</a>
-    <a class="chip" href="#type">تایپوگرافی</a>
-    <a class="chip" href="#space">اسپیسینگ و شعاع</a>
-    <a class="chip" href="#numerals">اعداد فارسی</a>
-    <a class="chip" href="#light">اجزا — روشن</a>
-    <a class="chip" href="#dark">اجزا — تیره</a>
+<nav class="row" style="flex-wrap: wrap; gap: 8px; margin-bottom: 26px;" aria-label="@UiText.Design.JumpToSection">
+    <a class="chip" href="#tokens">@UiText.Design.ChipColours</a>
+    <a class="chip" href="#type">@UiText.Design.ChipTypography</a>
+    <a class="chip" href="#space">@UiText.Design.ChipSpacing</a>
+    <a class="chip" href="#numerals">@UiText.Design.ChipNumerals</a>
+    <a class="chip" href="#light">@UiText.Design.ChipComponentsLight</a>
+    <a class="chip" href="#dark">@UiText.Design.ChipComponentsDark</a>
 </nav>
 
-<h2 class="section-title" id="tokens" style="margin-bottom: 12px;">توکن‌های رنگ — هر دو تم</h2>
+<h2 class="section-title" id="tokens" style="margin-bottom: 12px;">@UiText.Design.SectionColours</h2>
 <div class="grid-2" style="margin-bottom: 26px;">
-    @foreach (var (theme, label) in new[] { ("light", "روشن"), ("dark", "تیره") })
+    @foreach (var (theme, label) in new[] { ("light", UiText.Design.ThemeLight), ("dark", UiText.Design.ThemeDark) })
     {
         @* Each panel carries its own data-theme, so both palettes are on screen at once instead of
            one being a memory of the last time you clicked the toggle. *@
@@ -101,18 +104,17 @@
     }
 </div>
 <p class="muted" style="font-size: 11.5px; margin: -14px 0 26px; max-width: 78ch;">
-    مقادیر <span class="mono" dir="ltr">oklch()</span> عمداً همان‌طور مانده‌اند. سبزهای این پالت فقط
-    در فضای ادراکی روشنایی‌شان را بین دو تم حفظ می‌کنند؛ تبدیل به هگز آن را خراب می‌کند. در این
-    پروژه Tailwind نیست و قرار هم نیست باشد — طرح روی مقادیر خارج از مقیاس بنا شده
-    (<span class="mono" dir="ltr">13.5px</span>، <span class="mono" dir="ltr">--row-pad: 11px 14px</span>،
-    شعاع‌های ۹ تا ۲۰).
+    @UiText.Design.OklchNote1<span class="mono" dir="ltr">oklch()</span>@UiText.Design.OklchNote2<span class="mono" dir="ltr">13.5px</span>@UiText.Design.OklchNote3<span class="mono" dir="ltr">--row-pad: 11px 14px</span>@UiText.Design.OklchNote4
 </p>
 
-<h2 class="section-title" id="type" style="margin-bottom: 12px;">تایپوگرافی</h2>
+<h2 class="section-title" id="type" style="margin-bottom: 12px;">@UiText.Design.SectionTypography</h2>
 <div class="card card--flush" style="margin-bottom: 26px;">
     <div class="dtable" style="--cols: 92px 78px minmax(0, 1fr) minmax(0, 1.2fr)">
         <div class="dtable-head">
-            <div>اندازه</div><div>وزن</div><div>نقش</div><div>نمونه</div>
+            <div>@UiText.Design.ColumnScaleSize</div>
+            <div>@UiText.Design.ColumnScaleWeight</div>
+            <div>@UiText.Design.ColumnScaleRole</div>
+            <div>@UiText.Design.ColumnScaleSample</div>
         </div>
         @foreach (var t in typeScale)
         {
@@ -120,20 +122,20 @@
                 <div class="cell-num" dir="ltr">@t.Size</div>
                 <div class="cell-num" dir="ltr">@t.Weight</div>
                 <div class="cell-muted">@t.Role</div>
-                <div style="font-size: @t.Size; font-weight: @t.Weight; line-height: 1.4;">درایو یونیون</div>
+                <div style="font-size: @t.Size; font-weight: @t.Weight; line-height: 1.4;">@UiText.Brand.Name</div>
             </div>
         }
     </div>
     <div class="dtable-foot">
-        <span>خانواده‌ی اصلی وزیرمتن، self-host؛ مونواسپیس برای اعداد، شناسه‌ها، آدرس‌ها و سرعت‌ها.</span>
+        <span>@UiText.Design.TypographyFoot</span>
         <span class="mono" dir="ltr">ui-monospace, SFMono-Regular, Menlo</span>
     </div>
 </div>
 
-<h2 class="section-title" id="space" style="margin-bottom: 12px;">اسپیسینگ و شکل</h2>
+<h2 class="section-title" id="space" style="margin-bottom: 12px;">@UiText.Design.SectionSpacing</h2>
 <div class="grid-2" style="margin-bottom: 26px;">
     <div class="card card--pad">
-        <h3 class="card-title" style="margin-bottom: 12px;">مقیاس اسپیسینگ</h3>
+        <h3 class="card-title" style="margin-bottom: 12px;">@UiText.Design.SpacingScale</h3>
         <div class="row" style="align-items: flex-end; gap: 6px; flex-wrap: wrap;">
             @foreach (var v in new[] { 3, 4, 6, 8, 9, 10, 12, 14, 16, 18, 22, 26 })
             {
@@ -144,13 +146,23 @@
             }
         </div>
         <p class="muted" style="font-size: 11.5px; margin: 14px 0 0;">
-            گپ گرید کارت‌ها ۱۴ · پدینگ کارت ۱۸ · پدینگ محتوا <span class="mono" dir="ltr">24px 26px 40px</span>.
+            @UiText.Design.SpacingNoteBefore<span class="mono" dir="ltr">24px 26px 40px</span>.
         </p>
     </div>
     <div class="card card--pad">
-        <h3 class="card-title" style="margin-bottom: 12px;">شعاع‌ها</h3>
+        <h3 class="card-title" style="margin-bottom: 12px;">@UiText.Design.Radii</h3>
         <div class="row" style="gap: 10px; flex-wrap: wrap;">
-            @foreach (var (r, role) in new[] { (8, "دکمه‌ی کوچک"), (9, "ورودی/دکمه"), (10, "دکمه‌ی بزرگ"), (11, "کارت داخلی"), (12, "کارت آمار"), (14, "کارت اصلی"), (18, "کارت عمومی"), (20, "بَج/چیپ") })
+            @foreach (var (r, role) in new[]
+            {
+                (8, UiText.Design.RadiusSmallButton),
+                (9, UiText.Design.RadiusInput),
+                (10, UiText.Design.RadiusLargeButton),
+                (11, UiText.Design.RadiusInnerCard),
+                (12, UiText.Design.RadiusStatCard),
+                (14, UiText.Design.RadiusMainCard),
+                (18, UiText.Design.RadiusPublicCard),
+                (20, UiText.Design.RadiusBadge),
+            })
             {
                 <span style="text-align: center;">
                     <span style="display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border: 1px solid var(--line); background: var(--surface2); border-radius: @(r)px;"
@@ -160,72 +172,73 @@
             }
         </div>
         <p class="muted" style="font-size: 11.5px; margin: 14px 0 0;">
-            <span class="mono" dir="ltr">--row-pad</span>: <span class="mono" dir="ltr">11px 14px</span> راحت /
-            <span class="mono" dir="ltr">7px 14px</span> فشرده · نوار پیشرفت ۶ ردیفی و ۸ کارتی · آواتار ۵۰٪.
+            <span class="mono" dir="ltr">--row-pad</span>: <span class="mono" dir="ltr">11px 14px</span>@UiText.Design.RowPadComfortable<span class="mono" dir="ltr">7px 14px</span>@UiText.Design.RowPadCompact
         </p>
     </div>
 </div>
 
-<h2 class="section-title" id="numerals" style="margin-bottom: 12px;">اعداد فارسی</h2>
+<h2 class="section-title" id="numerals" style="margin-bottom: 12px;">@UiText.Design.SectionNumerals</h2>
 <p class="muted" style="font-size: 12.5px; margin: 0 0 12px; max-width: 78ch;">
-    طرح روی یک صفحه هر دو دستگاه رقم را کنار هم می‌گذارد و این تصادفی نیست: رقمی که داخل متن فارسی
-    نشسته فارسی است، و رقمی که در یک خوانش فنی چپ‌به‌راست است (حجم، سرعت، تأخیر، اسلاگ، شناسه‌ی درایو)
-    لاتین می‌ماند — چون آن‌ها را کپی می‌کنند، grep می‌کنند و برای پشتیبانی گوگل می‌خوانند. پس تبدیل
-    برای هر مقدار جداگانه تصمیم گرفته می‌شود، نه یک‌بار برای کل صفحه.
+    @UiText.Design.NumeralsIntro
 </p>
 <div class="card card--flush" style="margin-bottom: 26px;">
+    @*
+        The output column is the specimen and stays Persian in both languages: this table documents
+        PersianDigits, and an English rendering of «۱۴٬۲۸۶» would be a table about nothing.
+    *@
     <div class="dtable" style="--cols: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.4fr)">
         <div class="dtable-head">
-            <div>فراخوانی</div><div>خروجی</div><div>کجا</div>
+            <div>@UiText.Design.ColumnCall</div>
+            <div>@UiText.Design.ColumnOutput</div>
+            <div>@UiText.Design.ColumnWhere</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Count(14286)</div>
             <div>@PersianDigits.Count(14286)</div>
-            <div class="cell-muted">شمارش‌ها؛ جداکننده‌ی هزارگان ٬</div>
+            <div class="cell-muted">@UiText.Design.NumeralsCounts</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Count(241)</div>
             <div>@PersianDigits.Count(241)</div>
-            <div class="cell-muted">«@PersianDigits.Count(241) بار دانلود شده»</div>
+            <div class="cell-muted">@UiText.Design.NumeralsProseExample</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Plain(1405)</div>
             <div>@PersianDigits.Plain(1405)</div>
-            <div class="cell-muted">سال — بدون گروه‌بندی</div>
+            <div class="cell-muted">@UiText.Design.NumeralsYear</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Percent(68)</div>
             <div>@PersianDigits.Percent(68)</div>
-            <div class="cell-muted">درصد در متن، با علامت ٪</div>
+            <div class="cell-muted">@UiText.Design.NumeralsPercent</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Translate("1405/05/31")</div>
             <div>@PersianDigits.Translate("1405/05/31")</div>
-            <div class="cell-muted">رشته‌ی از پیش ساخته‌شده — تاریخ، مدت</div>
+            <div class="cell-muted">@UiText.Design.NumeralsAssembled</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">—</div>
             <div class="cell-num" dir="ltr">18.4 MB · 341 MB/s · /d/kx91mz</div>
-            <div class="cell-muted">لاتین می‌ماند؛ تبدیل نکنید</div>
+            <div class="cell-muted">@UiText.Design.NumeralsStayLatin</div>
         </div>
     </div>
     <div class="dtable-foot">
         <span class="mono" dir="ltr">Infrastructure/PersianDigits.cs</span>
-        <span>وزیرمتن نسخه‌ی FD هم دارد که هر رقم لاتین را فارسی می‌کند — عمداً استفاده نشده، چون حجم و اسلاگ را هم عوض می‌کرد.</span>
+        <span>@UiText.Design.NumeralsFoot</span>
     </div>
 </div>
 
-<h2 class="section-title" id="light" style="margin-bottom: 4px;">اجزا — تم روشن</h2>
+<h2 class="section-title" id="light" style="margin-bottom: 4px;">@UiText.Design.SectionComponentsLight</h2>
 <p class="muted" style="font-size: 11.5px; margin: 0 0 14px;">
-    همان اجزا دو بار رندر شده‌اند، هر بار داخل یک <span class="mono" dir="ltr">data-theme</span> خودش.
-    هیچ‌چیز اینجا رنگ ثابت ندارد؛ اگر جزئی در تیره خراب شود، همین‌جا دیده می‌شود.
+    @UiText.Design.ThemeNoteBefore<span class="mono" dir="ltr">data-theme</span>@UiText.Design.ThemeNoteAfter
 </p>
 <div data-theme="light"
      style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 26px;">
     <partial name="_Gallery" model="@("light")" />
 </div>
 
-<h2 class="section-title" id="dark" style="margin-bottom: 14px;">اجزا — تم تیره</h2>
+<h2 class="section-title" id="dark" style="margin-bottom: 14px;">@UiText.Design.SectionComponentsDark</h2>
 <div data-theme="dark"
      style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px;">
     <partial name="_Gallery" model="@("dark")" />

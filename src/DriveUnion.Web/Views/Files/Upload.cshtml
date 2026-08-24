@@ -1,13 +1,13 @@
 @using DriveUnion.Web.Models
 @model AntiforgeryTokenViewModel
 @{
-    ViewData["Title"] = "آپلود فایل";
+    ViewData["Title"] = UiText.Files.UploadTitle;
 }
 
 <div class="stack" style="gap: 16px;">
     <div class="stack" style="gap: 4px;">
-        <h1 class="page-title">آپلود فایل</h1>
-        <p class="page-sub">فایل از مرورگر به سرور ما می‌رود و از آنجا تکه‌تکه به فضای ذخیره‌سازی منتقل می‌شود.</p>
+        <h1 class="page-title">@UiText.Files.UploadTitle</h1>
+        <p class="page-sub">@UiText.Files.UploadSubtitle</p>
     </div>
 
     <div class="card card--pad">
@@ -21,8 +21,8 @@
              data-antiforgery-header="@Model.HeaderName"
              data-antiforgery-token="@Model.Token">
             <div class="empty">
-                <span>آپلود تکه‌ای بدون جاوااسکریپت ممکن نیست — یک فایل ۹۶ گیگابایتی باید در تکه‌های قابل ازسرگیری فرستاده شود.</span>
-                <a class="btn" href="@Url.Action("Index", "Files")">بازگشت به فایل‌ها</a>
+                <span>@UiText.Files.UploadNeedsScript</span>
+                <a class="btn" href="@Url.Action("Index", "Files")">@UiText.Files.BackToFiles</a>
             </div>
         </div>
     </div>

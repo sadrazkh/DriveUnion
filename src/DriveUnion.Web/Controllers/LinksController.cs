@@ -1,5 +1,6 @@
 using DriveUnion.Core.Application;
 using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Localization;
 using DriveUnion.Web.Models;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -51,21 +52,21 @@ public sealed class LinksController(IShareLinkService shareLinks) : Controller
     /// <summary>«۲۴۱/۵۰۰», or «۱۸۹/∞» where the customer set no cap.</summary>
     private static string Downloads(ShareLinkSummary link) =>
         link.MaxDownloads is { } cap
-            ? $"{PersianDigits.Count(link.DownloadCount)}/{PersianDigits.Count(cap)}"
-            : $"{PersianDigits.Count(link.DownloadCount)}/∞";
+            ? UiText.Links.DownloadsOfCap(link.DownloadCount, cap)
+            : UiText.Links.DownloadsUncapped(link.DownloadCount);
 
     private static string Expiry(ShareLinkSummary link, DateTimeOffset now) =>
         DisplayFormats.DaysUntil(link.ExpiresAt, now) switch
         {
-            null => "بدون",
-            0 => "منقضی",
-            var days => $"{PersianDigits.Plain(days.Value)} روز",
+            null => UiText.Links.ExpiryNone,
+            0 => UiText.Links.StatusExpired,
+            var days => UiText.Links.ExpiryDays(days.Value),
         };
 
     // The pool's size and its daily quota are operator figures; a customer's sidebar shows neither.
     private void SetShell() => ViewData[ShellContext.Key] = new ShellContext
     {
         UserName = User.Identity?.Name,
-        UserRole = User.IsOperator() ? "اپراتور" : "کاربر",
+        UserRole = User.IsOperator() ? UiText.Shell.RoleOperator : UiText.Shell.RoleUser,
     };
 }

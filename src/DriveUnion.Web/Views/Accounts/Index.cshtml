@@ -1,7 +1,7 @@
 @using DriveUnion.Web.Models
 @model AccountsPageViewModel
 @{
-    ViewData["Title"] = "اکانت‌های گوگل";
+    ViewData["Title"] = UiText.Accounts.Title;
 
     // The setup panel's fragment, spelled once. Three things have to name the same element or the
     // primary action becomes a link that appears to do nothing: this href, the <details> the
@@ -20,8 +20,8 @@
 <div class="stack" style="gap: 16px;">
     <div class="accounts-head">
         <div class="stack" style="gap: 4px;">
-            <h1 class="page-title">اکانت‌های گوگل</h1>
-            <p class="page-sub">توکن‌ها رمزنگاری‌شده روی سرور ذخیره می‌شوند.</p>
+            <h1 class="page-title">@UiText.Accounts.Title</h1>
+            <p class="page-sub">@UiText.Accounts.Subtitle</p>
         </div>
 
         <div class="accounts-cta">
@@ -41,7 +41,7 @@
                     *@
                     <input type="hidden" name="popup" value="false" data-google-connect-popup />
                     <button type="submit" class="btn btn--primary btn--lg">
-                        + افزودن اکانت با OAuth
+                        @UiText.Accounts.AddAccount
                     </button>
                 </form>
 
@@ -64,18 +64,17 @@
                 <a class="btn btn--primary btn--lg"
                    href="#@SetupPanel"
                    aria-describedby="accounts-cta-why"
-                   data-setup-jump>راه‌اندازی اتصال به گوگل</a>
+                   data-setup-jump>@UiText.Accounts.SetUpGoogle</a>
 
                 @*
                     The refusal, explained where the refusal happens. The detailed instructions stay in
                     the panel; this is the one sentence an operator needs before they scroll — including
                     the part no amount of engineering removes, said plainly and said once.
+
+                    No whitespace around the term: the punctuation that follows «Client ID» belongs to
+                    the sentence and differs between the two languages, so the catalogue carries it.
                 *@
-                <p class="accounts-cta-why" id="accounts-cta-why">
-                    گوگل بدون <span class="mono" dir="ltr">Client ID</span> هیچ درخواستی را نمی‌پذیرد، و این
-                    کلاینت فقط در پروژه‌ی Google Cloud خودِ شما ساخته می‌شود؛ این پنل نمی‌تواند آن را بسازد.
-                    دکمه شما را به مراحل ساخت و فرم ذخیره‌ی آن می‌برد.
-                </p>
+                <p class="accounts-cta-why" id="accounts-cta-why">@UiText.Accounts.ConsentNeedsClientBefore<span class="mono" dir="ltr">Client ID</span>@UiText.Accounts.ConsentNeedsClientAfter</p>
             }
         </div>
     </div>
@@ -108,13 +107,13 @@
             <div class="empty">
                 @if (Model.ConsentConfigured)
                 {
-                    <span>هیچ اکانتی متصل نیست. تا وقتی یک اکانت متصل نشود، آپلود کار نمی‌کند.</span>
+                    <span>@UiText.Accounts.EmptyConfigured</span>
                 }
                 else
                 {
                     @* The end of the same sentence the top of the page started: what all of this is
                        for, and where the result will appear. Not a second refusal. *@
-                    <span>هنوز اکانتی متصل نیست. اولین اکانت پس از ذخیره‌ی کلاینت، از همین صفحه وصل می‌شود.</span>
+                    <span>@UiText.Accounts.EmptyUnconfigured</span>
                 }
             </div>
         </div>
@@ -128,6 +127,7 @@
 
                 <span class="stack" style="gap: 4px; flex: 1; min-width: 0;">
                     <span class="mono" dir="ltr" style="font-size: 14px; font-weight: 700;">@account.Email</span>
+                    @* The OAuth scope's short name, which is Google's own word in both languages. *@
                     <span class="mono muted" dir="ltr" style="font-size: 11px;">scope: drive</span>
                 </span>
 
@@ -138,7 +138,9 @@
 
             <div style="margin-top: 14px; max-width: 320px;">
                 <div class="bar-label">
-                    <span>فضای مصرفی</span>
+                    <span>@UiText.Accounts.StorageUsed</span>
+                    @* Latin in both languages, and dir="ltr" says so: two byte sizes an operator
+                       compares against Google's own console, not a figure set in prose. *@
                     <span class="mono" dir="ltr">@account.UsedText / @account.TotalText</span>
                 </div>
                 @* The width is this account's own reading, not styling — it cannot live in a stylesheet. *@
@@ -148,11 +150,11 @@
             <div class="row" style="gap: 8px; margin-top: 16px;">
                 <form method="post" action="@Url.Action("RefreshQuota", "Accounts", new { id = account.Id })">
                     @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn--sm">تازه‌سازی فضا</button>
+                    <button type="submit" class="btn btn--sm">@UiText.Accounts.RefreshQuota</button>
                 </form>
                 <form method="post" action="@Url.Action("Disconnect", "Accounts", new { id = account.Id })">
                     @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn--danger btn--sm">قطع اتصال</button>
+                    <button type="submit" class="btn btn--danger btn--sm">@UiText.Accounts.Disconnect</button>
                 </form>
             </div>
         </div>

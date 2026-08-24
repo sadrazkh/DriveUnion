@@ -1,6 +1,7 @@
 using DriveUnion.Core.Application;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
+using DriveUnion.Web.Localization;
 using DriveUnion.Web.Models;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Antiforgery;
@@ -41,7 +42,7 @@ public sealed class FilesController(
                 file.Id,
                 file.Name,
                 DisplayFormats.Bytes(file.SizeBytes),
-                DisplayFormats.RelativeFa(file.ModifiedAt, now),
+                DisplayFormats.Relative(file.ModifiedAt, now),
                 file.ActiveLinkCount,
                 file.Id == selected))
             .ToList();
@@ -75,7 +76,7 @@ public sealed class FilesController(
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
         var deleted = await catalog.DeleteAsync(tenantId, id, cancellationToken);
-        TempData["Notice"] = deleted ? "فایل حذف شد." : "این فایل پیدا نشد.";
+        TempData["Notice"] = deleted ? UiText.Files.Deleted : UiText.Files.NotFound;
 
         return RedirectToAction(nameof(Index));
     }
@@ -95,7 +96,7 @@ public sealed class FilesController(
             new CreateShareLinkRequest(id, null, null),
             cancellationToken);
 
-        TempData["Notice"] = $"لینک ساخته شد: {PublicLinkFormatter.Display(PublicBaseUrl(), link.Slug)}";
+        TempData["Notice"] = UiText.Files.LinkCreated(PublicLinkFormatter.Display(PublicBaseUrl(), link.Slug));
 
         return RedirectToAction(nameof(Index), new { selected = id });
     }
@@ -107,7 +108,7 @@ public sealed class FilesController(
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
         var revoked = await shareLinks.RevokeAsync(tenantId, linkId, cancellationToken);
-        TempData["Notice"] = revoked ? "لینک ابطال شد." : "این لینک پیدا نشد.";
+        TempData["Notice"] = revoked ? UiText.Files.LinkRevoked : UiText.Files.LinkNotFound;
 
         return RedirectToAction(nameof(Index), new { selected = fileId });
     }
@@ -122,7 +123,7 @@ public sealed class FilesController(
     private void SetShell() => ViewData[ShellContext.Key] = new ShellContext
     {
         UserName = User.Identity?.Name,
-        UserRole = User.IsOperator() ? "اپراتور" : "کاربر",
+        UserRole = User.IsOperator() ? UiText.Shell.RoleOperator : UiText.Shell.RoleUser,
     };
 
     private FileDetailViewModel ToDetail(FileDetail file, DateTimeOffset now)
@@ -134,22 +135,22 @@ public sealed class FilesController(
             file.Name,
             DisplayFormats.Bytes(file.SizeBytes),
             DisplayFormats.FileKind(file.Name, file.MimeType),
-            DisplayFormats.PersianDateTime(file.CreatedAt),
+            DisplayFormats.PanelDateTime(file.CreatedAt),
             [.. file.Links.Select(link => ToLink(link, baseUrl, now))]);
     }
 
     private static ShareLinkViewModel ToLink(ShareLinkSummary link, string baseUrl, DateTimeOffset now)
     {
         var downloads = link.MaxDownloads is { } cap
-            ? $"{PersianDigits.Count(link.DownloadCount)} / {PersianDigits.Count(cap)} دانلود"
-            : $"{PersianDigits.Count(link.DownloadCount)} دانلود";
+            ? UiText.Files.DownloadsOfCap(link.DownloadCount, cap)
+            : UiText.Files.Downloads(link.DownloadCount);
 
         var days = DisplayFormats.DaysUntil(link.ExpiresAt, now);
         var expiry = days switch
         {
-            null => "بدون انقضا",
-            0 => "منقضی",
-            _ => $"انقضا {PersianDigits.Plain(days.Value)} روز",
+            null => UiText.Files.NoExpiry,
+            0 => UiText.Files.Expired,
+            _ => UiText.Files.ExpiresInDays(days.Value),
         };
 
         return new ShareLinkViewModel(

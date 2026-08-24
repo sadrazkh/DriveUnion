@@ -62,6 +62,9 @@ public sealed class TelegramPanelHarness : WebApplicationFactory<Program>
         schema.Database.EnsureCreated();
     }
 
+    /// <summary>The in-memory Telegram this pipeline talks to. Nothing here opens a socket.</summary>
+    public FakeTelegramBotGateway Telegram { get; } = new();
+
     /// <summary>False signs in a customer instead: authenticated, with a tenant, without the claim.</summary>
     public bool IsOperator { get; }
 
@@ -153,9 +156,19 @@ public sealed class TelegramPanelHarness : WebApplicationFactory<Program>
         {
             ReplaceNpgsqlWithSqlite(services);
 
+            // Before AddDriveUnionTelegram, which registers everything with TryAdd: this is how a
+            // caller that has already chosen a gateway keeps it, and it is the reason nothing in this
+            // suite can reach Telegram even by accident. The panel's own screens call the gateway —
+            // «قطع اتصال» sends a farewell — so without this the unlink test would open a socket.
+            services.AddSingleton<ITelegramBotGateway>(Telegram);
+
             // The one line Program.cs is missing. It has to come after AddGoogleDrive, which is what
             // registers ITokenProtector — the bot token is encrypted with the same key ring as the
             // Google refresh tokens, and by this point that registration has already happened.
+            //
+            // The transport's background services are deliberately NOT added: a drainer opening its
+            // own scopes against this harness's single SQLite connection is "database is locked" in
+            // tests that are about a screen.
             services.AddDriveUnionTelegram();
 
             foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IDriveClient)).ToList())
@@ -194,6 +207,7 @@ public sealed class TelegramPanelHarness : WebApplicationFactory<Program>
 
         if (!disposing) return;
 
+        Telegram.Dispose();
         _connection.Dispose();
 
         if (File.Exists(CredentialStorePath)) File.Delete(CredentialStorePath);
