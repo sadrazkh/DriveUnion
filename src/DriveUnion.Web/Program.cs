@@ -146,6 +146,42 @@ builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
+// Bring the schema up before anything reads or writes it.
+//
+// Harbora has no release-command hook, so a deploy is the container starting and nothing else. This
+// is what the alternative looks like, and it has already happened once here: the panel booted three
+// migrations behind, came up apparently fine, and the first symptom was a background drainer
+// looping on `relation "TelegramOutbox" does not exist` — a message that names a table nobody was
+// thinking about rather than the migration that was never applied.
+//
+// It runs ahead of SeedDriveUnionAsync, which writes to AspNetUsers and so needs the tables to be
+// there. It also runs in Development, which is exactly where the three-migrations-behind boot came
+// from.
+//
+// The caveat, recorded rather than guarded: this races if the app is ever scaled past one replica.
+// EF applies migrations under a lock, so two instances serialise rather than corrupt the schema —
+// but a second replica is the moment to make this a deliberate step instead of a side effect of
+// starting.
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var database = scope.ServiceProvider.GetRequiredService<DriveUnionDbContext>().Database;
+
+    // Only against the provider these migrations were written for. The HTTP tests boot this exact
+    // pipeline with SQLite substituted, and EF builds a different model for a different provider —
+    // column types and default-value SQL do not match the Npgsql snapshot, so a migrate there fails
+    // with PendingModelChangesWarning claiming somebody forgot a migration. Nobody had; it is the
+    // wrong database. Those tests create their schema themselves.
+    if (database.IsNpgsql() && (await database.GetPendingMigrationsAsync()).ToList() is { Count: > 0 } pending)
+    {
+        app.Logger.LogInformation(
+            "Applying {Count} pending migration(s): {Migrations}",
+            pending.Count,
+            string.Join(", ", pending));
+
+        await database.MigrateAsync();
+    }
+}
+
 // Creates the first operator from configuration when there is none. Idempotent, and a no-op when
 // nothing is configured — the password comes from user-secrets or the environment, never a file.
 await app.SeedDriveUnionAsync();
