@@ -59,6 +59,17 @@ internal sealed class DyingStreamDriveClient(IDriveClient inner, int bytesBefore
         CancellationToken cancellationToken) =>
         inner.EnsureFolderAsync(accountId, folderName, parentFolderId, cancellationToken);
 
+    public Task MoveAsync(
+        Guid accountId,
+        string driveFileId,
+        string? fromFolderId,
+        string toFolderId,
+        CancellationToken cancellationToken) =>
+        inner.MoveAsync(accountId, driveFileId, fromFolderId, toFolderId, cancellationToken);
+
+    public Task DeleteAsync(Guid accountId, string driveFileId, CancellationToken cancellationToken) =>
+        inner.DeleteAsync(accountId, driveFileId, cancellationToken);
+
     public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken) =>
         inner.GetStorageQuotaAsync(accountId, cancellationToken);
 

@@ -363,6 +363,62 @@ public sealed class LocalDiskDriveClient : IDriveClient
         }
     }
 
+    /// <summary>
+    /// A move here is a label change and nothing else.
+    ///
+    /// <para>Bytes on this backend live at <c>ContentPath(root, account, fileId)</c>, which no folder
+    /// appears in — so the trash is a folder id written on a record, not a directory anything is
+    /// carried into. That is the same shape Drive has, where a parent is metadata rather than a
+    /// location, and it is why the trash needed no second code path for this backend.</para>
+    /// </summary>
+    public async Task MoveAsync(
+        Guid accountId,
+        string driveFileId,
+        string? fromFolderId,
+        string toFolderId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(driveFileId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(toFolderId);
+
+        if (!LocalDiskLayout.TryParseFileId(driveFileId, out var fileId))
+        {
+            throw new DriveApiException($"There is no file {driveFileId} on this disk.");
+        }
+
+        var record = await RequireFileAsync(accountId, fileId, cancellationToken).ConfigureAwait(false);
+
+        record.ParentFolderId = toFolderId;
+        await _store.WriteFileAsync(accountId, record, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DeleteAsync(Guid accountId, string driveFileId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(driveFileId);
+
+        if (!LocalDiskLayout.TryParseFileId(driveFileId, out var fileId))
+        {
+            // Already not here, in the only sense this backend has. The purge wants the row and the
+            // bytes to agree, and they do.
+            return;
+        }
+
+        // Content first, metadata second. A record without bytes reads as corruption and is caught
+        // loudly by OpenDownloadAsync; bytes without a record are invisible and are never freed.
+        var content = LocalDiskLayout.ContentPath(RootPath, accountId, fileId);
+        var metadata = LocalDiskLayout.MetadataPath(RootPath, accountId, fileId);
+
+        if (File.Exists(content)) File.Delete(content);
+        if (File.Exists(metadata)) File.Delete(metadata);
+
+        _logger.LogInformation(
+            "Permanently deleted local-disk file {DriveFileId} from account {AccountId}.",
+            driveFileId,
+            accountId);
+
+        await Task.CompletedTask.ConfigureAwait(false);
+    }
+
     public async Task<string> EnsureFolderAsync(
         Guid accountId,
         string folderName,

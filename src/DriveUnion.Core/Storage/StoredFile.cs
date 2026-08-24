@@ -19,6 +19,45 @@ public sealed class StoredFile
 
     public required string DriveFileId { get; set; }
 
+    /// <summary>
+    /// Which person uploaded it, and therefore whose folder it sits in.
+    ///
+    /// <para>Null for every row written before uploads were separated per user. Those files stay in
+    /// the tenant folder they were put in — no bytes move and no link breaks — which works because
+    /// nothing derives a file's location: <see cref="DriveFolderId"/> is read, not computed.</para>
+    /// </summary>
+    public Guid? OwnerUserId { get; set; }
+
+    /// <summary>
+    /// The Drive folder this file is in right now, which is the trash folder while it is deleted.
+    ///
+    /// <para>Recorded rather than derived, for two reasons. Drive has no move — a file's parents are
+    /// a collection and moving means naming the one to remove — so the trip to the trash needs this
+    /// value, and asking Drive for it would spend a request to learn something we wrote. And it is
+    /// what lets the old tenant-folder layout and the new per-user one coexist without a branch.</para>
+    ///
+    /// <para>Null on the rows that predate it. The move reads the parents from Drive in that case,
+    /// once, and records the answer.</para>
+    /// </summary>
+    public string? DriveFolderId { get; set; }
+
+    /// <summary>
+    /// Where this file goes back to when it is restored: the folder it lived in before deletion.
+    /// Null unless it is in the trash.
+    /// </summary>
+    public string? RestoreFolderId { get; set; }
+
+    /// <summary>
+    /// When the purge may take it. Set on deletion from the retention window in force at that
+    /// moment, so shortening the window does not retroactively destroy what somebody deleted
+    /// yesterday expecting a month.
+    ///
+    /// <para>Null while the file is live. A row with <see cref="DeletedAt"/> set and this null is a
+    /// file deleted before the trash existed, and the sweeper leaves it alone rather than guessing
+    /// a deadline for it.</para>
+    /// </summary>
+    public DateTimeOffset? PurgeAfter { get; set; }
+
     public required string Name { get; set; }
 
     public required string MimeType { get; set; }

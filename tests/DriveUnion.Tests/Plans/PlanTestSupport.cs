@@ -135,6 +135,16 @@ internal sealed class OverAcknowledgingDriveClient(long acknowledgedLength) : ID
         CancellationToken cancellationToken) =>
         throw new NotSupportedException("This fake exists for the upload path only.");
 
+    public Task MoveAsync(
+        Guid accountId,
+        string driveFileId,
+        string? fromFolderId,
+        string toFolderId,
+        CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task DeleteAsync(Guid accountId, string driveFileId, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken) =>
         Task.FromResult(new DriveStorageQuota(5L * 1024 * 1024 * 1024 * 1024, 0));
 }

@@ -439,6 +439,18 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
             string? parentFolderId,
             CancellationToken cancellationToken) => throw Refuse();
 
+        public Task MoveAsync(
+            Guid accountId,
+            string driveFileId,
+            string? fromFolderId,
+            string toFolderId,
+            CancellationToken cancellationToken) => throw Refuse();
+
+        public Task DeleteAsync(
+            Guid accountId,
+            string driveFileId,
+            CancellationToken cancellationToken) => throw Refuse();
+
         public Task<DriveStorageQuota> GetStorageQuotaAsync(
             Guid accountId,
             CancellationToken cancellationToken) => throw Refuse();

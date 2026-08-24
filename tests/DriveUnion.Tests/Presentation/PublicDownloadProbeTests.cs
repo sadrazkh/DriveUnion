@@ -297,6 +297,18 @@ public class PublicDownloadProbeTests
             string? parentFolderId,
             CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task MoveAsync(
+            Guid accountId,
+            string driveFileId,
+            string? fromFolderId,
+            string toFolderId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task DeleteAsync(
+            Guid accountId,
+            string driveFileId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<DriveStorageQuota> GetStorageQuotaAsync(
             Guid accountId,
             CancellationToken cancellationToken) => throw new NotSupportedException();

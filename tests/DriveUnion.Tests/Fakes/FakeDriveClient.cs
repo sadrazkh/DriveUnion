@@ -12,6 +12,8 @@ public enum FakeDriveOperation
     OpenDownload,
     EnsureFolder,
     GetStorageQuota,
+    Move,
+    Delete,
 }
 
 /// <summary>
@@ -54,6 +56,12 @@ public sealed class FakeDriveFile
     public required Guid AccountId { get; init; }
 
     public required byte[] Content { get; init; }
+
+    /// <summary>
+    /// Which folder the file is in. Settable, because the trash is a move and a move is the only
+    /// thing in this product that changes it.
+    /// </summary>
+    public string? ParentFolderId { get; set; }
 }
 
 /// <summary>
@@ -306,6 +314,36 @@ public sealed class FakeDriveClient : IDriveClient
         _folders.Add(folder);
 
         return Task.FromResult(folder.Id);
+    }
+
+    public Task MoveAsync(
+        Guid accountId,
+        string driveFileId,
+        string? fromFolderId,
+        string toFolderId,
+        CancellationToken cancellationToken)
+    {
+        Record(FakeDriveOperation.Move, accountId, driveFileId, 0, 0);
+
+        if (!_files.TryGetValue(driveFileId, out var file))
+        {
+            throw new DriveApiException($"The fake Drive holds no file {driveFileId}.");
+        }
+
+        file.ParentFolderId = toFolderId;
+
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(Guid accountId, string driveFileId, CancellationToken cancellationToken)
+    {
+        Record(FakeDriveOperation.Delete, accountId, driveFileId, 0, 0);
+
+        // Already gone is success, the way it is against Drive: the purge wants the row and the
+        // bytes to agree, and a delete that finds nothing has achieved exactly that.
+        _files.Remove(driveFileId);
+
+        return Task.CompletedTask;
     }
 
     public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken)

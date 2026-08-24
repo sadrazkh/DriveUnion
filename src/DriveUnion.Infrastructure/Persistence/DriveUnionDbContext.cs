@@ -1,4 +1,5 @@
 using DriveUnion.Core.Plans;
+using DriveUnion.Core.Settings;
 using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
 using DriveUnion.Core.Telegram;
@@ -30,6 +31,15 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     /// </summary>
     public DbSet<GoogleOAuthClient> GoogleOAuthClients => Set<GoogleOAuthClient>();
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
+
+    /// <summary>
+    /// The operator's own knobs. One row, seeded by the migration that made the table.
+    ///
+    /// It is a table for the reason the Google OAuth client is now one: a setting an operator sets
+    /// by pressing something has to still be true after a deploy, and this product has already lost
+    /// one that lived in a file inside the container.
+    /// </summary>
+    public DbSet<OperatorSettings> OperatorSettings => Set<OperatorSettings>();
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
     public DbSet<DownloadEvent> DownloadEvents => Set<DownloadEvent>();
@@ -225,8 +235,31 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.Property(f => f.Name).HasMaxLength(512);
             e.Property(f => f.MimeType).HasMaxLength(255);
             e.Property(f => f.DriveFileId).HasMaxLength(256);
+            e.Property(f => f.DriveFolderId).HasMaxLength(256);
+            e.Property(f => f.RestoreFolderId).HasMaxLength(256);
             e.HasIndex(f => new { f.TenantId, f.DeletedAt });
             e.HasIndex(f => new { f.GoogleAccountId, f.DriveFileId });
+
+            // The sweeper's only query: what is due, oldest first, across every tenant. Filtered so
+            // the index holds the trash rather than the whole catalogue — live files are the vast
+            // majority and none of them has a deadline.
+            e.HasIndex(f => f.PurgeAfter).HasFilter("\"PurgeAfter\" IS NOT NULL");
+        });
+
+        builder.Entity<OperatorSettings>(e =>
+        {
+            // Not an identity column. There is one row and its id is a constant the code names, so a
+            // sequence here would be a generator nobody draws from — and one that does not know the
+            // seeded 1 was taken, which is exactly how a second row eventually appears.
+            e.Property(s => s.Id).ValueGeneratedNever();
+
+            // One row, and the migration puts it there. Creating it on first use would mean every
+            // reader coping with its absence, which is how a default ends up written in four places.
+            e.HasData(new OperatorSettings
+            {
+                Id = Core.Settings.OperatorSettings.SingletonId,
+                TrashRetentionDays = Core.Settings.OperatorSettings.DefaultTrashRetentionDays,
+            });
         });
 
         builder.Entity<UploadSession>(e =>

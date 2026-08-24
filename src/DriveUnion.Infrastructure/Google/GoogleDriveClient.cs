@@ -297,6 +297,110 @@ public sealed class GoogleDriveClient : IDriveClient, IGoogleAboutReader
         return id;
     }
 
+    public async Task MoveAsync(
+        Guid accountId,
+        string driveFileId,
+        string? fromFolderId,
+        string toFolderId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(driveFileId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(toFolderId);
+
+        // Drive has no move. A file's parents are a collection, so moving is adding one and removing
+        // the others in a single PATCH — and `removeParents` has to name them.
+        //
+        // The caller normally knows the current parent because the row records it. When it does not,
+        // this is the one place the extra request is unavoidable: the rows written before per-user
+        // folders never recorded where they were put.
+        var removing = fromFolderId
+            ?? await ReadParentAsync(accountId, driveFileId, cancellationToken).ConfigureAwait(false);
+
+        var query = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            ["addParents"] = toFolderId,
+            ["fields"] = "id",
+        };
+
+        if (!string.IsNullOrEmpty(removing)) query["removeParents"] = removing;
+
+        using var message = new HttpRequestMessage(
+            HttpMethod.Patch,
+            QueryHelpers.AddQueryString($"{FilesEndpoint}/{Uri.EscapeDataString(driveFileId)}", query))
+        {
+            // Drive requires a body on a metadata update even when the query carries the whole
+            // change. An empty object is the smallest thing it accepts.
+            Content = new StringContent("{}", Encoding.UTF8, "application/json"),
+        };
+
+        await AuthorizeAsync(message, accountId, cancellationToken).ConfigureAwait(false);
+
+        using var response = await _http.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, $"moving file {driveFileId}", cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task DeleteAsync(Guid accountId, string driveFileId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(driveFileId);
+
+        using var message = new HttpRequestMessage(
+            HttpMethod.Delete,
+            $"{FilesEndpoint}/{Uri.EscapeDataString(driveFileId)}");
+
+        await AuthorizeAsync(message, accountId, cancellationToken).ConfigureAwait(false);
+
+        using var response = await _http.SendAsync(message, cancellationToken).ConfigureAwait(false);
+
+        // Already gone is the outcome this call wanted. The purge exists to make the row and the
+        // bytes agree, and a 404 says they already do — treating it as a failure would leave the row
+        // behind for ever, retried on every sweep, holding quota against a file that does not exist.
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            _logger.LogInformation(
+                "Drive file {DriveFileId} was already gone when the purge reached it.",
+                driveFileId);
+            return;
+        }
+
+        await EnsureSuccessAsync(response, $"deleting file {driveFileId}", cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Permanently deleted Drive file {DriveFileId} from account {AccountId}.",
+            driveFileId,
+            accountId);
+    }
+
+    /// <summary>The current parent of a file whose folder was never recorded. First one wins.</summary>
+    private async Task<string?> ReadParentAsync(
+        Guid accountId,
+        string driveFileId,
+        CancellationToken cancellationToken)
+    {
+        using var message = new HttpRequestMessage(
+            HttpMethod.Get,
+            QueryHelpers.AddQueryString(
+                $"{FilesEndpoint}/{Uri.EscapeDataString(driveFileId)}",
+                "fields",
+                "parents"));
+
+        await AuthorizeAsync(message, accountId, cancellationToken).ConfigureAwait(false);
+
+        using var response = await _http.SendAsync(message, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, $"reading the parents of file {driveFileId}", cancellationToken)
+            .ConfigureAwait(false);
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        using var document = ParseOrThrow(body, "a file's parents");
+
+        return document.RootElement.TryGetProperty("parents", out var parents)
+            && parents.ValueKind == JsonValueKind.Array
+            && parents.GetArrayLength() > 0
+                ? parents[0].GetString()
+                : null;
+    }
+
     public async Task<DriveStorageQuota> GetStorageQuotaAsync(
         Guid accountId,
         CancellationToken cancellationToken)

@@ -452,6 +452,20 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
         /// <summary>Which accounts a quota was actually asked for, in order.</summary>
         public IReadOnlyList<Guid> AskedFor => _askedFor;
 
+        public Task MoveAsync(
+            Guid accountId,
+            string driveFileId,
+            string? fromFolderId,
+            string toFolderId,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("The directory has no business moving a file.");
+
+        public Task DeleteAsync(
+            Guid accountId,
+            string driveFileId,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("The directory has no business deleting a file.");
+
         public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken)
         {
             _askedFor.Add(accountId);
