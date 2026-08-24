@@ -219,7 +219,45 @@ public sealed class AccountsController(
     /// </summary>
     [HttpPost("connect")]
     [ValidateAntiForgeryToken]
-    public IActionResult Connect([FromForm] bool popup)
+    public IActionResult Connect([FromForm] bool popup) => StartConsent(popup, loginHint: null);
+
+    /// <summary>
+    /// The same consent flow, aimed at one account that is already in the pool.
+    ///
+    /// Separate from <see cref="Connect"/> because the two are different intentions and the screen
+    /// used to spell them with one button — which is half of why adding a second account looked
+    /// impossible. This one carries the account's address as a <c>login_hint</c> so Google's chooser
+    /// opens on it, and the callback still stores whatever Google actually returns: reconnecting is
+    /// a credential replacement keyed on the address Drive reports, not a promise about which
+    /// account the operator will pick.
+    /// </summary>
+    [HttpPost("{id:guid}/reconnect")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Reconnect(
+        Guid id,
+        [FromForm] bool popup,
+        CancellationToken cancellationToken)
+    {
+        var account = (await directory.ListAsync(cancellationToken)).FirstOrDefault(a => a.Id == id);
+
+        if (account is null)
+        {
+            // Through Finish rather than a redirect, because in the popup a redirect would render
+            // the whole panel inside a 520px window instead of saying what went wrong.
+            return Finish(
+                popup,
+                succeeded: false,
+                title: UiText.Accounts.AccountNotFoundTitle,
+                message: UiText.Accounts.AccountNotFound);
+        }
+
+        return StartConsent(popup, account.Email);
+    }
+
+    /// <summary>
+    /// Sends the operator to Google with a fresh nonce in a cookie, whichever button started it.
+    /// </summary>
+    private IActionResult StartConsent(bool popup, string? loginHint)
     {
         if (Google() is not { } google) return Unconfigured(popup);
 
@@ -239,7 +277,7 @@ public sealed class AccountsController(
             MaxAge = TimeSpan.FromMinutes(10),
         });
 
-        return Redirect(GoogleOAuthUrls.BuildAuthorizationUrl(google, state));
+        return Redirect(GoogleOAuthUrls.BuildAuthorizationUrl(google, state, loginHint));
     }
 
     [HttpGet("callback")]
@@ -282,11 +320,12 @@ public sealed class AccountsController(
                 message: UiText.Accounts.CallbackInvalid);
         }
 
+        Guid connectedId;
         try
         {
             // The same redirect_uri the authorize request carried, because it comes from the same
             // option. Google compares the two strings and says nothing useful when they differ.
-            await directory.ConnectAsync(code, google.RedirectUri, cancellationToken);
+            connectedId = await directory.ConnectAsync(code, google.RedirectUri, cancellationToken);
         }
         catch (DriveApiException exception)
         {
@@ -299,11 +338,21 @@ public sealed class AccountsController(
                 message: UiText.Accounts.ExchangeFailed);
         }
 
+        // Which account, said out loud. The operator has just answered a chooser, and the whole
+        // reason a second account looked impossible is that the panel used to report every outcome
+        // with the same sentence — so approving the account that was already connected read exactly
+        // like adding a new one. One read of a table that holds two or three rows, right after a
+        // round trip to Google, is not a cost worth weighing against that.
+        var connected = (await directory.ListAsync(cancellationToken))
+            .FirstOrDefault(a => a.Id == connectedId);
+
         return Finish(
             popup,
             succeeded: true,
             title: UiText.Accounts.ConnectedTitle,
-            message: UiText.Accounts.Connected);
+            message: connected is null
+                ? UiText.Accounts.Connected
+                : UiText.Accounts.ConnectedNamed(connected.Label, connected.Email));
     }
 
     [HttpPost("{id:guid}/disconnect")]

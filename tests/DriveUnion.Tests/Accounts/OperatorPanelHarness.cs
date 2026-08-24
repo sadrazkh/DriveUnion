@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using DriveUnion.Core.Abstractions;
+using DriveUnion.Core.Storage;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
@@ -84,6 +85,59 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
     /// <summary>The store file exactly as it sits on disk, or null when nothing has been saved.</summary>
     public string? CredentialStoreText() =>
         File.Exists(CredentialStorePath) ? File.ReadAllText(CredentialStorePath) : null;
+
+    /// <summary>
+    /// Puts a pool in the database, the way a completed consent flow would leave one.
+    ///
+    /// Written straight to the table rather than through <c>GoogleAccountDirectory</c> because the
+    /// directory's path to a row runs through Google, and no test in this lane may go there. What
+    /// the screen reads is these columns; what the labels mean is settled next door in
+    /// <c>GoogleAccountDirectoryTests</c>, over the real allocation.
+    ///
+    /// The protected token is a placeholder. Nothing on the accounts screen decrypts it, and a value
+    /// that could be decrypted would be a secret sitting in a test fixture for no reason.
+    ///
+    /// <para><b>Call this before the first request.</b> It writes over its own context on the
+    /// harness's connection rather than resolving one out of <c>Services</c>, which would boot the
+    /// host — and every SQLite context that wraps an already-open connection registers user
+    /// functions on it, which the driver refuses while another statement on that connection is
+    /// live. Seeding before anything is running removes the question rather than timing it.</para>
+    /// </summary>
+    public IReadOnlyList<GoogleAccount> SeedPool(params (string Email, GoogleAccountStatus Status)[] accounts)
+    {
+        ArgumentNullException.ThrowIfNull(accounts);
+
+        using var db = new DriveUnionDbContext(
+            new DbContextOptionsBuilder<DriveUnionDbContext>().UseSqlite(_connection).Options);
+
+        var seeded = new List<GoogleAccount>();
+        var connectedAt = new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero);
+
+        for (var index = 0; index < accounts.Length; index++)
+        {
+            var (email, status) = accounts[index];
+
+            seeded.Add(new GoogleAccount
+            {
+                Id = Guid.CreateVersion7(),
+                Email = email,
+                Label = $"A{index + 1}",
+                RefreshTokenProtected = "not-a-real-protected-token",
+                QuotaTotalBytes = 5497558138880,
+                QuotaUsedBytes = 1099511627776,
+                Status = status,
+
+                // A minute apart, because the screen orders by this and two rows sharing an instant
+                // would make the order of the cards a property of the database rather than a rule.
+                CreatedAt = connectedAt.AddMinutes(index),
+            });
+        }
+
+        db.GoogleAccounts.AddRange(seeded);
+        db.SaveChanges();
+
+        return seeded;
+    }
 
     /// <summary>
     /// Saves an OAuth client the way the operator does: a form post from the accounts screen, with

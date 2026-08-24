@@ -1,0 +1,211 @@
+@using DriveUnion.Web.Models
+@model PlanFormPageViewModel
+@{
+    ViewData["Title"] = Model.Title;
+
+    var message = TempData["PlansMessage"] as string;
+
+    var action = Model.IsNew
+        ? Url.Action("Create", "Plans")
+        : Url.Action("SaveTier", "Plans", new { code = Model.Code });
+
+    const string BoxStyle =
+        "border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px; width: 100%;";
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="row" style="align-items: baseline; gap: 12px;">
+        <h1 class="page-title">@Model.Title</h1>
+        <a class="page-sub" href="@Url.Action("Operator", "Plans")">@UiText.Plans.BackToPlans</a>
+    </div>
+
+    @if (message is not null)
+    {
+        <div class="card"><div class="card-body"><span style="font-size: 12.5px;">@message</span></div></div>
+    }
+
+    @if (Model.Error is not null)
+    {
+        <div class="card">
+            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@Model.Error</span></div>
+        </div>
+    }
+
+    @*
+        First on the screen, above the fields, and not a footnote. A plan is a template: assigning one
+        copies its four numbers onto the workspace's own row, and nothing on any enforcement path
+        joins back to this table. An operator who edits a tier and assumes every customer on it just
+        moved is the single most likely misunderstanding this form can cause, and the count beside the
+        sentence is what makes it concrete.
+    *@
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title" style="color: var(--warn);">@UiText.PlanAdmin.MovesNobodyHeading</div>
+        </div>
+        <div class="card-body">
+            <div class="stack" style="gap: 8px;">
+                <p style="font-size: 12.5px; margin: 0;">@Model.MovesNobodyText</p>
+                @if (Model.CanReapply)
+                {
+                    <a class="btn btn--sm" href="@Url.Action("Reapply", "Plans", new { code = Model.Code })">@UiText.PlanAdmin.ReapplyAction</a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Plans.CatalogueHeading</div>
+        </div>
+
+        <div class="card-body">
+            <form method="post" action="@action" class="stack" style="gap: 14px;">
+                @Html.AntiForgeryToken()
+
+                <div class="row" style="gap: 12px; flex-wrap: wrap; align-items: flex-start;">
+                    <div style="flex: 1 1 200px;">
+                        <label class="field-label" for="tier-code">@UiText.PlanAdmin.CodeField</label>
+                        @*
+                            A code is Latin in both languages — it goes into a configuration file and
+                            is compared with ==, so the box is LTR wherever the panel is being read.
+                            On the tier Plans:DefaultPlanCode names it is read-only: re-coding that
+                            row leaves the setting pointing at nothing and the next sign-up 500s.
+                        *@
+                        <span class="field">
+                            <input id="tier-code" name="Code" dir="ltr" required maxlength="32"
+                                   value="@Model.Values.Code"
+                                   readonly="@Model.IsConfiguredDefault" />
+                        </span>
+                        <span class="muted" style="font-size: 11.5px;">@UiText.PlanAdmin.CodeHint</span>
+                    </div>
+
+                    <div style="flex: 2 1 260px;">
+                        <label class="field-label" for="tier-name">@UiText.PlanAdmin.NameField</label>
+                        <input id="tier-name" name="Name" required maxlength="120"
+                               value="@Model.Values.Name" style="@BoxStyle" />
+                        <span class="muted" style="font-size: 11.5px;">@UiText.PlanAdmin.NameHint</span>
+                    </div>
+                </div>
+
+                <div class="row" style="gap: 12px; flex-wrap: wrap; align-items: flex-start;">
+                    @*
+                        One unit in, one unit out. These boxes are GB and nothing on the way through
+                        scales them: DisplayFormats.Bytes writes 6 TiB as "6 TB", so a box pre-filled
+                        from it would show 6 where the tier is 6144 and divide it by 1024 on save.
+                    *@
+                    <div style="flex: 1 1 160px;">
+                        <label class="field-label" for="tier-storage">@UiText.Plans.FieldStorage</label>
+                        <span class="field">
+                            <input id="tier-storage" name="StorageGb" type="number" min="1" step="1" required dir="ltr"
+                                   value="@Model.Values.StorageGb" />
+                            <span class="field-prefix" dir="ltr">@UiText.PlanAdmin.UnitGigabytes</span>
+                        </span>
+                    </div>
+
+                    <div style="flex: 1 1 160px;">
+                        <label class="field-label" for="tier-file">@UiText.Plans.FieldMaxFile</label>
+                        <span class="field">
+                            <input id="tier-file" name="MaxFileGb" type="number" min="1" step="1" required dir="ltr"
+                                   value="@Model.Values.MaxFileGb" />
+                            <span class="field-prefix" dir="ltr">@UiText.PlanAdmin.UnitGigabytes</span>
+                        </span>
+                    </div>
+
+                    <div style="flex: 1 1 160px;">
+                        <label class="field-label" for="tier-traffic">@UiText.Plans.FieldTraffic</label>
+                        <span class="field">
+                            <input id="tier-traffic" name="TrafficGb" type="number" min="1" step="1" required dir="ltr"
+                                   value="@Model.Values.TrafficGb" />
+                            <span class="field-prefix" dir="ltr">@UiText.PlanAdmin.UnitGigabytes</span>
+                        </span>
+                    </div>
+
+                    <div style="flex: 1 1 120px;">
+                        <label class="field-label" for="tier-seats">@UiText.Plans.FieldMembers</label>
+                        <span class="field">
+                            <input id="tier-seats" name="Seats" type="number" min="1" step="1" required dir="ltr"
+                                   value="@Model.Values.Seats" />
+                        </span>
+                        <span class="muted" style="font-size: 11.5px;">@UiText.PlanAdmin.SeatsHint</span>
+                    </div>
+                </div>
+
+                <span class="muted" style="font-size: 12px;">@UiText.PlanAdmin.UnitNote</span>
+
+                @if (Model.StoredExactlyText is not null)
+                {
+                    <span class="mono muted" dir="ltr" style="font-size: 11.5px;">@Model.StoredExactlyText</span>
+                }
+
+                @if (Model.RoundedFromBytes)
+                {
+                    @* Only reachable for a row nobody wrote through this form. Saying it beats
+                       rounding a tier by a few hundred megabytes because somebody opened the page. *@
+                    <span style="font-size: 12px; color: var(--warn);">@UiText.PlanAdmin.NotWholeGigabytes</span>
+                }
+
+                @if (Model.FileIsLargeAgainstTraffic)
+                {
+                    @* A warning and not a refusal: the numbers are the owner's. Per-file is the error
+                       bar on the traffic allowance, and a tier that overshoots it visibly is one a
+                       customer screenshots. *@
+                    <span style="font-size: 12px; color: var(--warn);">@UiText.PlanAdmin.FileIsLargeAgainstTraffic</span>
+                }
+
+                <div class="row" style="gap: 8px;">
+                    <button type="submit" class="btn btn--primary">@UiText.PlanAdmin.Save</button>
+                    <a class="btn" href="@Url.Action("Operator", "Plans")">@UiText.PlanAdmin.Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @if (!Model.IsNew)
+    {
+        <div class="card">
+            <div class="card-head">
+                <div class="card-title">@UiText.PlanAdmin.ColumnActions</div>
+                @if (Model.IsConfiguredDefault)
+                {
+                    <span class="badge badge--muted" title="@UiText.PlanAdmin.DefaultBadgeTitle">@UiText.PlanAdmin.DefaultBadge</span>
+                }
+            </div>
+
+            <div class="card-body">
+                <div class="stack" style="gap: 10px;">
+                    @* The destructive verbs sit next to the sentence that explains why one of them is
+                       normally the wrong one, rather than as bare buttons in a table. *@
+                    <span class="muted" style="font-size: 12px;">@UiText.PlanAdmin.RetireRatherThanDelete</span>
+
+                    <div class="row" style="gap: 8px; flex-wrap: wrap;">
+                        @if (Model.CanBeRetired)
+                        {
+                            <form method="post" action="@Url.Action("Retire", "Plans", new { code = Model.Code })">
+                                @Html.AntiForgeryToken()
+                                @* The state is posted rather than toggled from whatever the row holds,
+                                   so two operators on the same list cannot undo each other. *@
+                                <input type="hidden" name="Retired" value="@(Model.IsRetired ? "false" : "true")" />
+                                <button type="submit" class="btn btn--sm">
+                                    @(Model.IsRetired ? UiText.PlanAdmin.Restore : UiText.PlanAdmin.Retire)
+                                </button>
+                            </form>
+                        }
+
+                        @if (Model.CanBeDeleted)
+                        {
+                            <form method="post" action="@Url.Action("DeleteTier", "Plans", new { code = Model.Code })">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn--sm btn--danger">@UiText.PlanAdmin.Delete</button>
+                            </form>
+                        }
+
+                        @if (Model.CanReapply)
+                        {
+                            <a class="btn btn--sm" href="@Url.Action("Reapply", "Plans", new { code = Model.Code })">@UiText.PlanAdmin.ReapplyAction</a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>

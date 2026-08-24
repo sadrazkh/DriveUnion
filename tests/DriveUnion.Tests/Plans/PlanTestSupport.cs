@@ -1,9 +1,11 @@
 using DriveUnion.Core.Abstractions;
+using DriveUnion.Core.Plans;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Plans;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Tests.Fakes;
 using DriveUnion.Tests.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace DriveUnion.Tests.Plans;
@@ -26,6 +28,40 @@ internal static class PlanTestSupport
             context ?? harness.Db,
             harness.Clock,
             Options.Create(new PlansOptions { DefaultPlanCode = defaultPlanCode }));
+
+    /// <summary>
+    /// The catalogue's writer, over the same context and clock as everything else here.
+    ///
+    /// <para>It is handed a real <see cref="TenantPlanService"/> rather than a stub: re-applying a
+    /// tier reaches workspaces <i>through</i> that one command, and a test that faked it would prove
+    /// the loop runs while saying nothing about the history rows the loop exists to produce.</para>
+    /// </summary>
+    public static PlanCatalogueEditor Catalogue(
+        this ServiceTestHarness harness,
+        string defaultPlanCode = Core.Plans.PlanCatalogue.DefaultCode,
+        DriveUnionDbContext? context = null)
+    {
+        var db = context ?? harness.Db;
+
+        return new PlanCatalogueEditor(
+            db,
+            harness.PlanService(defaultPlanCode, db),
+            harness.Clock,
+            Options.Create(new PlansOptions { DefaultPlanCode = defaultPlanCode }));
+    }
+
+    /// <summary>The four effective limits a workspace is actually holding, read fresh.</summary>
+    public static async Task<PlanNumbers> LimitsAsync(this ServiceTestHarness harness, Guid tenantId)
+    {
+        var tenant = await harness.NewContext().Tenants.AsNoTracking()
+            .SingleAsync(t => t.Id == tenantId);
+
+        return new PlanNumbers(
+            tenant.StorageQuotaBytes,
+            tenant.MaxFileBytes,
+            tenant.MonthlyEgressBytes,
+            tenant.MaxMembers);
+    }
 
     /// <summary>
     /// An upload coordinator over a Drive client of the caller's choosing, which

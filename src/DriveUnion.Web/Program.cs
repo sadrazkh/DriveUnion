@@ -6,6 +6,7 @@ using DriveUnion.Infrastructure.Plans;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Infrastructure.Telegram;
+using DriveUnion.Infrastructure.Tenancy;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
@@ -87,6 +88,17 @@ builder.Services.AddDriveUnionServices();
 // Plans, the per-file cap and the tenant's storage numbers. It replaces the standalone default
 // quota setting rather than sitting beside it — two sources for one number is one of them wrong.
 builder.Services.AddDriveUnionPlans();
+
+// The operator's workspaces and the people in them — the screens that replaced "set four
+// environment variables and redeploy". After AddDriveUnionPlans, because creating a workspace gives
+// it a tier through ITenantPlanService.
+//
+// It also sets SecurityStampValidatorOptions.ValidationInterval to zero, which is the difference
+// between "disabled" and "disabled within the next half hour": the stamp is compared on every
+// authenticated request instead of twice an hour. That is one indexed lookup per signed-in request,
+// and it is the same price already paid for reading role and tenant from the database rather than
+// trusting a cookie.
+builder.Services.AddDriveUnionTenancy();
 
 // Telegram identity, account linking and the operator's bot settings. After AddGoogleDrive, which
 // registers the ITokenProtector the bot token is encrypted with. No transport yet: the gateway

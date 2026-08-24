@@ -1,0 +1,144 @@
+@using DriveUnion.Infrastructure.Tenancy
+@using DriveUnion.Web.Models
+@model TenantsPageViewModel
+@{
+    ViewData["Title"] = UiText.Tenants.Title;
+
+    const string TenantCols = "--cols: minmax(0,1.4fr) 150px 100px 90px 150px 70px";
+
+    var message = TempData["TenantsMessage"] as string;
+
+    // ViewData rather than TempData: a refused create re-renders this page instead of redirecting,
+    // so the sentence has to survive one render and not one redirect. The two are different
+    // lifetimes and using the wrong one shows the message on the *next* page instead of this one.
+    var error = ViewData["TenantsError"] as string;
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="row" style="align-items: baseline; gap: 12px;">
+        <h1 class="page-title">@UiText.Tenants.Title</h1>
+        <span class="page-sub">@Model.CountText</span>
+    </div>
+
+    <p class="page-sub" style="margin: 0;">@UiText.Tenants.Subtitle</p>
+
+    @if (message is not null)
+    {
+        <div class="card"><div class="card-body"><span style="font-size: 12.5px;">@message</span></div></div>
+    }
+
+    @if (error is not null)
+    {
+        <div class="card">
+            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@error</span></div>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Tenants.CreateHeading</div>
+        </div>
+
+        <div class="card-body">
+            <form method="post" action="@Url.Action("Create", "Tenants")" class="stack" style="gap: 12px;">
+                @Html.AntiForgeryToken()
+
+                <div class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="field" style="flex: 1 1 240px;">
+                        <label class="field-label" for="tenant-name">@UiText.Tenants.NameField</label>
+                        <input id="tenant-name" name="Name" required maxlength="200" value="@Model.Form.Name"
+                               style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px; width: 100%;" />
+                    </div>
+
+                    @*
+                        dir="ltr" and monospace, like every other identifier in this panel: a slug is
+                        a path segment and a folder name, so it is a technical readout in both
+                        languages and is read back character by character when something is wrong.
+                    *@
+                    <div class="field" style="flex: 1 1 200px;">
+                        <label class="field-label" for="tenant-slug">@UiText.Tenants.SlugField</label>
+                        <input id="tenant-slug" name="Slug" required dir="ltr" class="mono"
+                               minlength="@TenantSlug.MinimumLength" maxlength="@TenantSlug.MaximumLength"
+                               value="@Model.Form.Slug"
+                               style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px; width: 100%;" />
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="tenant-plan">@UiText.Tenants.PlanField</label>
+                        <select id="tenant-plan" name="PlanCode"
+                                style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px;">
+                            @foreach (var plan in Model.Assignable)
+                            {
+                                var chosen = Model.Form.PlanCode is { Length: > 0 }
+                                    ? plan.Code == Model.Form.PlanCode
+                                    : plan.Code == Model.DefaultPlanCode;
+
+                                <option value="@plan.Code" selected="@chosen">@plan.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn--primary">@UiText.Tenants.Create</button>
+                </div>
+
+                <div class="stack" style="gap: 4px;">
+                    <span class="muted" style="font-size: 12px;">@UiText.Tenants.NameHint</span>
+                    <span class="muted" style="font-size: 12px;">
+                        @UiText.Tenants.SlugRule(TenantSlug.MinimumLength, TenantSlug.MaximumLength)
+                    </span>
+                    @*
+                        In --warn rather than muted, and the longest sentence on the screen. The slug
+                        is the one field here that cannot be corrected later: the files are already
+                        in the folder it names.
+                    *@
+                    <span style="font-size: 12px; color: var(--warn);">@UiText.Tenants.SlugIsPermanent</span>
+                    <span class="muted" style="font-size: 12px;">@UiText.Tenants.PlanHint</span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card card--flush">
+        <div class="dtable" style="@TenantCols">
+            <div class="dtable-head">
+                <div>@UiText.Tenants.ColumnName</div>
+                <div>@UiText.Tenants.ColumnSlug</div>
+                <div>@UiText.Tenants.ColumnPlan</div>
+                <div>@UiText.Tenants.ColumnMembers</div>
+                <div>@UiText.Tenants.ColumnStorage</div>
+                <div>@UiText.Tenants.ColumnFiles</div>
+            </div>
+
+            @if (Model.Tenants.Count == 0)
+            {
+                <div class="empty empty--incell">
+                    <span>@UiText.Tenants.NoTenants</span>
+                </div>
+            }
+            else
+            {
+                @foreach (var tenant in Model.Tenants)
+                {
+                    <a class="dtable-row" href="@Url.Action("Detail", "Tenants", new { tenantId = tenant.TenantId })">
+                        <div class="cell-name" title="@tenant.Name">@tenant.Name</div>
+                        <div class="cell-slug" dir="ltr">@tenant.Slug</div>
+                        <div class="cell-slug" dir="ltr">@tenant.PlanText</div>
+                        @*
+                            A full workspace is warned about here rather than only at the moment the
+                            next account is refused: the operator reading this list is usually the
+                            person about to promise somebody an account.
+                        *@
+                        <div style="font-size: 12px; @(tenant.SeatsAreFull ? "color: var(--warn);" : string.Empty)">@tenant.MembersText</div>
+                        <div class="stack" style="gap: 4px;">
+                            <span class="mono" dir="ltr" style="font-size: 12px;">@tenant.StorageText</span>
+                            <div class="bar">
+                                <div class="@tenant.StorageFillClass" style="width: @tenant.StoragePercent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;"></div>
+                            </div>
+                        </div>
+                        <div class="cell-num">@tenant.FilesText</div>
+                    </a>
+                }
+            }
+        </div>
+    </div>
+</div>

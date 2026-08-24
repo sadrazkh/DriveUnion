@@ -1,5 +1,6 @@
 /**
- * «افزودن اکانت با OAuth» in a popup instead of taking the whole panel to Google and back.
+ * «افزودن اکانت با OAuth» — and «اتصال دوباره» on each account card — in a popup instead of taking
+ * the whole panel to Google and back.
  *
  * Not a Vue island, and not a fetch: the control is a server-rendered `<form method="post">` with an
  * antiforgery token in it, and the classic technique keeps it that way. Open an empty window with a
@@ -25,11 +26,14 @@ export function mountGoogleConnect(): void {
   mountRedirectUriCopy();
   mountSetupJump();
 
-  const form = document.querySelector<HTMLFormElement>('[data-google-connect]');
-  const flag = form?.querySelector<HTMLInputElement>('[data-google-connect-popup]');
-  if (!form || !flag) return;
+  // Every one of them, not the first. The screen now carries one control that adds an account and
+  // one per card that reconnects that card's account — they post to different routes and only one
+  // of them names an account, but the window they open and the way the flow ends are identical, so
+  // they share this. A querySelector here would have enhanced whichever came first in the document
+  // and left the rest doing a full-page round trip, which looks like a bug in the buttons.
+  const forms = document.querySelectorAll<HTMLFormElement>('[data-google-connect]');
+  if (forms.length === 0) return;
 
-  const status = document.querySelector<HTMLElement>('[data-google-connect-status]');
   let watch = 0;
   let settled = false;
 
@@ -59,40 +63,50 @@ export function mountGoogleConnect(): void {
     finish();
   });
 
-  form.addEventListener('submit', () => {
-    // Opened from inside the submit handler on purpose: a window opened outside a user gesture is
-    // precisely what popup blockers exist to stop.
-    const child = window.open('', WINDOW_NAME, features());
+  forms.forEach((form) => {
+    const flag = form.querySelector<HTMLInputElement>('[data-google-connect-popup]');
+    if (!flag) return;
 
-    if (!child) {
-      // Removed rather than blanked, and reset every time: a target left over from an earlier click
-      // would aim this submission at a window that is no longer there.
-      form.removeAttribute('target');
-      flag.value = 'false';
-      return;
-    }
+    // Scoped to the form, not to the document. The head of the page has one of these under its
+    // button; the per-account forms have none and want none — the sentence is about the window,
+    // and there is one window however many buttons can open it.
+    const status = form.querySelector<HTMLElement>('[data-google-connect-status]');
 
-    form.target = WINDOW_NAME;
-    flag.value = 'true';
-    child.focus();
+    form.addEventListener('submit', () => {
+      // Opened from inside the submit handler on purpose: a window opened outside a user gesture is
+      // precisely what popup blockers exist to stop.
+      const child = window.open('', WINDOW_NAME, features());
 
-    if (status) {
-      // The server put the sentence on the element in the language it rendered the page in; this
-      // file never holds one. It used to hold this one in Persian, which an English panel then said
-      // to an English operator.
-      status.textContent = status.dataset.saidOpened ?? '';
-      status.hidden = false;
-    }
+      if (!child) {
+        // Removed rather than blanked, and reset every time: a target left over from an earlier click
+        // would aim this submission at a window that is no longer there.
+        form.removeAttribute('target');
+        flag.value = 'false';
+        return;
+      }
 
-    window.clearInterval(watch);
-    watch = window.setInterval(() => {
-      if (!child.closed) return;
+      form.target = WINDOW_NAME;
+      flag.value = 'true';
+      child.focus();
 
-      // The window went away without saying anything: the operator closed it at Google's screen, or
-      // a deployment put the redirect URI on a different host so the message was never delivered.
-      // Reloading is right in both cases — it is the same GET the flow ends on either way.
-      finish();
-    }, 400);
+      if (status) {
+        // The server put the sentence on the element in the language it rendered the page in; this
+        // file never holds one. It used to hold this one in Persian, which an English panel then said
+        // to an English operator.
+        status.textContent = status.dataset.saidOpened ?? '';
+        status.hidden = false;
+      }
+
+      window.clearInterval(watch);
+      watch = window.setInterval(() => {
+        if (!child.closed) return;
+
+        // The window went away without saying anything: the operator closed it at Google's screen, or
+        // a deployment put the redirect URI on a different host so the message was never delivered.
+        // Reloading is right in both cases — it is the same GET the flow ends on either way.
+        finish();
+      }, 400);
+    });
   });
 }
 

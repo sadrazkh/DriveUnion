@@ -156,6 +156,25 @@
   max-width: 46ch;
 }
 
+/*
+ * Every control that opens Google's consent window, wherever it sits: the one at the head of the
+ * page and one per account card.
+ *
+ * A column because the head's form carries the popup's status line under its button, and a form is
+ * a block that would otherwise let that paragraph run the width of the column the button is
+ * end-aligned in. The card's forms hold a button alone and are unaffected by the rule — they are
+ * flex items in a `.row`, and `align-items: flex-end` on a single-child column changes nothing.
+ *
+ * The status paragraph moved inside the form so the script can find it with one scoped lookup; it
+ * used to be a sibling, which stopped being addressable the moment there was more than one form.
+ */
+.accounts-connect {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .accounts-cta-why {
   margin: 0;
   font-size: 12.5px;

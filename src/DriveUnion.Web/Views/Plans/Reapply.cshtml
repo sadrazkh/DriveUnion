@@ -1,0 +1,88 @@
+@using DriveUnion.Web.Models
+@model ReapplyPlanPageViewModel
+@{
+    ViewData["Title"] = Model.Title;
+
+    var error = TempData["PlansError"] as string;
+}
+
+@*
+    The one catalogue action that reaches customers, and the only screen in this slice that asks for
+    a confirmation. It is its own page rather than a button on the tier form because it does the
+    opposite of what that form does: saving the tier moves nobody, and this moves everybody on it —
+    including a customer carrying a ceiling somebody negotiated for them.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="row" style="align-items: baseline; gap: 12px;">
+        <h1 class="page-title">@Model.Title</h1>
+        <a class="page-sub" href="@Url.Action("Tier", "Plans", new { code = Model.Code })">@UiText.Plans.BackToPlans</a>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="card">
+            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@error</span></div>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Plans.PreviewHeading</div>
+        </div>
+
+        <div class="card-body">
+            <div class="stack" style="gap: 12px;">
+                @* What every workspace on the tier ends up holding. *@
+                <div class="meta-grid">
+                    <div class="meta-cell">
+                        <div class="meta-label">@UiText.Plans.ColumnStorage</div>
+                        <div class="meta-value mono" dir="ltr">@Model.StorageText</div>
+                    </div>
+                    <div class="meta-cell">
+                        <div class="meta-label">@UiText.Plans.ColumnFile</div>
+                        <div class="meta-value mono" dir="ltr">@Model.MaxFileText</div>
+                    </div>
+                    <div class="meta-cell">
+                        <div class="meta-label">@UiText.Plans.ColumnTraffic</div>
+                        <div class="meta-value mono" dir="ltr">@Model.MonthlyTrafficText</div>
+                    </div>
+                    <div class="meta-cell">
+                        <div class="meta-label">@UiText.Plans.ColumnSeats</div>
+                        <div class="meta-value">@Model.SeatsText</div>
+                    </div>
+                </div>
+
+                <span style="font-size: 12.5px;">@Model.CountsText</span>
+
+                @* The expensive mistake this button can make, said before it is pressed. *@
+                <span style="font-size: 12.5px; color: var(--warn);">@UiText.PlanAdmin.ReapplyTakesBackOverrides</span>
+
+                <span class="muted" style="font-size: 12px;">@UiText.PlanAdmin.ReapplyIsAudited</span>
+
+                @* A downgrade constrains the next action, never an existing one — the same line the
+                   per-workspace screen shows, because this is the same write done in a loop. *@
+                <span class="muted" style="font-size: 12px;">@UiText.Plans.PreviewRule</span>
+            </div>
+        </div>
+
+        @if (Model.WorkspacesOnPlan > 0)
+        {
+            <div class="card-foot">
+                <form method="post" action="@Url.Action("ReapplyConfirmed", "Plans", new { code = Model.Code })"
+                      class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap; width: 100%;">
+                    @Html.AntiForgeryToken()
+
+                    <div style="flex: 1 1 260px;">
+                        <label class="field-label" for="reapply-reason">@UiText.Plans.AssignReasonField</label>
+                        <input id="reapply-reason" name="Reason" required maxlength="512"
+                               style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px; width: 100%;" />
+                    </div>
+
+                    <button type="submit" class="btn btn--primary">@UiText.PlanAdmin.ReapplyConfirm</button>
+                </form>
+            </div>
+        }
+    </div>
+
+    <span class="muted" style="font-size: 12px;">@UiText.Plans.AssignReasonHint</span>
+</div>

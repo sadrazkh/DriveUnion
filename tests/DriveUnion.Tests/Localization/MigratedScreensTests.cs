@@ -87,9 +87,18 @@ public class MigratedScreensTests
     /// </summary>
     private static readonly string[] TheCatalogue =
     [
-        "UiText.cs",
         "DriveUnionIdentityErrorDescriber.cs",
     ];
+
+    /// <summary>
+    /// Matched by shape rather than by name, because <c>UiText</c> is partial: a screen that brings
+    /// its own words in <c>UiText.Tenants.cs</c> is doing exactly what partial was for, and a
+    /// hardcoded list of filenames failed it for that. The prefix covers <c>UiText.cs</c> itself.
+    /// </summary>
+    private static bool IsCatalogue(string fileName) =>
+        TheCatalogue.Contains(fileName)
+        || (fileName.StartsWith("UiText.", StringComparison.Ordinal)
+            && fileName.EndsWith(".cs", StringComparison.Ordinal));
 
     public static TheoryData<string> Files()
     {
@@ -166,7 +175,7 @@ public class MigratedScreensTests
             {
                 if (file.Extension is not (".cshtml" or ".cs")) continue;
                 if (NotMigrated.Contains(file.Name)) continue;
-                if (TheCatalogue.Contains(file.Name)) continue;
+                if (IsCatalogue(file.Name)) continue;
 
                 files.Add(Path.GetRelativePath(root.FullName, file.FullName).Replace('\\', '/'));
             }

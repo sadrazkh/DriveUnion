@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Plans;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
 using DriveUnion.Web.Models;
@@ -29,12 +30,22 @@ namespace DriveUnion.Web.Controllers;
 public sealed class PlansController(
     ITenantPlanService plans,
     IPlanCatalogueReader catalogue,
+    IPlanCatalogueEditor editor,
     IOperatorPlanReader operatorView) : Controller
 {
     /// <summary>Carries one sentence across the redirect that follows a write. Strings only.</summary>
     private const string MessageKey = "PlansMessage";
 
     private const string ErrorKey = "PlansError";
+
+    /// <summary>
+    /// One view for creating a tier and for editing one. The two differ in a heading and in whether
+    /// the code field is writable; two files would be one file and a copy of it, and the copy is the
+    /// one that stops saying the sentence about editing moving nobody.
+    /// </summary>
+    private const string TierFormView = "Tier";
+
+    private const string ReapplyView = "Reapply";
 
     /// <summary>
     /// The customer's own card: their four numbers, what they have spent, and — when they are over
@@ -70,11 +81,243 @@ public sealed class PlansController(
         SetShell();
 
         // Retired tiers are included here and excluded from the assignment list on the workspace
-        // page: this screen has to be able to explain a workspace that is still on one.
-        var tiers = await catalogue.ListAsync(includeRetired: true, cancellationToken);
+        // page: this screen has to be able to explain a workspace that is still on one, and it is
+        // where a retired tier is brought back.
+        var state = await editor.StateAsync(cancellationToken);
         var overview = await operatorView.OverviewAsync(cancellationToken);
 
-        return View(new OperatorPlansPageViewModel(tiers, overview));
+        return View(new OperatorPlansPageViewModel(state, overview));
+    }
+
+    /// <summary>The blank tier form. Nothing is written until it is posted.</summary>
+    [HttpGet("/operator/plans/new")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public IActionResult NewTier()
+    {
+        SetShell();
+
+        return View(TierFormView, PlanFormPageViewModel.ForNew(PlanForm.Blank()));
+    }
+
+    /// <summary>
+    /// A new tier. It is live and assignable the moment it exists, which costs nothing: nobody is on
+    /// it, so nothing can be disturbed by it.
+    /// </summary>
+    [HttpPost("/operator/plans/new")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> Create([FromForm] PlanForm form, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        SetShell();
+
+        try
+        {
+            var created = await editor.CreateAsync(form.ToDraft(), cancellationToken);
+
+            TempData[MessageKey] = UiText.PlanAdmin.TierCreated(created.Name);
+
+            return RedirectToAction(nameof(Tier), new { code = created.Code });
+        }
+        catch (PlanEditRefusedException refusal)
+        {
+            // Re-rendered rather than redirected, so six typed values are not lost to one bad one.
+            return View(TierFormView, PlanFormPageViewModel.ForNew(form, Sentence(refusal, form.Code)));
+        }
+    }
+
+    /// <summary>
+    /// One tier's form, with the count of workspaces on it and the sentence that says none of them
+    /// moves when it is saved.
+    /// </summary>
+    [HttpGet("/operator/plans/tiers/{code}")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> Tier(string code, CancellationToken cancellationToken)
+    {
+        SetShell();
+
+        var usage = await editor.UsageAsync(code, cancellationToken);
+        if (usage is null) return NotFound();
+
+        return View(TierFormView, PlanFormPageViewModel.ForEdit(usage, PlanForm.From(usage.Plan)));
+    }
+
+    /// <summary>
+    /// Rewrites a tier's code, name and four numbers, <b>and moves nobody</b>.
+    ///
+    /// <para>That is the architecture rather than an omission: assigning a plan copies its numbers
+    /// onto the workspace's own row and nothing on any enforcement path joins back here, which is
+    /// what makes a negotiated override and a per-customer quota history expressible at all. The
+    /// form says it above the fields, and <see cref="Reapply"/> is the honest route for an operator
+    /// who did mean "move everybody".</para>
+    /// </summary>
+    [HttpPost("/operator/plans/tiers/{code}")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> SaveTier(
+        string code,
+        [FromForm] PlanForm form,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        SetShell();
+
+        try
+        {
+            var saved = await editor.EditAsync(code, form.ToDraft(), cancellationToken);
+
+            TempData[MessageKey] = UiText.PlanAdmin.TierSaved(saved.Name);
+
+            return RedirectToAction(nameof(Tier), new { code = saved.Code });
+        }
+        catch (PlanEditRefusedException refusal)
+        {
+            var usage = await editor.UsageAsync(code, cancellationToken);
+            var sentence = Sentence(refusal, code);
+
+            return usage is null
+                ? NotFound()
+                : View(TierFormView, PlanFormPageViewModel.ForEdit(usage, form, sentence));
+        }
+    }
+
+    /// <summary>
+    /// Takes a tier off sale, or puts it back.
+    ///
+    /// <para><b>Retire, never delete.</b> Every workspace on a retired tier keeps working and keeps
+    /// its numbers, because those numbers are on its own row — and the tier can still be re-applied
+    /// to the workspaces already on it, which is how an edit reaches somebody the operator has
+    /// stopped selling to.</para>
+    /// </summary>
+    [HttpPost("/operator/plans/tiers/{code}/retire")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> Retire(
+        string code,
+        [FromForm] RetireTierForm form,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        try
+        {
+            var tier = await editor.SetRetiredAsync(code, form.Retired, cancellationToken);
+
+            TempData[MessageKey] = form.Retired
+                ? UiText.PlanAdmin.TierRetired(tier.Name)
+                : UiText.PlanAdmin.TierRestored(tier.Name);
+        }
+        catch (PlanEditRefusedException refusal)
+        {
+            TempData[ErrorKey] = Sentence(refusal, code);
+        }
+
+        return RedirectToAction(nameof(Operator));
+    }
+
+    /// <summary>Swaps a tier with its neighbour. The order is the operator's, not derived from any number.</summary>
+    [HttpPost("/operator/plans/tiers/{code}/move")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> Move(
+        string code,
+        [FromForm] MoveTierForm form,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        try
+        {
+            var tier = await editor.MoveAsync(code, form.Direction, cancellationToken);
+
+            TempData[MessageKey] = UiText.PlanAdmin.TierMoved(tier.Name);
+        }
+        catch (PlanEditRefusedException refusal)
+        {
+            TempData[ErrorKey] = Sentence(refusal, code);
+        }
+
+        return RedirectToAction(nameof(Operator));
+    }
+
+    /// <summary>
+    /// Removes a tier nobody is on — the one created two minutes ago with a mis-typed code.
+    ///
+    /// <para>A tier a workspace is on is refused with a sentence naming retirement. The database
+    /// would refuse it too, <c>Tenant.PlanId</c> being a <c>Restrict</c> foreign key, but it would
+    /// arrive as a constraint violation on an operator's screen.</para>
+    /// </summary>
+    [HttpPost("/operator/plans/tiers/{code}/delete")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> DeleteTier(string code, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tier = await editor.UsageAsync(code, cancellationToken);
+            if (tier is null) return NotFound();
+
+            await editor.DeleteAsync(code, cancellationToken);
+
+            TempData[MessageKey] = UiText.PlanAdmin.TierDeleted(tier.Plan.Name);
+        }
+        catch (PlanEditRefusedException refusal)
+        {
+            TempData[ErrorKey] = Sentence(refusal, code);
+        }
+
+        return RedirectToAction(nameof(Operator));
+    }
+
+    /// <summary>
+    /// The confirmation in front of the one catalogue action that reaches customers: it shows how
+    /// many workspaces are on the tier, how many of them actually hold different numbers, and that
+    /// a negotiated ceiling on any of them is taken back.
+    /// </summary>
+    [HttpGet("/operator/plans/tiers/{code}/reapply")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> Reapply(string code, CancellationToken cancellationToken)
+    {
+        SetShell();
+
+        var usage = await editor.UsageAsync(code, cancellationToken);
+
+        return usage is null ? NotFound() : View(ReapplyView, new ReapplyPlanPageViewModel(usage));
+    }
+
+    /// <summary>
+    /// Copies the tier's numbers onto every workspace on it, in one transaction, through the one
+    /// command that writes a <c>TenantQuotaChange</c> for each number that moves.
+    ///
+    /// <para>The reason is required for exactly that: a bulk move is the largest thing that can
+    /// happen to a customer's ceiling, and the history row is what answers them afterwards.</para>
+    /// </summary>
+    [HttpPost("/operator/plans/tiers/{code}/reapply")]
+    [Authorize(Policy = DriveUnionPolicies.Operator)]
+    public async Task<IActionResult> ReapplyConfirmed(
+        string code,
+        [FromForm] ReapplyPlanForm form,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        if (string.IsNullOrWhiteSpace(form.Reason))
+        {
+            TempData[ErrorKey] = UiText.Plans.ReasonRequired;
+            return RedirectToAction(nameof(Reapply), new { code });
+        }
+
+        try
+        {
+            var moved = await editor.ReapplyAsync(code, form.Reason, CurrentUserId(), cancellationToken);
+
+            TempData[MessageKey] = moved == 0
+                ? UiText.PlanAdmin.ReapplyMovedNobody
+                : UiText.PlanAdmin.ReapplyDone(moved);
+        }
+        catch (PlanEditRefusedException refusal)
+        {
+            TempData[ErrorKey] = Sentence(refusal, code);
+        }
+
+        return RedirectToAction(nameof(Tier), new { code });
     }
 
     /// <summary>
@@ -192,6 +435,17 @@ public sealed class PlansController(
 
         return RedirectToAction(nameof(OperatorTenant), new { tenantId });
     }
+
+    /// <summary>
+    /// A refusal as the sentence an operator reads, in this request's language.
+    ///
+    /// <para><paramref name="planCode"/> is the tier the command named. The three refusals that
+    /// quote <c>Plans:DefaultPlanCode</c> are only reachable when that setting names this very
+    /// tier — that is the definition of each of them — so the code the sentence prints is the code
+    /// the route already carried, and the controller needs no reading of configuration to say it.</para>
+    /// </summary>
+    private static string Sentence(PlanEditRefusedException refusal, string planCode) =>
+        PlanRefusalText.For(refusal.Reason, planCode);
 
     /// <summary>
     /// The operator who pressed the button, or null when the principal carries no usable id.

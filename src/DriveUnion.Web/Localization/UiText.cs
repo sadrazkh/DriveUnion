@@ -448,6 +448,30 @@ public static partial class UiText
         public static string AddAccount => Pick("+ افزودن اکانت با OAuth", "+ Add an account with OAuth");
 
         /// <summary>
+        /// The same action once the pool is not empty, named for what it actually does.
+        ///
+        /// The screen used to say «افزودن اکانت» whether there were none or three, and the per-account
+        /// repair was the same control — so "add a second account" and "reconnect the one I have"
+        /// were one button, and pressing it a second time did the second thing. Two labels in two
+        /// places is most of the fix; the authorization URL is the rest.
+        /// </summary>
+        public static string AddAnotherAccount => Pick(
+            "+ افزودن یک اکانت دیگر",
+            "+ Connect another account");
+
+        /// <summary>
+        /// What is about to happen, said before it happens. Google's chooser is the step that used
+        /// to be missing, so an operator who has been bitten by this once needs to know it is there
+        /// now — and needs to know that picking the account already in the pool is a reconnection
+        /// rather than a second account.
+        /// </summary>
+        public static string AddAnotherHint => Pick(
+            "گوگل می‌پرسد کدام اکانت — یکی را انتخاب کنید که هنوز در فهرست زیر نیست. اگر همانی را "
+            + "انتخاب کنید که از قبل هست، اعتبارنامه‌اش تازه می‌شود و اکانت تازه‌ای ساخته نمی‌شود.",
+            "Google will ask which account — pick one that is not in the list below. Choosing one "
+            + "that is already there refreshes its credentials instead of adding an account.");
+
+        /// <summary>
         /// The primary action when nothing is configured, and the setup panel's own title. One entry
         /// on purpose: the button promises the panel, so the two cannot drift apart.
         /// </summary>
@@ -483,6 +507,34 @@ public static partial class UiText
         public static string RefreshQuota => Pick("تازه‌سازی فضا", "Refresh storage");
 
         public static string Disconnect => Pick("قطع اتصال", "Disconnect");
+
+        /// <summary>The per-card repair, which is a different action from adding an account.</summary>
+        public static string Reconnect => Pick("اتصال دوباره", "Reconnect");
+
+        /// <summary>
+        /// On the reconnect button, because "will this renumber my accounts or move my files?" is
+        /// the question that stops an operator pressing it.
+        /// </summary>
+        public static string ReconnectHint => Pick(
+            "فقط اعتبارنامه‌ی همین اکانت را جایگزین می‌کند. برچسب و فایل‌هایش دست‌نخورده می‌مانند.",
+            "Replaces this account's credentials and nothing else. Its label and its files stay where they are.");
+
+        /// <summary>
+        /// The accessible name of a per-account control, which without the label would be one of
+        /// three identical buttons. The label is how the operator tells the cards apart, so it is
+        /// how a screen reader should too.
+        /// </summary>
+        public static string ReconnectAccount(string label) => Pick(
+            $"اتصال دوباره‌ی اکانت {label}",
+            $"Reconnect account {label}");
+
+        public static string RefreshQuotaAccount(string label) => Pick(
+            $"تازه‌سازی فضای اکانت {label}",
+            $"Refresh storage for account {label}");
+
+        public static string DisconnectAccount(string label) => Pick(
+            $"قطع اتصال اکانت {label}",
+            $"Disconnect account {label}");
 
         public static string StatusHealthy => Pick("سالم", "Healthy");
 
@@ -719,6 +771,20 @@ public static partial class UiText
             "اکانت گوگل متصل شد.",
             "The Google account is connected.");
 
+        /// <summary>
+        /// Which account, by the label the cards show and the address Google actually returned.
+        ///
+        /// The unnamed sentence above said the same thing whether a new account had been added or
+        /// the existing one re-approved — so the failure this whole change is about was invisible at
+        /// the exact moment it happened. Naming the account makes «I pressed it again and nothing
+        /// appeared» answerable from the screen.
+        /// </summary>
+        /// <param name="email">The operator's own address. This screen is operator-only; a tenant
+        /// must never reach a page that says which account holds anything.</param>
+        public static string ConnectedNamed(string label, string email) => Pick(
+            $"اکانت {label} متصل شد — {email}",
+            $"Account {label} is connected — {email}");
+
         public static string UnconfiguredTitle => Pick(
             "پیکربندی گوگل کامل نیست",
             "Google is not fully configured");
@@ -732,6 +798,9 @@ public static partial class UiText
             "The account is disconnected. The files already on it are left untouched.");
 
         public static string AccountNotFound => Pick("اکانت پیدا نشد.", "That account was not found.");
+
+        /// <summary>The same refusal as a heading, for the window a reconnection was started in.</summary>
+        public static string AccountNotFoundTitle => Pick("اکانت پیدا نشد", "Account not found");
 
         public static string QuotaRefreshed => Pick(
             "فضای اکانت به‌روزرسانی شد.",

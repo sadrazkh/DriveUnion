@@ -99,6 +99,118 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
         (await _db.GoogleAccounts.CountAsync()).Should().Be(1);
     }
 
+    /// <summary>
+    /// The three things a reconnection must not disturb, asserted together because they fail
+    /// together: the row is the same row, its label is the same label, and the files stored on it
+    /// still point at it. A reconnection that renumbered anything would move a tenant's files under
+    /// them without moving a byte.
+    /// </summary>
+    [Fact]
+    public async Task Reconnecting_keeps_the_label_and_the_files_already_stored_on_the_account()
+    {
+        await Connect();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _about.CurrentEmail = "pool-a2@example.com";
+        var second = await Connect();
+
+        var fileId = Guid.CreateVersion7();
+        _db.StoredFiles.Add(new StoredFile
+        {
+            Id = fileId,
+            TenantId = Guid.CreateVersion7(),
+            GoogleAccountId = second,
+            DriveFileId = "drive-file-id",
+            Name = "quarterly.tar.zst",
+            MimeType = "application/zstd",
+            SizeBytes = 4096,
+            CreatedAt = _time.Now,
+            ModifiedAt = _time.Now,
+        });
+        await _db.SaveChangesAsync();
+
+        // The account stops working — the seven-day refresh-token expiry a Testing consent screen
+        // imposes is the usual cause — and the operator presses «اتصال دوباره» on its card.
+        (await _directory.DisconnectAsync(second, CancellationToken.None)).Should().BeTrue();
+
+        var again = await Connect();
+
+        again.Should().Be(second);
+        (await _db.GoogleAccounts.CountAsync()).Should().Be(2, "a reconnection is not a new account");
+
+        var account = await _db.GoogleAccounts.AsNoTracking().SingleAsync(a => a.Id == second);
+        account.Label.Should().Be("A2", "the label is how the operator tells the cards apart");
+        account.Status.Should().Be(GoogleAccountStatus.Healthy, "the grant is what was missing");
+
+        (await _db.StoredFiles.AsNoTracking().SingleAsync(f => f.Id == fileId))
+            .GoogleAccountId.Should().Be(second);
+    }
+
+    /// <summary>
+    /// A1, A2, A3 — then disconnect A2 and connect a fourth account. It is A4.
+    ///
+    /// The alternative, one past the row count or the first free number, would hand the new account
+    /// the name «A2» while a card labelled A2 sat on the same screen: the disconnected account keeps
+    /// its row, its files and every public link served through them, so its number is still spoken
+    /// for. M2 §2 requires the same of <c>ShortCode</c> for the same reason — the label outlives the
+    /// account in old job rows and in support conversations.
+    /// </summary>
+    [Fact]
+    public async Task A_disconnected_label_is_never_handed_to_the_next_account()
+    {
+        await Connect();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _about.CurrentEmail = "pool-a2@example.com";
+        var a2 = await Connect();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _about.CurrentEmail = "pool-a3@example.com";
+        await Connect();
+
+        (await _directory.DisconnectAsync(a2, CancellationToken.None)).Should().BeTrue();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _about.CurrentEmail = "pool-a4@example.com";
+        await Connect();
+
+        var accounts = await _directory.ListAsync(CancellationToken.None);
+
+        accounts.Select(a => a.Label).Should().Equal("A1", "A2", "A3", "A4");
+
+        // And A2 is still there, disconnected rather than gone, which is why its number is taken.
+        accounts.Single(a => a.Label == "A2").Status.Should().Be(GoogleAccountStatus.Disconnected);
+    }
+
+    /// <summary>
+    /// A label that is not A-and-a-number reserves no number, and the sequence carries on around it
+    /// rather than throwing or guessing.
+    ///
+    /// Nothing in the panel writes such a label today — there is no rename — so this pins how the
+    /// parse behaves if one ever appears, from a fixture, a support insert or a later milestone.
+    /// </summary>
+    [Fact]
+    public async Task A_label_that_is_not_a_number_reserves_nothing()
+    {
+        var first = await Connect();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _about.CurrentEmail = "pool-a2@example.com";
+        await Connect();
+
+        var account = await _db.GoogleAccounts.SingleAsync(a => a.Id == first);
+        account.Label = "archive";
+        await _db.SaveChangesAsync();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _about.CurrentEmail = "pool-a3@example.com";
+        await Connect();
+
+        (await _directory.ListAsync(CancellationToken.None))
+            .Single(a => a.Email == "pool-a3@example.com")
+            .Label.Should().Be("A3", "A2 is still taken, and «archive» takes nothing");
+    }
+
     [Fact]
     public async Task Disconnecting_does_not_revoke_the_token()
     {
@@ -135,6 +247,36 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
         account.QuotaUsedBytes.Should().Be(4000000000000);
     }
 
+    /// <summary>
+    /// With a pool, every per-account action has to land on the account whose card was pressed. The
+    /// failure being guarded against is not an exception — it is the second card's button quietly
+    /// operating on the first account, which looks like nothing happening at all.
+    /// </summary>
+    [Fact]
+    public async Task A_per_account_action_touches_that_account_and_no_other()
+    {
+        var a1 = await Connect();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _about.CurrentEmail = "pool-a2@example.com";
+        var a2 = await Connect();
+
+        _drive.Quota = new DriveStorageQuota(5497558138880, 4000000000000);
+        await _directory.RefreshQuotaAsync(a2, CancellationToken.None);
+
+        _drive.AskedFor.Should().Equal(a2);
+
+        await _directory.DisconnectAsync(a2, CancellationToken.None);
+
+        var untouched = await _db.GoogleAccounts.AsNoTracking().SingleAsync(a => a.Id == a1);
+        untouched.QuotaUsedBytes.Should().Be(1099511627776, "A1's figures came from its own connect");
+        untouched.Status.Should().Be(GoogleAccountStatus.Healthy);
+
+        var acted = await _db.GoogleAccounts.AsNoTracking().SingleAsync(a => a.Id == a2);
+        acted.QuotaUsedBytes.Should().Be(4000000000000);
+        acted.Status.Should().Be(GoogleAccountStatus.Disconnected);
+    }
+
     private Task<Guid> Connect() =>
         _directory.ConnectAsync("auth-code", "https://drive.example/oauth", CancellationToken.None);
 
@@ -155,10 +297,19 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
     /// </summary>
     private sealed class StubDriveClient : IDriveClient
     {
+        private readonly List<Guid> _askedFor = [];
+
         public DriveStorageQuota Quota { get; set; } = new(5497558138880, 1099511627776);
 
-        public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken) =>
-            Task.FromResult(Quota);
+        /// <summary>Which accounts a quota was actually asked for, in order.</summary>
+        public IReadOnlyList<Guid> AskedFor => _askedFor;
+
+        public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken)
+        {
+            _askedFor.Add(accountId);
+
+            return Task.FromResult(Quota);
+        }
 
         public Task<DriveResumableSession> BeginResumableUploadAsync(
             Guid accountId, DriveUploadRequest request, CancellationToken cancellationToken) =>

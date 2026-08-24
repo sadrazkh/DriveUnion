@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using DriveUnion.Infrastructure.Google;
 using FluentAssertions;
 using Microsoft.AspNetCore.WebUtilities;
 
@@ -118,9 +119,11 @@ public class GoogleCredentialPanelTests
         query["client_id"].ToString().Should().Be(TypedClientId);
         query["redirect_uri"].ToString().Should().Be(suggested);
 
-        // The consent flow the popup work established is untouched by any of this.
+        // The consent flow the popup work established is untouched by any of this — including both
+        // prompt values, which a client typed into the panel has to carry exactly as one supplied
+        // from the environment does. GoogleOAuthUrlsTests is where they are argued.
         query["access_type"].ToString().Should().Be("offline");
-        query["prompt"].ToString().Should().Be("consent");
+        query["prompt"].ToString().Should().Be(GoogleOAuthUrls.Prompt);
         OperatorPanelHarness.IssuedState(response).Should().StartWith("top.");
     }
 

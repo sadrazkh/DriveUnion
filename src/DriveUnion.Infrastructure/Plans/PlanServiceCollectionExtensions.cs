@@ -36,6 +36,11 @@ public static class PlanServiceCollectionExtensions
         services.TryAddScoped<IPlanCatalogueReader, PlanCatalogueReader>();
         services.TryAddScoped<IOperatorPlanReader, OperatorPlanReader>();
 
+        // The catalogue's writer. Registered here rather than in Program.cs so that the one line a
+        // host needs stays one line: a screen added to the operator surface must not also be a
+        // registration somebody has to remember, and the plan tests boot this same call.
+        services.TryAddScoped<IPlanCatalogueEditor, PlanCatalogueEditor>();
+
         return services;
     }
 }

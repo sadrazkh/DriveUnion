@@ -52,6 +52,8 @@ public class PlanSourceRulesTests
         "src/DriveUnion.Web/Views/Plans/Index.cshtml",
         "src/DriveUnion.Web/Views/Plans/Operator.cshtml",
         "src/DriveUnion.Web/Views/Plans/OperatorTenant.cshtml",
+        "src/DriveUnion.Web/Views/Plans/Tier.cshtml",
+        "src/DriveUnion.Web/Views/Plans/Reapply.cshtml",
     ];
 
     [Fact]

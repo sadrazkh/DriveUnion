@@ -47,11 +47,15 @@ public class GoogleConnectPopupTests
 
         var model = view.Model.Should().BeOfType<ConnectPopupViewModel>().Subject;
         model.Succeeded.Should().BeTrue();
-        model.Message.Should().Be("اکانت گوگل متصل شد.");
+
+        // Which account, by the label the cards show and the address Google returned. The sentence
+        // used to be the same one whether an account had been added or the existing one re-approved,
+        // which is what made a second Connect that reconnected the first account invisible.
+        model.Message.Should().Be("اکانت A1 متصل شد — pool@gmail.com");
 
         // The opener reloads /accounts as the flow ends, so the same sentence has to be waiting for
         // it — the page must not end up silent about something the popup announced.
-        harness.TempData["Notice"].Should().Be("اکانت گوگل متصل شد.");
+        harness.TempData["Notice"].Should().Be("اکانت A1 متصل شد — pool@gmail.com");
     }
 
     [Fact]

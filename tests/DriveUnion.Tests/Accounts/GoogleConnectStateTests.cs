@@ -77,7 +77,10 @@ public class GoogleConnectStateTests
 
         result.Should().BeOfType<RedirectToActionResult>()
             .Which.ActionName.Should().Be("Index");
-        harness.TempData["Notice"].Should().Be("اکانت گوگل متصل شد.");
+
+        // Named, so an operator who has just answered Google's account chooser can see which account
+        // they actually approved rather than a sentence that fits either answer.
+        harness.TempData["Notice"].Should().Be("اکانت A1 متصل شد — pool@gmail.com");
     }
 
     [Theory]

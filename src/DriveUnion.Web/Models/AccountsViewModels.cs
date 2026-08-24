@@ -19,6 +19,16 @@ public sealed record AccountCardViewModel(
     string TotalText,
     int UsedPercent)
 {
+    /// <summary>
+    /// True when this card's own repair is the thing to do next, which is what promotes «اتصال
+    /// دوباره» from one small button among three to the card's primary action.
+    ///
+    /// A disconnected account is one whose refresh token Google stopped honouring — the seven-day
+    /// expiry a Testing consent screen imposes is the usual cause. Its files and their public links
+    /// are still served through it, so nothing about it is disposable; it just needs a new grant.
+    /// </summary>
+    public bool NeedsReconnect => Status is GoogleAccountStatus.Disconnected;
+
     public static AccountCardViewModel From(GoogleAccountSummary account)
     {
         var percent = account.QuotaTotalBytes <= 0

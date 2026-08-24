@@ -1,0 +1,253 @@
+@using DriveUnion.Web.Models
+@model TenantPageViewModel
+@{
+    ViewData["Title"] = UiText.Tenants.WorkspaceHeading(Model.Name);
+
+    const string MemberCols = "--cols: minmax(0,1fr) 130px 90px 130px 300px";
+    const string HistoryCols = "--cols: 150px 130px minmax(0,1fr) minmax(0,1fr)";
+
+    const string InputStyle =
+        "border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px;";
+
+    var message = TempData["TenantsMessage"] as string;
+    var error = ViewData["TenantsError"] as string ?? TempData["TenantsError"] as string;
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="row" style="align-items: baseline; gap: 12px;">
+        <h1 class="page-title">@UiText.Tenants.WorkspaceHeading(Model.Name)</h1>
+        <a class="page-sub" href="@Url.Action("Index", "Tenants")">@UiText.Tenants.BackToTenants</a>
+    </div>
+
+    @if (message is not null)
+    {
+        <div class="card"><div class="card-body"><span style="font-size: 12.5px;">@message</span></div></div>
+    }
+
+    @if (error is not null)
+    {
+        <div class="card">
+            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@error</span></div>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Tenants.PlanLabel — @Model.PlanName</div>
+            @* The plan screen is where the four numbers are actually moved. One writer, linked to
+               from here rather than reimplemented here. *@
+            <a class="page-sub" href="@Url.Action("OperatorTenant", "Plans", new { tenantId = Model.TenantId })">@UiText.Tenants.ManagePlan</a>
+        </div>
+
+        <div class="card-body">
+            <div class="meta-grid">
+                <div class="meta-cell">
+                    <div class="meta-label">@UiText.Tenants.SlugLabel</div>
+                    <div class="meta-value mono" dir="ltr">@Model.Slug</div>
+                </div>
+                <div class="meta-cell">
+                    <div class="meta-label">@UiText.Tenants.StorageLabel</div>
+                    <div class="meta-value mono" dir="ltr">@Model.StorageText</div>
+                    <div class="bar" style="margin-top: 6px;">
+                        <div class="@Model.StorageFillClass" style="width: @Model.StoragePercent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;"></div>
+                    </div>
+                </div>
+                <div class="meta-cell">
+                    <div class="meta-label">@UiText.Tenants.SeatsLabel</div>
+                    <div class="meta-value">@Model.SeatsText</div>
+                </div>
+                <div class="meta-cell">
+                    <div class="meta-label">@UiText.Tenants.CreatedLabel</div>
+                    <div class="meta-value">@Model.CreatedText</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card card--flush">
+        <div class="card-head">
+            <div class="card-title">@UiText.Tenants.MembersHeading</div>
+            <span class="muted" style="font-size: 11.5px;">@UiText.Tenants.DisableExplanation</span>
+        </div>
+
+        <div class="dtable" style="@MemberCols">
+            <div class="dtable-head">
+                <div>@UiText.Tenants.ColumnEmail</div>
+                <div>@UiText.Tenants.ColumnDisplayName</div>
+                <div>@UiText.Tenants.ColumnStatus</div>
+                <div>@UiText.Tenants.ColumnAdded</div>
+                <div></div>
+            </div>
+
+            @if (Model.Members.Count == 0)
+            {
+                <div class="empty empty--incell">
+                    <span>@UiText.Tenants.NoMembers</span>
+                </div>
+            }
+            else
+            {
+                @foreach (var member in Model.Members)
+                {
+                    <div class="dtable-row">
+                        <div class="cell-slug" dir="ltr" title="@member.Email">@member.Email</div>
+                        <div class="cell-name">@member.DisplayName</div>
+                        <div>
+                            <span class="badge @(member.IsDisabled ? "badge--danger" : "badge--muted")">@member.StatusText</span>
+                        </div>
+                        <div class="cell-muted">@member.AddedText</div>
+                        <div class="row" style="gap: 6px; flex-wrap: wrap; align-items: center;">
+                            @*
+                                Two small forms rather than one row of links: both of these write, and
+                                a GET that disables somebody is a control any prefetcher can press.
+                            *@
+                            @if (member.IsDisabled)
+                            {
+                                <form method="post"
+                                      action="@Url.Action("EnableMember", "Tenants", new { tenantId = Model.TenantId, userId = member.UserId })">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn--sm">@UiText.Tenants.Enable</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <form method="post"
+                                      action="@Url.Action("DisableMember", "Tenants", new { tenantId = Model.TenantId, userId = member.UserId })">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn--sm btn--danger">@UiText.Tenants.Disable</button>
+                                </form>
+                            }
+
+                            <form method="post" class="row" style="gap: 6px;"
+                                  action="@Url.Action("ResetMemberPassword", "Tenants", new { tenantId = Model.TenantId, userId = member.UserId })">
+                                @Html.AntiForgeryToken()
+                                @*
+                                    type="password" and autocomplete="new-password": the operator is
+                                    setting somebody else's credential, and a browser that offered to
+                                    fill it with the operator's own would be offering to hand it over.
+                                *@
+                                <input name="Password" type="password" required dir="ltr"
+                                       autocomplete="new-password"
+                                       aria-label="@UiText.Tenants.PasswordField"
+                                       style="@InputStyle width: 150px;" />
+                                <button type="submit" class="btn btn--sm">@UiText.Tenants.ResetPassword</button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="card-foot">
+            @if (Model.SeatsAreFull)
+            {
+                @*
+                    Absent rather than greyed out. A seat cap is a condition the operator can change,
+                    and the sentence names the change — a disabled form with no explanation is how
+                    somebody concludes the panel is broken.
+                *@
+                <span style="font-size: 12.5px; color: var(--warn);">@UiText.Tenants.SeatsFullHere</span>
+            }
+            else
+            {
+                <form method="post" class="stack" style="gap: 10px; width: 100%;"
+                      action="@Url.Action("CreateMember", "Tenants", new { tenantId = Model.TenantId })">
+                    @Html.AntiForgeryToken()
+
+                    <div class="card-title">@UiText.Tenants.AddMemberHeading</div>
+
+                    <div class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
+                        <div class="field" style="flex: 1 1 220px;">
+                            <label class="field-label" for="member-email">@UiText.Tenants.EmailField</label>
+                            <input id="member-email" name="Email" type="email" required dir="ltr"
+                                   value="@Model.Form.Email"
+                                   style="@InputStyle width: 100%;" />
+                        </div>
+
+                        <div class="field" style="flex: 1 1 180px;">
+                            <label class="field-label" for="member-name">@UiText.Tenants.DisplayNameField</label>
+                            <input id="member-name" name="DisplayName" maxlength="200"
+                                   value="@Model.Form.DisplayName"
+                                   style="@InputStyle width: 100%;" />
+                        </div>
+
+                        <div class="field" style="flex: 1 1 180px;">
+                            <label class="field-label" for="member-password">@UiText.Tenants.PasswordField</label>
+                            @*
+                                Never given a value attribute, on any path. A refused password
+                                rendered back into the form is a credential in the page source, in
+                                the back-forward cache and in anything between here and the browser
+                                that keeps response bodies.
+                            *@
+                            <input id="member-password" name="Password" type="password" required dir="ltr"
+                                   autocomplete="new-password"
+                                   style="@InputStyle width: 100%;" />
+                        </div>
+
+                        <button type="submit" class="btn btn--primary">@UiText.Tenants.AddMember</button>
+                    </div>
+
+                    <div class="stack" style="gap: 4px;">
+                        <span class="muted" style="font-size: 12px;">@UiText.Tenants.DisplayNameHint</span>
+                        <span class="muted" style="font-size: 12px;">@UiText.Tenants.PasswordHint</span>
+                    </div>
+                </form>
+            }
+        </div>
+    </div>
+
+    @*
+        One workspace's quota history on one workspace's page — the answer to «چرا سهمیه‌ام عوض شد».
+        It is the same table the plans screen draws and it is not, and must not become, a general
+        audit log.
+    *@
+    <div class="card card--flush">
+        <div class="card-head">
+            <div class="card-title">@UiText.Tenants.QuotaHistoryHeading</div>
+        </div>
+
+        <div class="dtable" style="@HistoryCols">
+            <div class="dtable-head">
+                <div>@UiText.Tenants.ColumnWhen</div>
+                <div>@UiText.Plans.ColumnField</div>
+                <div>@UiText.Tenants.ColumnChange</div>
+                <div>@UiText.Tenants.ColumnReason</div>
+            </div>
+
+            @if (Model.History.Count == 0)
+            {
+                <div class="empty empty--incell">
+                    <span>@UiText.Tenants.QuotaHistoryEmpty</span>
+                </div>
+            }
+            else
+            {
+                @foreach (var row in Model.History)
+                {
+                    <div class="dtable-row">
+                        <div style="font-size: 12px;">@row.WhenText</div>
+                        <div style="font-size: 12px;">@row.FieldText</div>
+                        <div class="cell-num">@UiText.Tenants.FromTo(row.FromText, row.ToText)</div>
+                        <div class="cell-muted" title="@row.Reason">@row.Reason</div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    @*
+        There is no delete button and this card is why. Nothing in this schema has a foreign key from
+        a tenant's rows back to Tenants — scoping here is an explicit argument, not a relationship —
+        so removing the row would not fail loudly. It would succeed, and every file, link, session
+        and account that named this workspace would be orphaned while the bytes went on sitting
+        inside the operator's Google accounts with nothing left to reach them by.
+    *@
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title" style="color: var(--muted);">@UiText.Tenants.NoDeletionHeading</div>
+        </div>
+        <div class="card-body">
+            <p style="font-size: 12.5px; margin: 0;">@UiText.Tenants.NoDeletionBody</p>
+        </div>
+    </div>
+</div>

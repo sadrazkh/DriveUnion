@@ -78,4 +78,23 @@ public sealed class Plan
     public DateTimeOffset CreatedAt { get; set; }
 
     public PlanNumbers Numbers => new(StorageBytes, MaxFileBytes, MonthlyEgressBytes, MaxMembers);
+
+    /// <summary>
+    /// The four numbers, written as one act — the same reason <see cref="PlanNumbers"/> exists at
+    /// all: four longs assigned in a row is four longs that get transposed.
+    ///
+    /// <para>It is a method rather than a setter on <see cref="Numbers"/> because a settable
+    /// property would become a mapped one, and EF has no column for a record struct. A method is
+    /// invisible to the model and changes no schema.</para>
+    ///
+    /// <para><b>Writing this changes no workspace.</b> These are the template's numbers; a tenant's
+    /// live on the tenant's own row and are moved only by <c>ITenantPlanService</c>.</para>
+    /// </summary>
+    public void SetNumbers(PlanNumbers numbers)
+    {
+        StorageBytes = numbers.StorageBytes;
+        MaxFileBytes = numbers.MaxFileBytes;
+        MonthlyEgressBytes = numbers.MonthlyEgressBytes;
+        MaxMembers = numbers.MaxMembers;
+    }
 }

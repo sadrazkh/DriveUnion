@@ -114,6 +114,23 @@
             <a class="@NavClass("Accounts")" href="/Accounts">
                 <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.GoogleAccounts
             </a>
+            @* The two screens that replaced "set four environment variables and redeploy": the
+               workspaces the operator sells to, and the tiers they are sold on. Both are behind the
+               Operator policy in their controllers; this only decides what is drawn. *@
+            <a class="@NavClass("Tenants")" href="/operator/tenants">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Tenants.Title
+            </a>
+            <a class="@NavClass("Plans")" href="/operator/plans">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Plans.OperatorTitle
+            </a>
+        }
+        else if (hasWorkspace)
+        {
+            @* The customer's own card — what they are allowed, and how much of it is spent. The
+               operator's catalogue is a different address and a different screen. *@
+            <a class="@NavClass("Plans")" href="/plans">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Plans.Title
+            </a>
         }
         @*
             The comp's last slot is «تنظیمات» and M6 owns that screen. Until it exists, the slot

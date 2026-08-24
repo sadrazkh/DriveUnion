@@ -101,6 +101,11 @@ public sealed class GoogleAccountDirectory : IGoogleAccountDirectory
             // Reconnecting an existing account replaces its credentials rather than adding a row.
             // The unique index on Email would reject the duplicate anyway, and the operator's actual
             // intent — "this account stopped working, here it is again" — is this.
+            //
+            // Label is deliberately not touched. It is how the operator tells two accounts apart on
+            // the cards, it is the handle they use in a support conversation, and every StoredFile
+            // that already lives here points at this row's Id — so a reconnection that renumbered
+            // anything would move files under the operator without moving a byte.
             account.RefreshTokenProtected = _protector.Protect(grant.RefreshToken!);
         }
 
@@ -163,9 +168,27 @@ public sealed class GoogleAccountDirectory : IGoogleAccountDirectory
     }
 
     /// <summary>
-    /// <c>A1</c>, <c>A2</c>, … — the short handle the operator's account cards show. Derived from the
-    /// highest one already taken rather than from the row count, so deleting A1 does not hand a
-    /// second account the name a screenshot still calls A2.
+    /// <c>A1</c>, <c>A2</c>, … — the short handle the operator's account cards show.
+    ///
+    /// <para><b>The next label is one past the highest ever issued, not the row count, and gaps are
+    /// never filled.</b> Connect three, disconnect A2, connect a fourth: the fourth is A4. A2's row
+    /// survives its disconnection — <see cref="DisconnectAsync"/> only changes
+    /// <see cref="GoogleAccount.Status"/>, because its files and their public links are still served
+    /// through it — so its number stays taken, and a count-based rule would have handed the new
+    /// account the name «A2» while a card labelled A2 sat directly above it. On a screen where the
+    /// label <em>is</em> how the operator tells accounts apart, that is worse than a gap. M2 §2 says
+    /// the same thing about <c>ShortCode</c> for the same reason: the label outlives the account in
+    /// old job rows and in support conversations.</para>
+    ///
+    /// <para>Only labels shaped <c>A</c>-and-a-number are counted. Nothing in the panel writes any
+    /// other shape today — there is no rename — so this is defensiveness rather than policy: an
+    /// unrecognisable label reserves no number, and the sequence carries on from whatever else is
+    /// there rather than throwing or guessing.</para>
+    ///
+    /// <para>Two connections racing here would both read the same highest number. Nothing serialises
+    /// them, and nothing needs to: a consent flow is one operator in one browser answering Google,
+    /// and there is no unique index on <see cref="GoogleAccount.Label"/> to turn the race into a
+    /// failure the operator would have to understand.</para>
     /// </summary>
     private async Task<string> NextLabelAsync(CancellationToken cancellationToken)
     {

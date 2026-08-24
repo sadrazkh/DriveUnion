@@ -118,12 +118,61 @@ public sealed record OperatorTenantRowViewModel(
         UiText.Plans.MembersOfCap(row.MembersUsed, row.Limits.MaxMembers));
 }
 
+/// <summary>
+/// One tier on the operator's catalogue table, with the two figures that decide what its buttons
+/// may do.
+/// </summary>
+/// <param name="WorkspacesOnPlan">
+/// How many workspaces carry this tier. <b>None of them moves when the tier is edited</b> — the
+/// figure is the size of a re-apply, not the size of an edit, and it is also what makes delete
+/// impossible: <c>Tenant.PlanId</c> is a <c>Restrict</c> foreign key.
+/// </param>
+public sealed record PlanCatalogueRowViewModel(
+    string Code,
+    string Name,
+    string StorageText,
+    string MaxFileText,
+    string MonthlyTrafficText,
+    string SeatsText,
+    string StatusText,
+    bool IsRetired,
+    string WorkspacesText,
+    bool IsConfiguredDefault)
+{
+    public static PlanCatalogueRowViewModel From(PlanUsage usage)
+    {
+        ArgumentNullException.ThrowIfNull(usage);
+
+        return new PlanCatalogueRowViewModel(
+            usage.Plan.Code,
+            usage.Plan.Name,
+            DisplayFormats.Bytes(usage.Plan.Numbers.StorageBytes),
+            DisplayFormats.Bytes(usage.Plan.Numbers.MaxFileBytes),
+            DisplayFormats.Bytes(usage.Plan.Numbers.MonthlyEgressBytes),
+            Numerals.Count(usage.Plan.Numbers.MaxMembers),
+            usage.Plan.IsRetired ? UiText.Plans.StatusRetired : UiText.Plans.StatusLive,
+            usage.Plan.IsRetired,
+            Numerals.Count(usage.WorkspacesOnPlan),
+            usage.IsConfiguredDefault);
+    }
+}
+
 /// <summary>The operator's plan screen: the catalogue, every workspace, and the commitment.</summary>
 public sealed class OperatorPlansPageViewModel(
-    IReadOnlyList<PlanSummary> catalogue,
+    PlanCatalogueState catalogue,
     OperatorPlanOverview overview)
 {
-    public IReadOnlyList<PlanRowViewModel> Plans { get; } = [.. catalogue.Select(PlanRowViewModel.From)];
+    public IReadOnlyList<PlanCatalogueRowViewModel> Plans { get; } =
+        [.. catalogue.Tiers.Select(PlanCatalogueRowViewModel.From)];
+
+    /// <summary>
+    /// Null while <c>Plans:DefaultPlanCode</c> names a row that exists. When it does not, every
+    /// sign-up throws and nothing else on this screen would say so — the setting is validated at
+    /// start-up only for emptiness, because checking the rest needs a database.
+    /// </summary>
+    public string? DefaultMissingText { get; } = catalogue.DefaultPlanExists
+        ? null
+        : UiText.PlanAdmin.DefaultMissingBody(catalogue.DefaultPlanCode);
 
     public IReadOnlyList<OperatorTenantRowViewModel> Tenants { get; } =
         [.. overview.Tenants.Select(OperatorTenantRowViewModel.From)];
@@ -286,6 +335,289 @@ public sealed class QuotaOverrideForm
     [Required]
     [StringLength(512)]
     public string Reason { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// A tier's code, name and four numbers as the catalogue form posts them.
+///
+/// <para><b>The three ceilings are in GB and nothing else on the way through scales them.</b>
+/// <c>DisplayFormats.Bytes</c> renders 6 TiB as <c>6 TB</c>, so a form pre-filled from it would show
+/// <c>6</c> in a field labelled GB and divide the tier by 1024 on the next save. See
+/// <see cref="PlanSize"/> for the binary-versus-decimal decision this follows rather than invents.</para>
+///
+/// <para>An explicit request type, never the entity. <c>Id</c>, <c>SortOrder</c>, <c>IsRetired</c>
+/// and <c>CreatedAt</c> are on no shape a request can bind to, so an over-posted field has nothing
+/// to land on: order is moved by its own command and retirement is its own command.</para>
+/// </summary>
+public sealed class PlanForm
+{
+    [Required]
+    [StringLength(32)]
+    public string Code { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(120)]
+    public string Name { get; set; } = string.Empty;
+
+    public long StorageGb { get; set; }
+
+    public long MaxFileGb { get; set; }
+
+    public long TrafficGb { get; set; }
+
+    public int Seats { get; set; }
+
+    /// <summary>
+    /// The form's figures as a tier, refusing anything the multiplication could not survive.
+    ///
+    /// <para>The range is checked <i>before</i> the multiply rather than after it: a gigabyte figure
+    /// with four extra zeros in it overflows a <c>long</c> and wraps, and a wrapped ceiling can land
+    /// on a plausible-looking number instead of an obviously wrong one.</para>
+    /// </summary>
+    public PlanDraft ToDraft()
+    {
+        foreach (var gigabytes in new[] { StorageGb, MaxFileGb, TrafficGb })
+        {
+            if (!PlanSize.IsInRange(gigabytes))
+            {
+                throw new PlanEditRefusedException(
+                    PlanEditRefusal.NumberOutOfRange,
+                    $"{gigabytes} GB is outside what a tier can hold.");
+            }
+        }
+
+        return new PlanDraft(
+            Code,
+            Name,
+            new PlanNumbers(
+                StorageBytes: PlanSize.ToBytes(StorageGb),
+                MaxFileBytes: PlanSize.ToBytes(MaxFileGb),
+                MonthlyEgressBytes: PlanSize.ToBytes(TrafficGb),
+                MaxMembers: Seats));
+    }
+
+    /// <summary>The form as it opens on an existing tier: one unit in, the same unit back out.</summary>
+    public static PlanForm From(PlanSummary plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        return new PlanForm
+        {
+            Code = plan.Code,
+            Name = plan.Name,
+            StorageGb = PlanSize.ToGigabytes(plan.Numbers.StorageBytes),
+            MaxFileGb = PlanSize.ToGigabytes(plan.Numbers.MaxFileBytes),
+            TrafficGb = PlanSize.ToGigabytes(plan.Numbers.MonthlyEgressBytes),
+            Seats = plan.Numbers.MaxMembers,
+        };
+    }
+
+    /// <summary>
+    /// What a blank create form starts with: the smallest seeded tier's shape.
+    ///
+    /// <para>Not blank boxes. Four empty number inputs post four zeros, and a zero ceiling is the
+    /// one value that refuses every upload on the tier — so the form would open on the most
+    /// dangerous figure it can hold and rely on a refusal to catch it.</para>
+    /// </summary>
+    public static PlanForm Blank() => new()
+    {
+        StorageGb = PlanSize.ToGigabytes(PlanCatalogue.Default.StorageBytes),
+        MaxFileGb = PlanSize.ToGigabytes(PlanCatalogue.Default.MaxFileBytes),
+        TrafficGb = PlanSize.ToGigabytes(PlanCatalogue.Default.MonthlyEgressBytes),
+        Seats = PlanCatalogue.Default.MaxMembers,
+    };
+}
+
+/// <summary>
+/// The create and edit screen for one tier.
+///
+/// <para>Its largest job is not collecting six values. It is saying, where the operator is typing,
+/// that saving moves nobody — the plan is a template whose numbers were copied onto each workspace
+/// when it was applied, and an operator who edits «پایه» and assumes every Starter customer just
+/// moved is the single most likely misunderstanding this screen can cause.</para>
+/// </summary>
+public sealed class PlanFormPageViewModel
+{
+    private PlanFormPageViewModel(PlanForm values, PlanUsage? usage, string? error)
+    {
+        Values = values;
+        Error = error;
+
+        IsNew = usage is null;
+        Code = usage?.Plan.Code;
+        Title = usage is null ? UiText.PlanAdmin.NewTier : UiText.PlanAdmin.EditTitle(usage.Plan.Name);
+        WorkspacesOnPlan = usage?.WorkspacesOnPlan ?? 0;
+        WorkspacesHoldingOtherNumbers = usage?.WorkspacesHoldingOtherNumbers ?? 0;
+        IsConfiguredDefault = usage?.IsConfiguredDefault ?? false;
+        IsRetired = usage?.Plan.IsRetired ?? false;
+
+        MovesNobodyText = WorkspacesOnPlan == 0
+            ? UiText.PlanAdmin.MovesNobodyOnAnEmptyTier
+            : UiText.PlanAdmin.MovesNobodyBody(WorkspacesOnPlan);
+
+        // Only reachable for a row that was not written through this form — a hand-edited seed, a
+        // support insert. Saying so beats rounding somebody's tier because they opened the screen.
+        var numbers = usage?.Plan.Numbers;
+        RoundedFromBytes = numbers is { } exact && !(
+            PlanSize.IsWholeGigabytes(exact.StorageBytes)
+            && PlanSize.IsWholeGigabytes(exact.MaxFileBytes)
+            && PlanSize.IsWholeGigabytes(exact.MonthlyEgressBytes));
+
+        StoredExactlyText = numbers is { } stored
+            ? UiText.PlanAdmin.StoredExactly(string.Join(
+                " · ",
+                DisplayFormats.Bytes(stored.StorageBytes),
+                DisplayFormats.Bytes(stored.MaxFileBytes),
+                DisplayFormats.Bytes(stored.MonthlyEgressBytes)))
+            : null;
+
+        // Per-file is the error bar on the traffic allowance — the invariant PlanCatalogue argues
+        // for and PlanTemplateTests pins on the seeded tiers. A warning rather than a refusal: the
+        // numbers are the owner's, and an unwarned tier is one a customer screenshots.
+        FileIsLargeAgainstTraffic =
+            values.MaxFileGb > 0 && values.MaxFileGb * 200 >= values.TrafficGb;
+    }
+
+    public bool IsNew { get; }
+
+    /// <summary>Null for a tier that does not exist yet, which is what the form posts to.</summary>
+    public string? Code { get; }
+
+    public string Title { get; }
+
+    public PlanForm Values { get; }
+
+    /// <summary>Already a sentence, in this request's language. Null when nothing was refused.</summary>
+    public string? Error { get; }
+
+    public int WorkspacesOnPlan { get; }
+
+    public int WorkspacesHoldingOtherNumbers { get; }
+
+    /// <summary>
+    /// The tier <c>Plans:DefaultPlanCode</c> names. Its code is not editable here: the setting is a
+    /// string in a file that nothing reconciles, and re-coding the row it names turns the next
+    /// sign-up into a 500.
+    /// </summary>
+    public bool IsConfiguredDefault { get; }
+
+    public string MovesNobodyText { get; }
+
+    public bool RoundedFromBytes { get; }
+
+    public string? StoredExactlyText { get; }
+
+    public bool FileIsLargeAgainstTraffic { get; }
+
+    public bool IsRetired { get; }
+
+    /// <summary>Offered only where there is somebody to re-apply to.</summary>
+    public bool CanReapply => !IsNew && WorkspacesOnPlan > 0;
+
+    /// <summary>
+    /// The default is what every new workspace is created on, so it is never taken off sale from
+    /// here. Changing which tier that is means changing <c>Plans:DefaultPlanCode</c>.
+    /// </summary>
+    public bool CanBeRetired => !IsNew && !IsConfiguredDefault;
+
+    /// <summary>
+    /// Drawn only for a tier nobody is on and nothing hands out. A button whose only outcome is a
+    /// refusal teaches an operator to distrust the rest of the screen.
+    /// </summary>
+    public bool CanBeDeleted => !IsNew && WorkspacesOnPlan == 0 && !IsConfiguredDefault;
+
+    public static PlanFormPageViewModel ForNew(PlanForm values, string? error = null) =>
+        new(values, usage: null, error);
+
+    public static PlanFormPageViewModel ForEdit(PlanUsage usage, PlanForm values, string? error = null) =>
+        new(values, usage, error);
+}
+
+/// <summary>
+/// Which way the retirement switch was thrown.
+///
+/// <para>The state is posted rather than toggled from whatever the row currently holds: a toggle
+/// read from the server means two operators on the same list undo each other, and the second one
+/// sees a tier come back on sale without having asked for it.</para>
+/// </summary>
+public sealed class RetireTierForm
+{
+    public bool Retired { get; set; }
+}
+
+/// <summary>One step up or down the list. Not a sort order — the operator does not type a number.</summary>
+public sealed class MoveTierForm
+{
+    public PlanMove Direction { get; set; }
+}
+
+/// <summary>The reason a bulk re-apply gives every workspace it touches. Required, like every other quota change.</summary>
+public sealed class ReapplyPlanForm
+{
+    [Required]
+    [StringLength(512)]
+    public string Reason { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// The confirmation in front of the one catalogue action that reaches customers.
+///
+/// <para>It is a screen of its own rather than a button on the edit form, because what it does is
+/// the opposite of what that form does: the edit moves nobody, and this moves everybody on the
+/// tier — including a customer carrying a negotiated ceiling somebody sold them.</para>
+/// </summary>
+public sealed class ReapplyPlanPageViewModel(PlanUsage usage)
+{
+    public string Code { get; } = usage.Plan.Code;
+
+    public string Title { get; } = UiText.PlanAdmin.ReapplyTitle(usage.Plan.Name);
+
+    public int WorkspacesOnPlan { get; } = usage.WorkspacesOnPlan;
+
+    public string CountsText { get; } = usage.WorkspacesOnPlan == 0
+        ? UiText.PlanAdmin.ReapplyOnAnEmptyTier
+        : UiText.PlanAdmin.ReapplyCounts(usage.WorkspacesOnPlan, usage.WorkspacesHoldingOtherNumbers);
+
+    public string StorageText { get; } = DisplayFormats.Bytes(usage.Plan.Numbers.StorageBytes);
+
+    public string MaxFileText { get; } = DisplayFormats.Bytes(usage.Plan.Numbers.MaxFileBytes);
+
+    public string MonthlyTrafficText { get; } = DisplayFormats.Bytes(usage.Plan.Numbers.MonthlyEgressBytes);
+
+    public string SeatsText { get; } = Numerals.Count(usage.Plan.Numbers.MaxMembers);
+}
+
+/// <summary>
+/// A catalogue refusal, as the sentence a person reads.
+///
+/// <para>The mapping lives here rather than in the service for the reason the whole catalogue does:
+/// a refusal has to be readable in both languages, and a service that carried the wording would have
+/// written half a screen in one language somewhere <c>LocalizationCatalogueTests</c> cannot see it.
+/// It is the same shape <see cref="QuotaChangeRowViewModel.FieldName"/> already uses for an enum.</para>
+/// </summary>
+public static class PlanRefusalText
+{
+    public static string For(PlanEditRefusal reason, string defaultPlanCode) => reason switch
+    {
+        PlanEditRefusal.NotFound => UiText.Plans.PlanNotFound,
+        PlanEditRefusal.CodeMalformed => UiText.PlanAdmin.RefusedCodeMalformed,
+        PlanEditRefusal.CodeTaken => UiText.PlanAdmin.RefusedCodeTaken,
+        PlanEditRefusal.NameInvalid => UiText.PlanAdmin.RefusedNameInvalid,
+        PlanEditRefusal.NumberOutOfRange => UiText.PlanAdmin.RefusedNumberOutOfRange,
+        PlanEditRefusal.FileLargerThanStorage => UiText.PlanAdmin.RefusedFileLargerThanStorage,
+        PlanEditRefusal.DefaultCannotBeRecoded =>
+            UiText.PlanAdmin.RefusedDefaultCannotBeRecoded(defaultPlanCode),
+        PlanEditRefusal.DefaultCannotBeRetired =>
+            UiText.PlanAdmin.RefusedDefaultCannotBeRetired(defaultPlanCode),
+        PlanEditRefusal.DefaultCannotBeDeleted =>
+            UiText.PlanAdmin.RefusedDefaultCannotBeDeleted(defaultPlanCode),
+        PlanEditRefusal.InUseCannotBeDeleted => UiText.PlanAdmin.RefusedInUseCannotBeDeleted,
+
+        // A reason nobody has written a sentence for yet. It says the change did not happen and
+        // names the reason rather than guessing at one of the ten above — a wrong sentence on a
+        // refusal is worse than a bare one, because the operator acts on it.
+        _ => UiText.Plans.ChangeRefused(reason.ToString()),
+    };
 }
 
 /// <summary>

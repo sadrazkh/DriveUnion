@@ -257,3 +257,138 @@ public interface IOperatorPlanReader
 {
     Task<OperatorPlanOverview> OverviewAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// What an operator typed into the tier form: a code, a name and the four numbers.
+///
+/// <para>An explicit request shape, never the <c>Plan</c> entity. <c>Id</c>, <c>SortOrder</c>,
+/// <c>IsRetired</c> and <c>CreatedAt</c> are deliberately absent — order is moved by its own
+/// command, retirement is its own command, and a row's identity and birthday are not an operator's
+/// to post.</para>
+/// </summary>
+public sealed record PlanDraft(string Code, string Name, PlanNumbers Numbers);
+
+/// <summary>Which way <see cref="IPlanCatalogueEditor.MoveAsync"/> takes a tier in the list.</summary>
+public enum PlanMove
+{
+    Up,
+    Down,
+}
+
+/// <summary>
+/// One tier, and the two facts an operator needs before they touch it.
+/// </summary>
+/// <param name="WorkspacesOnPlan">
+/// How many workspaces carry this tier as their label. <b>None of them changes when the tier is
+/// edited</b>, which is the misunderstanding this figure exists to defuse — it is the size of the
+/// re-apply, not the size of the edit.
+/// </param>
+/// <param name="WorkspacesHoldingOtherNumbers">
+/// How many of those workspaces currently hold numbers that differ from the tier's. They are the
+/// ones a re-apply would actually move — a workspace with a negotiated override is in this count,
+/// and re-applying takes the override back.
+/// </param>
+/// <param name="IsConfiguredDefault">
+/// True when <c>Plans:DefaultPlanCode</c> names this tier. It cannot be retired, deleted or
+/// re-coded, because every new workspace is created on it.
+/// </param>
+public sealed record PlanUsage(
+    PlanSummary Plan,
+    int WorkspacesOnPlan,
+    int WorkspacesHoldingOtherNumbers,
+    bool IsConfiguredDefault);
+
+/// <summary>
+/// The whole catalogue as the operator's screen reads it, plus the one thing no single row can say.
+/// </summary>
+/// <param name="DefaultPlanCode">The configured <c>Plans:DefaultPlanCode</c>, verbatim.</param>
+/// <param name="DefaultPlanExists">
+/// False when the setting names no row. <c>TenantPlanService</c> throws <c>KeyNotFoundException</c>
+/// in that state and the first person to find out is a customer whose sign-up 500s, so the screen
+/// says it in words instead.
+/// </param>
+public sealed record PlanCatalogueState(
+    IReadOnlyList<PlanUsage> Tiers,
+    string DefaultPlanCode,
+    bool DefaultPlanExists);
+
+/// <summary>
+/// <b>The only writer of the plan catalogue.</b> Separate from <see cref="IPlanCatalogueReader"/>
+/// and from <see cref="ITenantPlanService"/> for the reason that file already gives: listing the
+/// templates, editing the templates and moving a customer's ceiling are three authorities over two
+/// tables, and one interface that did all of them would be reached for by the screen that only
+/// needs the first.
+///
+/// <para><b>Nothing here writes a tenant's four columns.</b> Editing a tier changes no workspace —
+/// the numbers were copied onto the tenant row when the tier was applied and nothing on any
+/// enforcement path joins back. <see cref="ReapplyAsync"/> is the one command that reaches
+/// workspaces, and it reaches them by calling <see cref="ITenantPlanService.SetTenantPlanAsync"/>
+/// once per workspace, so every ceiling it moves still has its <c>TenantQuotaChange</c> row behind
+/// it.</para>
+///
+/// <para>Every refusal is a <c>PlanEditRefusedException</c> carrying a <c>PlanEditRefusal</c>. None
+/// of them carries a sentence: the wording is bilingual and belongs to the screen.</para>
+/// </summary>
+public interface IPlanCatalogueEditor
+{
+    /// <summary>Every tier with its workspace counts, and whether the configured default resolves.</summary>
+    Task<PlanCatalogueState> StateAsync(CancellationToken cancellationToken);
+
+    /// <summary>One tier and its counts. Null when no tier is coded that.</summary>
+    Task<PlanUsage?> UsageAsync(string planCode, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A new tier, appended to the end of the list. It is live and assignable immediately; nothing
+    /// is on it, so nothing can be disturbed by it.
+    /// </summary>
+    Task<PlanSummary> CreateAsync(PlanDraft draft, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Rewrites a tier's code, name and four numbers.
+    ///
+    /// <para><b>This moves nobody.</b> Every workspace on the tier keeps the numbers it was given,
+    /// and the screen says so where the operator is typing rather than afterwards.</para>
+    /// </summary>
+    Task<PlanSummary> EditAsync(string planCode, PlanDraft draft, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Hides a tier from new assignment, or puts it back. Workspaces already on it keep working and
+    /// keep their numbers, which is the whole payoff of copying rather than joining.
+    /// </summary>
+    Task<PlanSummary> SetRetiredAsync(string planCode, bool retired, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Swaps a tier with its neighbour in the list. A no-op at either end, because a button that
+    /// refuses at the edge of a list is a refusal about nothing.
+    /// </summary>
+    Task<PlanSummary> MoveAsync(string planCode, PlanMove direction, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes a tier no workspace is on — the one an operator created two minutes ago and mis-typed.
+    ///
+    /// <para>A tier a workspace is on is refused with <c>InUseCannotBeDeleted</c>. The database would
+    /// refuse it too, <c>Tenant.PlanId</c> being a <c>Restrict</c> foreign key, but it would do it as
+    /// a constraint violation on a screen; retirement is the answer and the refusal says so.</para>
+    /// </summary>
+    Task DeleteAsync(string planCode, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Copies this tier's numbers onto every workspace that is on it, in one transaction, writing
+    /// one <c>TenantQuotaChange</c> per number that actually moves on each of them.
+    ///
+    /// <para>It is explicit and separate from <see cref="EditAsync"/> on purpose: an edit that
+    /// silently moved a hundred paying customers' ceilings is the failure the copy-not-join design
+    /// exists to prevent, and a bulk move with no per-tenant history behind it is exactly the
+    /// question <c>TenantQuotaChange</c> was built to answer.</para>
+    ///
+    /// <para>It takes back negotiated overrides on the workspaces it touches — that is what
+    /// "re-apply this tier" means, and <see cref="PlanUsage.WorkspacesHoldingOtherNumbers"/> is how
+    /// the screen counts them before the operator confirms.</para>
+    /// </summary>
+    /// <returns>How many workspaces actually changed. Workspaces already holding the tier's numbers are written to and produce no history row.</returns>
+    Task<int> ReapplyAsync(
+        string planCode,
+        string reason,
+        Guid? changedByUserId,
+        CancellationToken cancellationToken);
+}

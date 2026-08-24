@@ -27,7 +27,7 @@
         <div class="accounts-cta">
             @if (Model.ConsentConfigured)
             {
-                <form method="post" action="@Url.Action("Connect", "Accounts")" data-google-connect>
+                <form method="post" action="@Url.Action("Connect", "Accounts")" class="accounts-connect" data-google-connect>
                     @Html.AntiForgeryToken()
                     @*
                         Scripts/googleConnect.ts flips this to "true" only after window.open has actually
@@ -40,23 +40,43 @@
                         popup, both land here.
                     *@
                     <input type="hidden" name="popup" value="false" data-google-connect-popup />
-                    <button type="submit" class="btn btn--primary btn--lg">
-                        @UiText.Accounts.AddAccount
+                    @* aria-describedby is bound to the sentence below only when that sentence is
+                       rendered; Razor drops an attribute whose value is null, so this never points at
+                       an element that is not there. *@
+                    <button type="submit"
+                            class="btn btn--primary btn--lg"
+                            aria-describedby="@(Model.Accounts.Count > 0 ? "accounts-add-why" : null)">
+                        @* Two labels, because these are two intentions. With nothing connected this is
+                           the first account; with a pool already on screen it is another one — and the
+                           per-card «reconnect» beside each account is the other half of the pair. They
+                           used to be the same control, and a second press of it silently re-approved
+                           the account the browser was already signed into. *@
+                        @(Model.Accounts.Count == 0 ? UiText.Accounts.AddAccount : UiText.Accounts.AddAnotherAccount)
                     </button>
+
+                    @* Written by the popup enhancement only. Rendered hidden and empty so no reader meets a
+                       label for a window that was never opened, and inside the form so the script finds it
+                       by looking in one place — the per-account reconnect forms are the same markup with
+                       no status element, and a lookup that walked the DOM around each form would have to
+                       guess which paragraph belonged to which button.
+
+                       The sentence itself rides on the element as data-*: the bundle is compiled once and
+                       cannot ask which language this request is in, and it used to answer an English
+                       operator in Persian. *@
+                    <p class="page-sub"
+                       role="status"
+                       data-google-connect-status
+                       data-said-opened="@UiText.Accounts.ConnectPopupOpened"
+                       hidden></p>
                 </form>
 
-                @* Written by the popup enhancement only. Rendered hidden and empty so no reader meets a
-                   label for a window that was never opened, and here rather than across the page so the
-                   sentence lands under the button it is about.
-
-                   The sentence itself rides on the element as data-*: the bundle is compiled once and
-                   cannot ask which language this request is in, and it used to answer an English
-                   operator in Persian. *@
-                <p class="page-sub"
-                   role="status"
-                   data-google-connect-status
-                   data-said-opened="@UiText.Accounts.ConnectPopupOpened"
-                   hidden></p>
+                @if (Model.Accounts.Count > 0)
+                {
+                    @* The chooser, announced before it appears. An operator who has already met the old
+                       behaviour needs to be told that Google now asks — and that answering it with the
+                       account already in the list is a reconnection, not a second account. *@
+                    <p class="accounts-cta-why" id="accounts-add-why">@UiText.Accounts.AddAnotherHint</p>
+                }
             }
             else
             {
@@ -156,13 +176,41 @@
             </div>
 
             <div class="row" style="gap: 8px; margin-top: 16px;">
+                @*
+                    «اتصال دوباره» first, and its own form rather than a second use of the one at the
+                    top of the page. This is the action that names an account; the one above names
+                    none, and Google is asked a different question for each — this one carries the
+                    address as a login_hint so the chooser opens on it.
+
+                    Same data-* contract as the connect form above, so the popup enhancement wires
+                    every one of these without knowing how many cards there are. No status paragraph
+                    inside it: three cards' worth of them would be three places for the same sentence
+                    to appear, and the window it announces is the same window either way.
+                *@
+                <form method="post"
+                      action="@Url.Action("Reconnect", "Accounts", new { id = account.Id })"
+                      class="accounts-connect"
+                      data-google-connect>
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="popup" value="false" data-google-connect-popup />
+                    <button type="submit"
+                            class="btn btn--sm @(account.NeedsReconnect ? "btn--primary" : null)"
+                            title="@UiText.Accounts.ReconnectHint"
+                            aria-label="@UiText.Accounts.ReconnectAccount(account.Label)">@UiText.Accounts.Reconnect</button>
+                </form>
                 <form method="post" action="@Url.Action("RefreshQuota", "Accounts", new { id = account.Id })">
                     @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn--sm">@UiText.Accounts.RefreshQuota</button>
+                    @* aria-label on all three: with a pool the visible words repeat card for card, and
+                       the label is the only thing that says which account a button belongs to. *@
+                    <button type="submit"
+                            class="btn btn--sm"
+                            aria-label="@UiText.Accounts.RefreshQuotaAccount(account.Label)">@UiText.Accounts.RefreshQuota</button>
                 </form>
                 <form method="post" action="@Url.Action("Disconnect", "Accounts", new { id = account.Id })">
                     @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn--danger btn--sm">@UiText.Accounts.Disconnect</button>
+                    <button type="submit"
+                            class="btn btn--danger btn--sm"
+                            aria-label="@UiText.Accounts.DisconnectAccount(account.Label)">@UiText.Accounts.Disconnect</button>
                 </form>
             </div>
         </div>
