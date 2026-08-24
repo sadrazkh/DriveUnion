@@ -79,9 +79,24 @@ public sealed class GoogleAccountDirectory : IGoogleAccountDirectory
         var about = await _about.GetAboutAsync(grant.AccessToken, cancellationToken).ConfigureAwait(false);
 
         var now = _timeProvider.GetUtcNow();
-        var account = await _db.GoogleAccounts
-            .FirstOrDefaultAsync(a => a.Email == about.Email, cancellationToken)
-            .ConfigureAwait(false);
+
+        // Identity first, address second, and the order is the point. Gmail treats
+        // archive.main@gmail.com, archive.main+cold@gmail.com and archivemain@gmail.com as one
+        // mailbox and echoes back whichever spelling was typed at the consent screen, so matching on
+        // the address alone lets one account arrive twice — two labels, and a pool that believes it
+        // has five terabytes it does not have. Drive's permissionId is the same string either way.
+        //
+        // The address is still consulted, for the rows written before permissionId was stored. They
+        // match by address once and are backfilled below, so the fallback retires itself.
+        var account = about.PermissionId is { Length: > 0 } identity
+            ? await _db.GoogleAccounts
+                .FirstOrDefaultAsync(
+                    a => a.GoogleUserId == identity || (a.GoogleUserId == null && a.Email == about.Email),
+                    cancellationToken)
+                .ConfigureAwait(false)
+            : await _db.GoogleAccounts
+                .FirstOrDefaultAsync(a => a.Email == about.Email, cancellationToken)
+                .ConfigureAwait(false);
 
         if (account is null)
         {
@@ -89,6 +104,7 @@ public sealed class GoogleAccountDirectory : IGoogleAccountDirectory
             {
                 Id = Guid.CreateVersion7(),
                 Email = about.Email,
+                GoogleUserId = about.PermissionId,
                 Label = await NextLabelAsync(cancellationToken).ConfigureAwait(false),
                 RefreshTokenProtected = _protector.Protect(grant.RefreshToken!),
                 CreatedAt = now,
@@ -107,6 +123,15 @@ public sealed class GoogleAccountDirectory : IGoogleAccountDirectory
             // that already lives here points at this row's Id — so a reconnection that renumbered
             // anything would move files under the operator without moving a byte.
             account.RefreshTokenProtected = _protector.Protect(grant.RefreshToken!);
+
+            // Backfill, so a row that predates this column stops depending on the address fallback
+            // the moment it is reconnected once.
+            account.GoogleUserId ??= about.PermissionId;
+
+            // And take the spelling Google reports now. Matching found this row by identity, so a
+            // different address here means the operator approved an alias of the same mailbox — the
+            // card should read what they will see in Google, not the spelling used months ago.
+            account.Email = about.Email;
         }
 
         account.AccessTokenProtected = _protector.Protect(grant.AccessToken);

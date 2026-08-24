@@ -157,7 +157,22 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.Property(a => a.Email).HasMaxLength(320);
             e.Property(a => a.Label).HasMaxLength(16);
             e.Property(a => a.RootFolderId).HasMaxLength(256);
+            e.Property(a => a.GoogleUserId).HasMaxLength(64);
+
+            // The address stays unique because two rows spelled identically are still a mistake,
+            // and because it is what the operator reads. It is not what identity is decided on.
             e.HasIndex(a => a.Email).IsUnique();
+
+            // Filtered, so the rows written before this column existed do not collide with each
+            // other on being equally unknown. Two accounts that report the same permissionId are
+            // one account, and this is what stops the pool counting its capacity twice.
+            //
+            // The predicate is written in the SQL both providers spell the same way: Postgres runs
+            // it in production, SQLite runs it in the tests, and a filter with only one of them in
+            // mind is a constraint that exists in exactly one of the two places it matters.
+            e.HasIndex(a => a.GoogleUserId)
+                .IsUnique()
+                .HasFilter("\"GoogleUserId\" IS NOT NULL");
         });
 
         builder.Entity<StoredFile>(e =>

@@ -23,7 +23,25 @@ public sealed class GoogleAccount
 {
     public Guid Id { get; set; }
 
+    /// <summary>
+    /// What the operator reads on the card. Deliberately not the identity — see
+    /// <see cref="GoogleUserId"/>.
+    /// </summary>
     public required string Email { get; set; }
+
+    /// <summary>
+    /// Drive's <c>permissionId</c>: the account's own stable id, and what two rows are compared on.
+    ///
+    /// The address is not an identity. Gmail treats <c>archive.main@gmail.com</c>,
+    /// <c>archive.main+cold@gmail.com</c> and <c>archivemain@gmail.com</c> as one mailbox and
+    /// reports back whichever spelling was typed, so keying on it lets one account be connected
+    /// twice — two labels, and a pool that believes it has five terabytes it does not have.
+    ///
+    /// Nullable for the rows written before this column existed. They are matched by address until
+    /// their next reconnect fills this in, which is why the unique index is filtered rather than
+    /// plain: several unknown identities are not a collision, two identical known ones are.
+    /// </summary>
+    public string? GoogleUserId { get; set; }
 
     /// <summary>Short operator-facing handle: <c>A1</c>, <c>A2</c>. Shown on the account cards.</summary>
     public required string Label { get; set; }

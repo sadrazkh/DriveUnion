@@ -87,6 +87,79 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
         accounts.Select(a => a.Email).Should().Equal("pool-a1@example.com", "pool-a2@example.com");
     }
 
+    /// <summary>
+    /// One mailbox, two spellings. Gmail treats a dotted address, a plus-tagged one and the plain
+    /// one as the same account and echoes back whichever was typed at the consent screen, so an
+    /// operator reconnecting on a tired evening can approve a spelling the panel has not seen.
+    ///
+    /// Keyed on the address that is a second row, a second label, and five terabytes of pool
+    /// capacity that does not exist — and the upload router would then send files to an account it
+    /// believes is empty. Keyed on Drive's permissionId it is what it actually is: the same account.
+    /// </summary>
+    [Fact]
+    public async Task The_same_account_under_a_Gmail_alias_is_not_a_second_account()
+    {
+        var first = await Connect();
+
+        _time.Now = _time.Now.AddMinutes(5);
+
+        // The same identity Google reported the first time, under a spelling the panel has not seen.
+        _about.PinnedPermissionId = StubAboutReader.PermissionIdFor(StubAboutReader.DefaultEmail);
+        _about.CurrentEmail = "pool.a1+cold@example.com";
+        var second = await Connect();
+
+        second.Should().Be(first);
+        (await _db.GoogleAccounts.CountAsync()).Should().Be(1);
+
+        var accounts = await _directory.ListAsync(CancellationToken.None);
+        accounts.Select(a => a.Label).Should().Equal("A1");
+
+        // The card reads what the operator will see in Google, not the spelling used months ago.
+        accounts.Single().Email.Should().Be("pool.a1+cold@example.com");
+    }
+
+    /// <summary>
+    /// A row written before permissionId was stored matches on its address once, and is filled in
+    /// while it is there — so the fallback that exists for it retires itself rather than staying
+    /// forever as the path nobody tests.
+    /// </summary>
+    [Fact]
+    public async Task A_row_that_predates_the_identity_column_is_matched_by_address_and_backfilled()
+    {
+        await Connect();
+
+        var legacy = await _db.GoogleAccounts.SingleAsync();
+        legacy.GoogleUserId = null;
+        await _db.SaveChangesAsync();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        var again = await Connect();
+
+        again.Should().Be(legacy.Id);
+        (await _db.GoogleAccounts.CountAsync()).Should().Be(1);
+
+        var reconnected = await _db.GoogleAccounts.SingleAsync();
+        reconnected.GoogleUserId.Should().Be(StubAboutReader.PermissionIdFor(StubAboutReader.DefaultEmail));
+    }
+
+    /// <summary>
+    /// Drive is not documented to omit permissionId, and the code does not assume it will not.
+    /// Without an identity there is nothing to key on but the address, which is what the product
+    /// did before this column existed — worse, and still better than refusing to connect at all.
+    /// </summary>
+    [Fact]
+    public async Task An_about_response_with_no_identity_still_connects_on_the_address()
+    {
+        _about.ReportsNoIdentity = true;
+
+        var first = await Connect();
+        var second = await Connect();
+
+        second.Should().Be(first);
+        (await _db.GoogleAccounts.CountAsync()).Should().Be(1);
+        (await _db.GoogleAccounts.SingleAsync()).GoogleUserId.Should().BeNull();
+    }
+
     [Fact]
     public async Task Reconnecting_the_same_address_replaces_the_credentials_rather_than_adding_a_row()
     {
@@ -286,8 +359,27 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
 
         public string CurrentEmail { get; set; } = DefaultEmail;
 
+        /// <summary>
+        /// Pins Drive's identity for this account independently of its address.
+        ///
+        /// Left null it is derived from the address, so a test that changes only the address goes on
+        /// describing a different account — which is what every test here that does so means. Set it
+        /// to the identity of an account already connected and it describes the opposite: one
+        /// mailbox under two spellings, which must stay one row.
+        /// </summary>
+        public string? PinnedPermissionId { get; set; }
+
+        /// <summary>Drive is not documented to omit permissionId. This is how a test says it did.</summary>
+        public bool ReportsNoIdentity { get; set; }
+
+        public static string PermissionIdFor(string email) => $"permission-for-{email}";
+
         public Task<GoogleAboutInfo> GetAboutAsync(string accessToken, CancellationToken cancellationToken) =>
-            Task.FromResult(new GoogleAboutInfo(CurrentEmail, 5497558138880, 1099511627776));
+            Task.FromResult(new GoogleAboutInfo(
+                CurrentEmail,
+                ReportsNoIdentity ? null : PinnedPermissionId ?? PermissionIdFor(CurrentEmail),
+                5497558138880,
+                1099511627776));
     }
 
     /// <summary>

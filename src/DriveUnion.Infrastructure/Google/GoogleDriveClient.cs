@@ -333,20 +333,30 @@ public sealed class GoogleDriveClient : IDriveClient, IGoogleAboutReader
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         using var document = ParseOrThrow(body, "the about resource");
 
-        var email = document.RootElement.TryGetProperty("user", out var user)
-            && user.TryGetProperty("emailAddress", out var address)
-                ? address.GetString()
-                : null;
+        var hasUser = document.RootElement.TryGetProperty("user", out var user);
+
+        var email = hasUser && user.TryGetProperty("emailAddress", out var address)
+            ? address.GetString()
+            : null;
 
         if (string.IsNullOrEmpty(email))
         {
             throw new DriveApiException(
                 "Drive returned no email address for this account. The account cannot be stored "
-                + "without one — it is the only stable handle the operator has on it.");
+                + "without one — it is what the operator reads on the card.");
         }
 
+        // Already in the response: the request asks for `fields=user`, and permissionId is part of
+        // the user resource. Reading it costs nothing and needs no extra scope, which is the reason
+        // it is preferred over the id token's `sub` — that would mean asking for `openid` and
+        // widening a consent screen the operator already has to click through an unverified-app
+        // warning to reach.
+        var permissionId = hasUser && user.TryGetProperty("permissionId", out var id)
+            ? id.GetString()
+            : null;
+
         var (limit, usage) = ParseStorageQuota(body);
-        return new GoogleAboutInfo(email, limit, usage);
+        return new GoogleAboutInfo(email, permissionId, limit, usage);
     }
 
     private async Task<string?> FindFolderAsync(
