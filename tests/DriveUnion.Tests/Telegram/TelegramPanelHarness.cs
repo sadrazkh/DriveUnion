@@ -6,6 +6,7 @@ using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Telegram;
+using DriveUnion.Tests.Fakes;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -171,7 +173,32 @@ public sealed class TelegramPanelHarness : WebApplicationFactory<Program>
             // tests that are about a screen.
             services.AddDriveUnionTelegram();
 
+            // Replaced, not removed. Keeping Google out of a screen test is right; leaving the
+            // container without an IDriveClient at all is not, because the real pipeline has one and
+            // anything registered later that needs it then fails to resolve for everybody.
+            //
+            // That is not hypothetical: AddDriveUnionTrash brought a TrashMover that takes an
+            // IDriveClient, and eleven Telegram tests started failing on a container that could not
+            // be built — an error about a trash, in tests about a bot.
             foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IDriveClient)).ToList())
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddSingleton<IDriveClient>(new FakeDriveClient());
+
+            // Every background service Program.cs registers, gone.
+            //
+            // Program.cs adds the Telegram transport and the trash sweeper, and both are loops that
+            // open their own scopes. In this host that is a loop working against the one shared
+            // SQLite connection while a request is mid-transaction, which surfaces as
+            // «database is locked» in whichever test happened to be in flight — a failure that moves
+            // between suites from run to run and belongs to none of them.
+            //
+            // The comment further up says the transport is "deliberately NOT added", and that was
+            // true of this method and untrue of the host: Program.cs had already added it. Removing
+            // is what makes the sentence true.
+            foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
             {
                 services.Remove(descriptor);
             }

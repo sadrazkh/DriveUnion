@@ -35,6 +35,30 @@ public sealed class TrashPurgeService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // The wait comes before the pass, and this went back and forth twice, so the reasoning is
+            // here rather than in a commit nobody will find.
+            //
+            // Against: a deployment that was down over a weekend has a backlog waiting, and delaying
+            // the first pass is another interval of a pool it did not need to be holding.
+            //
+            // For, and it is what decided it: this loop lives in Program.cs, and every in-process test
+            // host boots Program.cs. A background pass opening its own scope against a harness's
+            // single shared SQLite connection is a 500 in whatever unrelated request happens to be in
+            // flight — which is exactly what it was, intermittently, in the public download tests and
+            // the accounts screen tests, moving between suites from run to run.
+            //
+            // The delay is on the injected TimeProvider, so a test that wants the pass advances the
+            // clock and waits for nothing. Production pays one interval — five minutes by default —
+            // once, at boot, against a backlog that has already waited a weekend.
+            try
+            {
+                await Task.Delay(interval, clock, stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+
             try
             {
                 // A scope per pass, because the purge holds a DbContext for as long as it takes to
@@ -67,15 +91,6 @@ public sealed class TrashPurgeService(
                 // The loop must survive anything one pass can do to it. A sweeper that dies on a bad
                 // row is a pool that fills up with nothing in any log to say why.
                 logger.LogError(ex, "The trash sweeper hit an error and will continue.");
-            }
-
-            try
-            {
-                await Task.Delay(interval, clock, stoppingToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
             }
         }
     }

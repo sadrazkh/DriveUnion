@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -294,6 +295,22 @@ public sealed class TrashPanelHarness : WebApplicationFactory<Program>
             services.AddDriveUnionPlans();
             services.AddDriveUnionTrash();
             services.AddDriveUnionTrashPanel();
+
+            // …and the purge loop taken back out.
+            //
+            // Program.cs registers it, and it is a background service that opens its own scopes: in
+            // this host that means a loop working against the one shared SQLite connection while a
+            // request is mid-transaction, and calling into a FakeDriveClient whose own summary says
+            // it is not thread-safe. Both produce failures that come and go with how busy the
+            // machine is. What is under test here is what the screens do; the sweeper has its own
+            // tests, and its own harness.
+            foreach (var descriptor in services
+                .Where(d => d.ServiceType == typeof(IHostedService)
+                    && d.ImplementationType?.Namespace == typeof(TrashService).Namespace)
+                .ToList())
+            {
+                services.Remove(descriptor);
+            }
 
             services.AddAuthentication(options =>
                 {

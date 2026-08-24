@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DriveUnion.Tests.Trash;
 
@@ -262,20 +263,41 @@ public class TrashPurgeTests
 
         await using var provider = services.BuildServiceProvider();
 
+        // A FakeTimeProvider rather than the harness's FixedClock, because this is the one test that
+        // depends on the loop's timer and not only on its idea of "now". FixedClock overrides
+        // GetUtcNow and nothing else, so Task.Delay against it falls through to the real system timer
+        // and would sit here for the full interval.
+        var timer = new FakeTimeProvider(harness.Clock.Now);
+
         var sweeper = new TrashPurgeService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new TrashOptions()),
-            harness.Clock,
+            timer,
             NullLogger<TrashPurgeService>.Instance);
 
         await sweeper.StartAsync(default);
 
         try
         {
-            // The first pass runs on arrival rather than after an interval: a deployment that has
-            // been down over a weekend has a backlog waiting, and making it wait another five
-            // minutes is five minutes of a pool it did not need to be holding.
-            await watched.FirstPass.WaitAsync(TimeSpan.FromSeconds(10));
+            // The loop waits an interval before its first pass, and this is what releases it. The
+            // wait is there because this service is registered in Program.cs, so every in-process
+            // test host runs it — and a background scope against a harness's single shared SQLite
+            // connection is a 500 in whatever unrelated request is in flight.
+            //
+            // Advanced in a loop rather than once, because StartAsync returns as soon as ExecuteAsync
+            // yields and the timer is not necessarily registered by then. A single Advance can land
+            // before the Delay exists, and the Delay then waits on a clock that never moves again —
+            // which is a ten-second timeout and a green-looking mistake about what was proved.
+            var interval = TimeSpan.FromSeconds(new TrashOptions().PurgeIntervalSeconds);
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+
+            while (!watched.FirstPass.IsCompleted && DateTimeOffset.UtcNow < deadline)
+            {
+                timer.Advance(interval);
+                await Task.WhenAny(watched.FirstPass, Task.Delay(25));
+            }
+
+            await watched.FirstPass.WaitAsync(TimeSpan.FromSeconds(2));
         }
         finally
         {

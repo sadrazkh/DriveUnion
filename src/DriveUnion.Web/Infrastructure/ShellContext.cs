@@ -18,10 +18,16 @@ namespace DriveUnion.Web.Infrastructure;
 /// from. It is a figure about capacity, so it belongs on the capacity card rather than only on the
 /// screen somebody has to go looking for.</para>
 ///
-/// <para>Every member is a string that has already been formatted, and that is deliberate: the
-/// layout renders the shell for a signed-in customer, an operator and the anonymous sign-in page,
-/// and a card that did its own arithmetic in a view would be arithmetic no test can reach. The fill
-/// class is decided by whoever builds this, from the one ladder the rest of the panel uses.</para>
+/// <para>It is <b>not</b> on <see cref="ShellContext"/> beside the operator's two figures, and that
+/// is the difference between the two cards. A page supplies the operator's, because the pages that
+/// draw pool figures are the pages that already hold them. Nobody supplies this one: it is asked for
+/// by the layout through <see cref="IShellCapacity"/>, because the sidebar is drawn on every screen
+/// in the panel and a card that appeared only where a controller remembered to fill it in would be
+/// missing from exactly the pages a customer is on when they wonder where their space went.</para>
+///
+/// <para>Every member is a string that has already been formatted, and that is deliberate: a card
+/// that did its own arithmetic in a view would be arithmetic no test can reach. The fill class is
+/// decided by whoever builds this, from the one ladder the rest of the panel uses.</para>
 /// </summary>
 /// <param name="StorageText">«4.7 GB / 100 GB» — already Latin, and rendered inside a dir="ltr" run.</param>
 /// <param name="StoragePercent">Clamped to the track by its builder; a bar cannot render 140%.</param>
@@ -64,21 +70,6 @@ public sealed class ShellContext
     public string? UserName { get; init; }
 
     public string? UserRole { get; init; }
-
-    /// <summary>
-    /// The signed-in customer's own figures, when the page already had them in hand.
-    ///
-    /// <para>Null on every page that has not, which is all of them today — so the layout asks
-    /// <see cref="IShellCapacity"/> instead rather than leaving the card to appear on whichever two
-    /// screens happened to be written last. A customer meets this card on every page or the number
-    /// they are looking for is on none of the pages they look at.</para>
-    ///
-    /// <para>It is never read for an operator. The layout asks the principal which card to draw, the
-    /// same claim <c>DriveUnionPolicies.Operator</c> authorises on, so a page that filled this in
-    /// wrongly still could not put a customer's card where the pool's belongs, or the other way
-    /// round.</para>
-    /// </summary>
-    public ShellCapacity? Capacity { get; init; }
 
     public bool HasQuota => DailyQuotaUsedGb is not null && DailyQuotaLimitGb is > 0;
 

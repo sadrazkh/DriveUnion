@@ -34,18 +34,18 @@
 
     // The customer's own capacity card, which is the operator's card's box and none of its figures.
     //
-    // Asked here rather than taken from each page's ShellContext, because the sidebar is drawn on
-    // every screen in the panel and those screens belong to other slices: a card that appeared only
-    // where somebody remembered to fill it in would be missing from exactly the pages a customer is
-    // on when they wonder where their space went. A page that does have the figures still wins, so
-    // nothing is read twice.
+    // Asked for here rather than carried on ShellContext, because the sidebar is drawn on every
+    // screen in the panel and those screens belong to other slices: a card that appeared only where
+    // a controller remembered to fill it in would be missing from exactly the pages a customer is on
+    // when they wonder where their space went. It is the same reason isOperator is asked of the
+    // principal — one answer, in one place, that no page can get wrong.
     //
     // Resolved rather than @injected, and null-tolerantly. The panel boots without this slice's
     // registration until Program.cs carries `AddDriveUnionTrashPanel()`, and an @inject of an
     // unregistered service is an exception on every page in the panel rather than one card fewer.
-    ShellCapacity? capacity = shell.Capacity;
+    ShellCapacity? capacity = null;
 
-    if (capacity is null && !isOperator && User.GetTenantId() is { } shellTenantId)
+    if (!isOperator && User.GetTenantId() is { } shellTenantId)
     {
         var capacityReader = Context.RequestServices.GetService<IShellCapacity>();
 

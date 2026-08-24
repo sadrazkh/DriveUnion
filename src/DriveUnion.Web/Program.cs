@@ -7,6 +7,7 @@ using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Infrastructure.Telegram;
 using DriveUnion.Infrastructure.Tenancy;
+using DriveUnion.Infrastructure.Trash;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
@@ -99,6 +100,24 @@ builder.Services.AddDriveUnionPlans();
 // and it is the same price already paid for reading role and tenant from the database rather than
 // trusting a cookie.
 builder.Services.AddDriveUnionTenancy();
+
+// The trash. Delete used to stamp a column and stop: the bytes stayed in the operator's Drive for
+// ever and the customer's usage never came down, so a full plan could not be emptied. This gives
+// the catalogue somewhere to move a file to, and the operator settings row the retention comes from.
+// After AddDriveUnionServices, which registers the catalogue this hands a trash to.
+builder.Services.AddDriveUnionTrash();
+
+// The purge loop, and separate from the line above for the reason the Telegram pair below documents:
+// every in-process test host boots this pipeline over one shared SQLite connection, and a background
+// loop opening scopes against it turns unrelated suites into "database is locked".
+//
+// Without this line nothing is ever purged — files wait in the trash for ever and no space is
+// returned, which is a quieter version of the bug this phase set out to fix.
+builder.Services.AddDriveUnionTrashSweeper();
+
+// The trash screen's own reader, plus the capacity card the layout draws for a tenant. After
+// AddDriveUnionTrash, whose ITrash it reads, and AddDriveUnionPlans, whose figures it puts beside it.
+builder.Services.AddDriveUnionTrashPanel();
 
 // Telegram identity, account linking and the operator's bot settings. After AddGoogleDrive, which
 // registers the ITokenProtector the bot token is encrypted with. No transport yet: the gateway
