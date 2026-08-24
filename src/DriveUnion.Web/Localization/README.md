@@ -15,20 +15,13 @@ its own name to a customer, and fails no test.
 
 ## The two lines Program.cs needs
 
-They are not there yet. Without them the panel renders Persian on every request, which is what it did
-before this folder existed — so this is safe to ship in either order, and useless until both land.
+**They have landed.** `builder.Services.AddDriveUnionLocalization()` sits beside
+`AddControllersWithViews()`, and `app.UseRequestLocalization()` after `app.UseStaticFiles()` and
+before `app.UseRouting()`. Do not add them again.
 
-```csharp
-using DriveUnion.Web.Localization;             // beside the other DriveUnion.Web usings
-
-builder.Services.AddDriveUnionLocalization();  // beside builder.Services.AddControllersWithViews();
-
-app.UseRequestLocalization();                  // after app.UseStaticFiles(); before app.UseRouting();
-```
-
-`tests/DriveUnion.Tests/Localization/LocalizationHarness.cs` makes exactly these two registrations
-through an `IStartupFilter`. When Program.cs has them, delete that filter from the harness and every
-test in the folder still passes.
+`tests/DriveUnion.Tests/Localization/LocalizationHarness.cs` used to make the same two registrations
+through an `IStartupFilter`, because Program.cs was not that slice's to edit. It no longer does: the
+harness boots the shipped pipeline, and every test in the folder passes against it.
 
 ## How a request gets its language
 
@@ -54,7 +47,13 @@ byte size and quota readout in the product for `٫`.
 
 # Migrating a screen
 
-`Views/Shared/**` and `Areas/Identity/**` are done and are the worked examples. The recipe:
+Done: `Views/Shared/**`, `Areas/Identity/**`, and every panel screen — `Views/Home`, `Views/Files`,
+`Views/Links`, `Views/Accounts`, `Views/Design`, with their controllers and view models. What is
+left is the Telegram surface and the public download page (see the last section).
+
+`Views/Shared/_Layout.cshtml` is the worked example for a shell, `Views/Files/Index.cshtml` for a
+table, and `Views/Accounts/_GoogleSetup.cshtml` for prose with untranslatable terms set into it.
+The recipe:
 
 ### 1. Move each string into `UiText`
 
@@ -132,12 +131,30 @@ that cannot (`translateX` on the mobile drawers) already carry `[dir="rtl"]` ove
 
 ### 7. Say it is done
 
-Add the folder to `Migrated` in `tests/DriveUnion.Tests/Localization/MigratedScreensTests.cs`. That
-test reads the source of every migrated screen and refuses a Persian character outside a comment,
-which is the only signal that a literal escaped the catalogue — a stray one renders perfectly and
-fails nothing else.
+Add the view folder to `Migrated` in
+`tests/DriveUnion.Tests/Localization/MigratedScreensTests.cs`, **and the screen's controller and
+view model to `MigratedSources` beside it**. That test reads the source of every migrated screen and
+refuses a Persian character outside a comment, which is the only signal that a literal escaped the
+catalogue — a stray one renders perfectly and fails nothing else.
 
-### 8. Verify
+The controller half is not optional and is the easy half to forget. A sentence a controller puts in
+`TempData` and a status word a view model maps an enum to are as much part of the screen as its
+markup, and a folder list cannot see either: `Controllers/` and `Models/` also hold the Telegram
+surface, so they are listed one file at a time.
+
+Then pin the screen in both cultures in
+`tests/DriveUnion.Tests/Localization/PanelScreenLanguageTests.cs`. The source-level guard cannot see
+a page that names the wrong entry, or one whose two languages were swapped; that file renders the
+page and asks it.
+
+### 8. Measure the English
+
+English labels are longer than the Persian ones and this product's tables have fixed tracks. «نزدیک
+سقف» became `Near cap` and not `Near the limit` because the status column is 90px — 62px of content
+at `--row-pad` — and the literal translation measured 73px and wrapped, leaving that one row a line
+taller than the rest of the table. Render what you change and measure it before you believe it.
+
+### 9. Verify
 
 ```
 dotnet build DriveUnion.slnx
@@ -150,13 +167,26 @@ says it and on a page that does not. `LocalizationHarness.TextAsync` does the de
 
 ---
 
-## Two things this slice deliberately did not do
+## The one screen that is still on the other mechanism
 
 ### The public download page
 
 `/d/{slug}` resolves its own language in `PublicDownloadController` via `PublicLanguageResolver`, and
-writes its pairs inline in the view with `PublicText.Pick(lang, fa, en)`. It is untouched. Its strings
-live on the controller and in `Views/Public/**`, both outside this slice's scope, and it works.
+writes its pairs inline in the view with `PublicText.Pick(lang, fa, en)`. It is untouched, twice over
+now: the panel migration left it alone on purpose, and here is the whole of why.
+
+Its strings are not the obstacle — `Views/Public/**` and `PublicDownloadController` could be moved
+across. Its **layout** is. `Views/Shared/_PublicLayout.cshtml` builds the document's `lang` and `dir`,
+the FA/EN control and the two `hreflang` alternates from `ViewData["Lang"]`, not from `PanelCulture`.
+Move the card without the chrome around it and the page says one thing in its body and another in its
+`<html>` tag. So the two views and their layout are one change, and it is the layout that decides when.
+
+There is a behavioural difference under it, and it is not incidental. In the panel the **cookie**
+outranks `?lang=`, because the cookie is the operator clicking the switch. On `/d/{slug}` **`?lang=`
+outranks everything**, because over there it is the visitor clicking FA/EN and there is nothing else
+to click — and it is what the landing page's own `hreflang` alternates point at.
+`PanelScreenLanguageTests.The_public_download_page_still_answers_to_its_own_lang_and_not_to_the_panels_cookie`
+holds that contract while the two mechanisms are apart.
 
 The two are already reconciled where it matters: the panel's cookie is the framework's standard one at
 `Path=/`, so it is sent to `/d/{slug}` too. Honouring it is three lines in
@@ -175,26 +205,22 @@ private PublicLanguage ResolveLanguage(string? requested)
 }
 ```
 
-Folding the page's *strings* into `UiText` is the larger, separate job: it means moving
-`PublicDownloadViewModel`'s pre-formatted `SizeText`/`ExpiryText`/`DownloadCountText` off the
-controller, and it must not change what the page renders for a visitor who has never seen the panel.
-Do it when the public page is next opened for its own reasons, not as a side effect of a panel change.
-When it lands, turn on `ApplyCurrentCultureToResponseHeaders` in
-`DriveUnionLocalizationExtensions` — it is off today only because that header would be wrong on this
-one route.
+Folding the page's *strings* into `UiText` also means moving `PublicDownloadViewModel`'s
+pre-formatted `SizeText`/`ExpiryText`/`DownloadCountText` off the controller, and it must not change
+what the page renders for a visitor who has never seen the panel. Do it when the public page is next
+opened for its own reasons, not as a side effect of a panel change.
+
+When it lands, three things go together in one commit: `_PublicLayout.cshtml` and the two views move
+onto `PanelCulture`/`UiText`; `ResolveLanguage` keeps `?lang=` first for this route; and
+`ApplyCurrentCultureToResponseHeaders` is turned on in `DriveUnionLocalizationExtensions` — it is off
+today only because that header would be right about the panel and wrong about this one route.
 
 ### Identity's own error messages
 
-`DriveUnionIdentityErrorDescriber` is written, tested and **not registered**. Registering it is one
-line:
-
-```csharp
-builder.Services
-    .AddIdentity<AppUser, IdentityRole<Guid>>(options => { … })
-    .AddErrorDescriber<DriveUnionIdentityErrorDescriber>()      // ← this
-    .AddEntityFrameworkStores<DriveUnionDbContext>()
-    .AddDefaultTokenProviders();
-```
+`DriveUnionIdentityErrorDescriber` **is registered** — `.AddErrorDescriber<…>()` on the
+`AddIdentity` chain in Program.cs. Identity now refuses a password in the panel's own two languages.
+This section used to say it was not; it is kept only so somebody who read the old version knows the
+line has landed and does not add it twice.
 
 It is not made here for two reasons. Program.cs is not this slice's to edit; and
 `tests/DriveUnion.Tests/Identity/FirstRunSetupTests.A_password_the_policy_refuses_is_answered_in_identitys_own_words`

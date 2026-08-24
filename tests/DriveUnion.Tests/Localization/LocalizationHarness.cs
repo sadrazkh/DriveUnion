@@ -22,20 +22,14 @@ using Microsoft.Extensions.Options;
 namespace DriveUnion.Tests.Localization;
 
 /// <summary>
-/// DriveUnion.Web's real pipeline with the two lines Program.cs is still missing.
+/// DriveUnion.Web's real pipeline, localisation and all.
 ///
 /// The panel's language is resolved by the framework's <c>RequestLocalizationMiddleware</c>, which
-/// has to be registered in Program.cs — a file this slice deliberately does not edit. So the two
-/// registrations are made here instead, in the order and with the options
-/// <see cref="DriveUnionLocalizationExtensions"/> defines, and nothing else about the pipeline is
-/// touched. When Program.cs gains those two lines, delete <see cref="RequestLocalizationFilter"/>
-/// and the <c>AddDriveUnionLocalization</c> call below and every test in this folder still passes
-/// against the shipped pipeline.
-///
-/// One difference is worth naming: an <see cref="IStartupFilter"/> puts the middleware at the very
-/// front of the pipeline, while Program.cs will place it beside the other request-shaping middleware.
-/// Culture resolution reads the cookie, the query string and a header, none of which anything
-/// earlier in that pipeline changes, so the position does not affect what these tests observe.
+/// Program.cs now registers itself — <c>AddDriveUnionLocalization()</c> beside the other services
+/// and <c>UseRequestLocalization()</c> after the static files. This harness used to make those two
+/// registrations of its own through an <see cref="IStartupFilter"/>, because Program.cs was not the
+/// founding slice's to edit; both are gone, and every test in this folder is now asking the shipped
+/// pipeline rather than a copy of it.
 ///
 /// SQLite in memory for the same reason every other web harness here uses it: the Data Protection
 /// key ring is a table, and the antiforgery token on the language switch is protected with it.
@@ -222,12 +216,6 @@ public sealed class LocalizationHarness : WebApplicationFactory<Program>
 
             services.AddDbContext<DriveUnionDbContext>(options => options.UseSqlite(connection));
 
-            // The first of the two lines Program.cs needs.
-            services.AddDriveUnionLocalization();
-
-            // And the second, which in Program.cs is `app.UseRequestLocalization();`.
-            services.AddSingleton<IStartupFilter, RequestLocalizationFilter>();
-
             // Cookie authentication swapped for a header-driven scheme, the way PanelPageHarness
             // does it: what is under test is what the Razor renders for each half of the panel, not
             // Identity, which has its own tests. A request without the header stays anonymous, so
@@ -281,16 +269,6 @@ public sealed class LocalizationHarness : WebApplicationFactory<Program>
         schema.Database.EnsureCreated();
 
         return connection;
-    }
-
-    /// <summary>Stands in for <c>app.UseRequestLocalization();</c> until Program.cs has it.</summary>
-    private sealed class RequestLocalizationFilter : IStartupFilter
-    {
-        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
-        {
-            app.UseRequestLocalization();
-            next(app);
-        };
     }
 
     /// <summary>

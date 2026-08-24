@@ -400,9 +400,16 @@ public static class UiText
 
         public static string StatusActive => Pick("فعال", "Active");
 
-        public static string StatusNearCap => Pick("نزدیک سقف", "Near the limit");
+        /// <summary>
+        /// The status column is 90px wide, which is 62px of content at <c>--row-pad</c>, and it is a
+        /// track the comp fixes. «Near the limit» and «Limit reached» measured 73px in it and wrapped,
+        /// leaving those two rows a line taller than every other row in the table. The cap is what
+        /// this product calls the ceiling on a link — <c>MaxDownloads</c>, <c>NearCapFraction</c>,
+        /// <c>CapReached</c> — so the short words are also the right ones.
+        /// </summary>
+        public static string StatusNearCap => Pick("نزدیک سقف", "Near cap");
 
-        public static string StatusCapReached => Pick("سقف تکمیل", "Limit reached");
+        public static string StatusCapReached => Pick("سقف تکمیل", "Capped");
 
         public static string StatusExpired => Pick("منقضی", "Expired");
 
@@ -582,9 +589,10 @@ public static class UiText
             "همین سه مقدار را می‌توان به‌جای این فرم از پیکربندی سرور داد: ",
             "The same three values can come from the server's configuration instead of this form: ");
 
+        /// <summary>The full stop belongs to the sentence, not to the key list that precedes it.</summary>
         public static string EnvironmentAlternativeAfter => Pick(
-            " اگر آنجا مقداری باشد، همان اعمال می‌شود.",
-            " If a value is set there, that is the one in force.");
+            ". اگر آنجا مقداری باشد، همان اعمال می‌شود.",
+            ". If a value is set there, that is the one in force.");
 
         public static string Save => Pick("ذخیره", "Save");
 
