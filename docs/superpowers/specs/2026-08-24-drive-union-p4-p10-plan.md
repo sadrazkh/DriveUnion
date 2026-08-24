@@ -27,8 +27,8 @@ paid for:
 
 | # | Phase | Placed here because |
 |---|---|---|
-| **P1** | Uploader: background, dock, pause, concurrency | The thing being used daily, and it needs nothing from the others |
-| **P2** | Per-user folders + capacity in the shell | Folders in P3 need to know whose file a file is |
+| **P1** | Delete, trash and purge · per-user folders · capacity in the shell | A live bug that loses storage in two directions, and it is the same Drive-layout change as per-user folders |
+| **P2** | Uploader: background, dock, pause, concurrency | The thing being used daily, and it needs nothing from the others |
 | **P3** | Folders, categories, search | The largest data-model change; everything visual after it reads its rows |
 | **P4** | Dashboard | Its numbers are only worth drawing once P2 and P3 produce them |
 | **P5** | Link and download-page customisation | Independent of all of the above; small; ships whenever |
@@ -42,7 +42,64 @@ promise to allow more drift until it arrives.
 
 ---
 
-## P1 — The uploader stops being a page
+## P1 — Delete has to mean something, and every person gets a folder
+
+**The bug, confirmed in the code before it was designed around.** `FileCatalog.DeleteAsync` does
+three things: it stamps `DeletedAt`, it revokes the file's links, and it stops. `IDriveClient` has
+no delete method at all, and `TenantStorageMeter.ReleaseAsync` is called from exactly two places,
+both of them failed-upload paths, and neither of them delete.
+
+So deleting a file frees nothing in either direction. The bytes stay in the operator's Drive for
+ever, and `Tenant.StorageUsedBytes` never comes down — a customer who fills a 100 GB plan and then
+deletes everything still reads 100 GB used and still cannot upload. The delete button is decorative,
+and the pool leaks silently behind it.
+
+**The layout, both changes at once**, because they are the same change to where a file lives:
+
+```
+DriveUnion/{tenant}/{user}/           new uploads
+DriveUnion/{tenant}/{user}/.trash/    deleted, awaiting purge
+```
+
+Existing files keep their folder and their `DriveFileId`. The code reads a file's location from its
+row rather than deriving it, which is what lets both layouts coexist without a special case.
+
+**Our own trash folder, not Drive's `trashed` flag.** Google purges its own trash on its own
+schedule, which we neither control nor get told about. A folder we own means the retention window is
+ours, the sweeper is ours, and the operator can look at it.
+
+**Two decisions, made by the owner:**
+
+1. **The quota is freed on purge, not on delete.** This is what Drive itself does, so it is the
+   mental model the customer already has, and it is the only version where the number is true: until
+   the purge runs those bytes are genuinely occupying the operator's pool. A customer who wants the
+   space now empties the trash now, which is a real button that really frees it.
+2. **Retention is an operator setting**, defaulting to 30 days — Drive's and Dropbox's number, so it
+   needs no explaining — and possibly differing per plan.
+
+**Physical delete is a procedure, not a side effect.** A sweeper hard-deletes what is past its
+window, releases the tenant's bytes, and removes the row. It is sessionless work over rows that
+carry their own tenant, which is the shape M1 §8 exists to protect: no ambient filter, no principal,
+tenant read from the row.
+
+**What has to be got right.** A purge that deletes in Drive and then fails to release, or releases
+and then fails to delete, leaves the two numbers disagreeing for ever. The order is: delete in Drive
+first, then release and drop the row — because a byte that is gone from Drive and still counted
+costs a customer an upload, while a byte still in Drive and no longer counted costs the operator a
+pool, and the first is the direction to be wrong in. `ReleaseAsync`'s own comment already argues
+this for the reservation path.
+
+**Capacity in the shell — and one correction to the request.** The ask was "like the operator". The
+operator's card shows the **daily 750 GB per Google account**, which is a fact about the operator's
+pool and is exactly what §1.4 says a customer must never see. What a tenant should see above their
+name is their own two numbers: storage used against their plan's cap, and traffic this month against
+their plan's. Both already exist on the tenant row. The shape of the card is the operator's; the
+figures in it are the customer's. The trash's own size belongs there too, since it is the difference
+between what the customer thinks they freed and what they actually did.
+
+---
+
+## P2 — The uploader stops being a page
 
 **What it must do.** Keep uploading while the customer walks around the panel. Show a dock at the
 bottom, the way Drive does, that names what is in flight and opens the upload screen when pressed.
@@ -62,7 +119,7 @@ That is what Drive itself does, and it is the only option that keeps the file ha
 unmounted on departure, with no listener left on a detached node. Focus and scroll have to be
 restored. The back button has to work. A swap that fails has to fall back to a real navigation
 rather than leave the customer on a page that did not change. This is the riskiest change in the
-plan and it is first because everything else is easier once the shell is stable.
+plan, and it is this early because every screen after it is easier once the shell stops reloading.
 
 **Pause is the protocol working as designed.** A pause aborts the chunk in flight and keeps the
 confirmed byte count. A resume asks `GET /api/uploads/{id}` what Drive has actually acknowledged and
@@ -75,25 +132,6 @@ contiguous prefix.
 
 **Not in P1:** resuming after the browser is closed. The file handle is gone, and the honest
 behaviour is to say so on return rather than to appear to resume and stall.
-
----
-
-## P2 — A folder per person, and a number above the name
-
-**Per-user folders.** `DriveUnion/{tenant}/{user}/` for new uploads. `StoredFile` gains an owner.
-Existing rows keep their folder and their `DriveFileId`, so nothing moves and nothing breaks; the
-code reads the folder from the row rather than deriving it, which is what makes both layouts
-coexist without a special case.
-
-Folder resolution needs a cache. Today every upload asks Drive to find-or-create the tenant folder,
-which is two API calls against a 12,000-per-minute budget for a fact that never changes.
-
-**Capacity in the shell — and one correction to the request.** The ask was "like the operator". The
-operator's card shows the **daily 750 GB per Google account**, which is a fact about the operator's
-pool and is exactly what §1.4 says a customer must never see. What a tenant should see above their
-name is their own two numbers: storage used against their plan's cap, and traffic this month against
-their plan's. Both already exist on the tenant row. The shape of the card is the operator's; the
-figures in it are the customer's.
 
 ---
 
