@@ -1,5 +1,6 @@
 @using DriveUnion.Web.Security
 @using Microsoft.Extensions.DependencyInjection
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
 @{
     var shell = ShellContext.From(ViewData);
     var title = ViewData["Title"] as string;
@@ -375,6 +376,30 @@
             @RenderBody()
         </main>
     </div>
+
+    @*
+        The upload queue's two shell fixtures, and they are in the layout rather than on the upload
+        screen on purpose.
+
+        A File handle does not survive a page load, so the only way an upload can continue while
+        somebody walks around the panel is for the page never to reload and for the queue to live
+        above the content that navigation swaps. Anything the queue needs therefore has to be here,
+        where it is re-rendered on every swap and never torn down.
+
+        The antiforgery token is refreshed by each swap for the same reason: it is per-response, and
+        an upload that outlives ten navigations must send the current one.
+    *@
+    @if (hasWorkspace)
+    {
+        var uploadTokens = Antiforgery.GetAndStoreTokens(Context);
+
+        <div data-upload-config
+             data-begin-url="/api/uploads"
+             data-antiforgery-header="@uploadTokens.HeaderName"
+             data-antiforgery-token="@uploadTokens.RequestToken"
+             data-lang="@PanelCulture.Code"
+             hidden></div>
+    }
 </div>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
