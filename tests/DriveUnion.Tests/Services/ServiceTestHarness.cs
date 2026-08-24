@@ -80,10 +80,23 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     public SingleAccountUploadTargetSelector Selector(DriveUnionDbContext? context = null) =>
         new(context ?? Db);
 
+    /// <summary>
+    /// The process-wide half of folder resolution, one per harness.
+    ///
+    /// <para>Every resolver and every coordinator this harness builds shares it, which is what makes
+    /// «the second upload asks Drive nothing» a thing a test can assert. It is per harness and never
+    /// static: a folder id cached across tests is a folder id from another test's fake Drive.</para>
+    /// </summary>
+    public DriveFolderCache FolderCache { get; } = new();
+
+    public DriveFolders Folders(DriveUnionDbContext? context = null) =>
+        new(context ?? Db, Drive, FolderCache);
+
     public UploadCoordinator Uploads(DriveUnionDbContext? context = null)
     {
         var db = context ?? Db;
-        return new UploadCoordinator(db, Drive, new SingleAccountUploadTargetSelector(db), Clock);
+        return new UploadCoordinator(
+            db, Drive, Folders(db), new SingleAccountUploadTargetSelector(db), Clock);
     }
 
     public Tenant SeedTenant(string slug)

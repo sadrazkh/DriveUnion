@@ -1,0 +1,116 @@
+@using DriveUnion.Web.Models
+@model TrashPageViewModel
+@{
+    ViewData["Title"] = UiText.Trash.Title;
+
+    // Name · حجم · حذف شده · پاک‌سازی · the restore control. The name track's floor is --name-min
+    // from app.css rather than 0: the fixed tracks here are 396px and a 375px phone leaves 341px, so
+    // minmax(0,…) would answer "there is no room" by drawing no file name at all — which is the one
+    // column that tells two rows apart.
+    const string Cols = "--cols: minmax(var(--name-min),2.4fr) 92px 110px 110px 84px";
+}
+
+@*
+    Nothing on this page names a Google account, a folder or a Drive id, and nothing on it can: a
+    TrashItem carries a name, a size and two moments.
+
+    The explanation is above the list rather than under it. A customer who deletes a file, sees their
+    usage figure stay where it was and is told nothing concludes the product is broken — that is the
+    report this whole phase started from, and it is answered before the list rather than after it.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="page-head">
+        <h1 class="page-title">@UiText.Trash.Title</h1>
+        <span class="page-sub">@Model.CountText</span>
+    </div>
+
+    @if (Model.Notice is not null)
+    {
+        <p class="notice" role="status">@Model.Notice</p>
+    }
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Trash.HowItWorksHeading</div>
+        </div>
+        <div class="card-body">
+            <p class="hint">@UiText.Trash.HowItWorksBody</p>
+        </div>
+    </div>
+
+    <div class="card card--flush">
+        <div class="dtable" style="@Cols">
+            <div class="dtable-head">
+                <div>@UiText.Trash.ColumnName</div>
+                <div>@UiText.Trash.ColumnSize</div>
+                <div>@UiText.Trash.ColumnDeleted</div>
+                <div>@UiText.Trash.ColumnPurge</div>
+                @* The restore column. Its header is empty for the same reason the files table's
+                   checkbox column's is: the buttons under it name themselves. *@
+                <div></div>
+            </div>
+
+            @if (!Model.HasAnything)
+            {
+                <div class="empty empty--incell">
+                    <span>@UiText.Trash.EmptyStateHeading</span>
+                    <span>@UiText.Trash.EmptyStateBody</span>
+                    <a class="btn btn--primary" href="@Url.Action("Index", "Files")">@UiText.Trash.EmptyStateAction</a>
+                </div>
+            }
+            else
+            {
+                @* A plain row rather than an anchor, unlike «فایل‌ها» and «لینک‌های اشتراک». There
+                   is nowhere for a deleted file's row to lead — it has no detail panel and no public
+                   link — and a row that is an anchor cannot hold the form its last cell needs. *@
+                foreach (var row in Model.Rows)
+                {
+                    <div class="dtable-row">
+                        <div class="cell-name" title="@row.Name">@row.Name</div>
+                        @* A byte quantity is a Latin technical readout in either language, and in an
+                           RTL box the bidi algorithm lays «4.7 GB» out as «GB 4.7» without this. *@
+                        <div class="cell-num" dir="ltr">@row.SizeText</div>
+                        <div class="cell-muted">@row.DeletedText</div>
+                        <div class="cell-muted">@row.PurgeText</div>
+                        <div>
+                            <form method="post" action="@Url.Action("Restore", "Trash", new { id = row.Id })">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn btn--sm" title="@row.RestoreLabel">
+                                    @UiText.Trash.Restore
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @if (Model.HasAnything)
+        {
+            @* The total and the one control in the product that gives the space back on demand.
+               Drawn only when there is something to empty: a button whose only outcome is «there was
+               nothing to delete» teaches a customer that the control does nothing. *@
+            <div class="dtable-foot">
+                <span>@Model.HoldingText</span>
+                <span class="row" style="gap: 12px; flex-wrap: wrap;">
+                    <span class="hint" style="flex: 1 1 220px;">@UiText.Trash.EmptyHint</span>
+                    @*
+                        A POST with a token, and there is no GET that does this. On a GET any
+                        «img src» on any page empties a customer's trash, and a browser that
+                        prefetches does it with nobody having clicked anything — for the one action
+                        in this product that cannot be undone.
+
+                        No confirmation step. The panel has to work with JavaScript off, so a dialog
+                        is not available, and a second server-rendered page would stand between the
+                        customer and the space they came here for. The sentence beside the button
+                        says what it does before it is pressed instead.
+                    *@
+                    <form method="post" action="@Url.Action("EmptyTrash", "Trash")">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn--danger btn--sm">@UiText.Trash.Empty</button>
+                    </form>
+                </span>
+            </div>
+        }
+    </div>
+</div>

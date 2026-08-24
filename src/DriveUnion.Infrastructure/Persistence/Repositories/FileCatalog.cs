@@ -1,4 +1,5 @@
 using DriveUnion.Core.Application;
+using DriveUnion.Infrastructure.Trash;
 using Microsoft.EntityFrameworkCore;
 
 namespace DriveUnion.Infrastructure.Persistence.Repositories;
@@ -11,7 +12,16 @@ namespace DriveUnion.Infrastructure.Persistence.Repositories;
 /// <see cref="DriveUnionDbContext.OnModelCreating"/>. Nothing projected out of this class mentions
 /// <c>GoogleAccountId</c>: the customer must never learn which account holds their file.
 /// </summary>
-public sealed class FileCatalog(DriveUnionDbContext db, TimeProvider clock) : IFileCatalog
+/// <param name="trash">
+/// Where a deleted file goes. Optional only so that a harness building this class by hand is not
+/// made to supply a Drive it has no use for — <c>AddDriveUnionTrash</c> registers one, so nothing in
+/// the running application ever sees it absent. Without it a delete is the soft delete alone, which
+/// is what this class did before the trash existed.
+/// </param>
+public sealed class FileCatalog(
+    DriveUnionDbContext db,
+    TimeProvider clock,
+    ITrashMover? trash = null) : IFileCatalog
 {
     public async Task<IReadOnlyList<FileListItem>> ListAsync(
         Guid tenantId,
@@ -71,6 +81,15 @@ public sealed class FileCatalog(DriveUnionDbContext db, TimeProvider clock) : IF
             [.. links.OrderByDescending(l => l.CreatedAt).Select(l => l.ToSummary())]);
     }
 
+    /// <summary>
+    /// Deleting a file moves it to the trash and leaves the tenant's counter alone.
+    ///
+    /// <para>The quota is freed on purge, not here, by the owner's decision: until the purge runs
+    /// those bytes are genuinely still occupying the operator's pool, and this is the only version
+    /// where the number on the customer's screen and the bytes on the disk agree. It is also what
+    /// Drive itself does, so it is the model the customer already has. A customer who wants the
+    /// space now empties the trash now, which is a button that really frees it.</para>
+    /// </summary>
     public async Task<bool> DeleteAsync(
         Guid tenantId,
         Guid fileId,
@@ -78,11 +97,45 @@ public sealed class FileCatalog(DriveUnionDbContext db, TimeProvider clock) : IF
     {
         var now = clock.GetUtcNow();
 
+        // Read first, and only to learn where the bytes physically are. It decides nothing about
+        // permission: the UPDATE below still carries the tenant predicate, so another tenant's file
+        // is not "found and rejected" there either — and a file that is not matched here never
+        // reaches Drive at all.
+        //
+        // The window between this read and that write costs at most a redundant move: a delete that
+        // raced another one finds affected == 0 and answers false, having moved a file that was
+        // going to the same folder anyway.
+        var file = await db.StoredFiles
+            .AsNoTracking()
+            .Where(f => f.Id == fileId && f.TenantId == tenantId && f.DeletedAt == null)
+            .Select(f => new
+            {
+                f.GoogleAccountId,
+                f.DriveFileId,
+                f.DriveFolderId,
+                f.OwnerUserId,
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (file is null) return false;
+
+        // Drive first, then the row — the same order the purge uses, and for the same reason. A move
+        // that lands over a row that does not leaves the file live in the panel and sitting in the
+        // trash folder, and pressing delete again puts it right. A row stamped over a move that
+        // never happened leaves the bytes in the customer's home folder with nothing left to retry,
+        // because the file is already deleted and cannot be deleted twice.
+        var placement = trash is null
+            ? null
+            : await trash.ToTrashAsync(
+                tenantId,
+                file.GoogleAccountId,
+                file.OwnerUserId,
+                file.DriveFileId,
+                file.DriveFolderId,
+                cancellationToken);
+
         await using var transaction = await DbTransactions.BeginIfNoneAsync(db, cancellationToken);
 
-        // The tenant predicate lives in the UPDATE itself rather than in a read before it: another
-        // tenant's file is then not "found and rejected", it is simply not matched, and there is no
-        // window between the check and the write.
         var affected = await db.StoredFiles
             .Where(f => f.Id == fileId && f.TenantId == tenantId && f.DeletedAt == null)
             .ExecuteUpdateAsync(
@@ -91,9 +144,25 @@ public sealed class FileCatalog(DriveUnionDbContext db, TimeProvider clock) : IF
 
         if (affected == 0) return false;
 
+        if (placement is not null)
+        {
+            // Where it is now, where it came from, and when the sweeper may take it. The deadline is
+            // stamped from the retention window in force at this moment and never consulted again
+            // for this file, so lowering the setting tomorrow shortens the wait for what is deleted
+            // then and cannot reach back to what somebody deleted today expecting a month.
+            await db.StoredFiles
+                .Where(f => f.Id == fileId && f.TenantId == tenantId)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(f => f.DriveFolderId, placement.TrashFolderId)
+                        .SetProperty(f => f.RestoreFolderId, placement.RestoreFolderId)
+                        .SetProperty(f => f.PurgeAfter, placement.PurgeAfter),
+                    cancellationToken);
+        }
+
         // Deleting the file revokes its links in the same breath. Leaving them active would let
         // /d/{slug} keep answering for a file the tenant removed, and "revoked" is the honest thing
-        // for the owner's panel to show afterwards.
+        // for the owner's panel to show afterwards. Restoring the file does not undo this.
         await db.ShareLinks
             .Where(l => l.StoredFileId == fileId && l.TenantId == tenantId && l.IsActive)
             .ExecuteUpdateAsync(

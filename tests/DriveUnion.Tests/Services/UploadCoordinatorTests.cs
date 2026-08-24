@@ -21,7 +21,7 @@ public class UploadCoordinatorTests
         var account = harness.SeedAccount();
 
         var result = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("quarterly.mp4", "video/mp4", 1024), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("quarterly.mp4", "video/mp4", 1024), default);
 
         result.ChunkSize.Should().Be(UploadChunking.DefaultChunkSize);
 
@@ -53,7 +53,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount(GoogleAccountStatus.Disconnected);
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("quarterly.mp4", "video/mp4", 1024), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("quarterly.mp4", "video/mp4", 1024), default);
 
         await act.Should().ThrowAsync<UploadRejectedException>();
     }
@@ -67,7 +67,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            a.Id, new BeginUploadRequest("payroll.zip", "application/zip", 1024), default);
+            a.Id, ownerUserId: null, new BeginUploadRequest("payroll.zip", "application/zip", 1024), default);
 
         using var chunk = new MemoryStream(new byte[1024]);
 
@@ -89,7 +89,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
 
         using var chunk = new MemoryStream(Payload(Multiple));
 
@@ -110,7 +110,7 @@ public class UploadCoordinatorTests
         const long total = Multiple + 10;
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("quarterly.mp4", "video/mp4", total), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("quarterly.mp4", "video/mp4", total), default);
 
         using var first = new MemoryStream(Payload(Multiple));
         var afterFirst = await harness.Uploads()
@@ -147,7 +147,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("quarterly.mp4", "video/mp4", 1024), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("quarterly.mp4", "video/mp4", 1024), default);
 
         using var only = new MemoryStream(Payload(1024));
         var completed = await harness.Uploads()
@@ -170,7 +170,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("big.bin", "application/octet-stream", 4 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("big.bin", "application/octet-stream", 4 * Multiple), default);
 
         using var ragged = new MemoryStream(Payload(1000));
 
@@ -190,7 +190,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
 
         harness.Clock.Advance(TimeSpan.FromDays(8));
 
@@ -219,7 +219,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
 
         harness.Drive.FailNext(
             FakeDriveOperation.WriteChunk,
@@ -241,7 +241,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("big.bin", "application/octet-stream", Multiple), default);
 
         harness.Drive.RateLimitNext(FakeDriveOperation.WriteChunk, TimeSpan.FromSeconds(30));
 
@@ -265,7 +265,7 @@ public class UploadCoordinatorTests
         const long total = 2 * Multiple;
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("big.bin", "application/octet-stream", total), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("big.bin", "application/octet-stream", total), default);
 
         using var chunk = new MemoryStream(Payload(Multiple));
         await harness.Uploads().WriteChunkAsync(tenant.Id, begun.SessionId, chunk, 0, Multiple, default);
@@ -294,7 +294,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         var begun = await harness.Uploads().BeginAsync(
-            a.Id, new BeginUploadRequest("payroll.zip", "application/zip", 1024), default);
+            a.Id, ownerUserId: null, new BeginUploadRequest("payroll.zip", "application/zip", 1024), default);
 
         var act = () => harness.Uploads().GetProgressAsync(b.Id, begun.SessionId, default);
 
@@ -309,7 +309,7 @@ public class UploadCoordinatorTests
         harness.SeedAccount();
 
         await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("mystery.bin", "  ", 1024), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("mystery.bin", "  ", 1024), default);
 
         var session = await harness.Db.UploadSessions.AsNoTracking().SingleAsync();
         session.MimeType.Should().Be("application/octet-stream");

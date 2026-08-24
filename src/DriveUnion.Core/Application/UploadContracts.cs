@@ -26,8 +26,18 @@ public sealed record UploadProgress(
 /// </summary>
 public interface IUploadCoordinator
 {
+    /// <param name="ownerUserId">
+    /// Whose folder the file goes into. Server-derived from the signed-in principal, and deliberately
+    /// a parameter rather than a field on <see cref="BeginUploadRequest"/> — that record is bound from
+    /// the request body, and a user id a caller can name is a user id a caller can name somebody
+    /// else's.
+    ///
+    /// <para>Null where there genuinely is no user, which resolves to the tenant folder: the layout
+    /// every file used before uploads were separated per person.</para>
+    /// </param>
     Task<BeginUploadResult> BeginAsync(
         Guid tenantId,
+        Guid? ownerUserId,
         BeginUploadRequest request,
         CancellationToken cancellationToken);
 

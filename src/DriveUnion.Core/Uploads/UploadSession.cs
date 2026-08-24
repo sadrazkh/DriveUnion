@@ -23,6 +23,30 @@ public sealed class UploadSession
 
     public Guid GoogleAccountId { get; set; }
 
+    /// <summary>
+    /// Who is uploading, and therefore whose folder this is going into.
+    ///
+    /// <para>It is on the session and not only on the request because the two ends of an upload are
+    /// different requests. The folder is chosen when the session opens; the <c>StoredFile</c> row is
+    /// created by whichever request lands the <i>last chunk</i>, which for a 96 GB file can be hours
+    /// later and is a different principal's turn through the pipeline. The session is the only thing
+    /// that survives between them, so anything the row has to record has to be written here first.
+    /// </para>
+    ///
+    /// <para>Null for an upload with no user behind it, which is the same case
+    /// <see cref="Application.IDriveFolders"/> documents.</para>
+    /// </summary>
+    public Guid? OwnerUserId { get; set; }
+
+    /// <summary>
+    /// The Drive folder this upload was routed into, resolved once when the session opened.
+    ///
+    /// <para>Carried rather than re-derived at completion. Re-resolving would mean deriving a file's
+    /// location from a layout that may have been edited across the week a resumable session can
+    /// live, which is the one thing this phase set out to stop doing.</para>
+    /// </summary>
+    public string? DriveFolderId { get; set; }
+
     public required string FileName { get; set; }
 
     public required string MimeType { get; set; }

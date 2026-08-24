@@ -28,7 +28,7 @@ public class PerFileLimitTests
             tenant.Id, QuotaField.MaxFileBytes, 4 * Multiple, "Small tier.", null, default);
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("huge.mkv", "video/x-matroska", 100 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("huge.mkv", "video/x-matroska", 100 * Multiple), default);
 
         var refusal = (await act.Should().ThrowAsync<PlanLimitExceededException>()).Which;
 
@@ -58,7 +58,7 @@ public class PerFileLimitTests
         var before = await harness.StorageAsync(tenant.Id);
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("huge.mkv", "video/x-matroska", 100 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("huge.mkv", "video/x-matroska", 100 * Multiple), default);
 
         await act.Should().ThrowAsync<PlanLimitExceededException>();
 
@@ -83,7 +83,7 @@ public class PerFileLimitTests
         // The limit is a ceiling, not a strict bound. It is stated here because the two are one
         // character apart and the difference is a customer whose 2 GB file is refused by a 2 GB plan.
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("exact.bin", "application/octet-stream", Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("exact.bin", "application/octet-stream", Multiple), default);
 
         begun.SessionId.Should().NotBeEmpty();
     }
@@ -107,7 +107,7 @@ public class PerFileLimitTests
         var coordinator = harness.UploadsWith(drive);
 
         var begun = await coordinator.BeginAsync(
-            tenant.Id, new BeginUploadRequest("liar.bin", "application/octet-stream", declared), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("liar.bin", "application/octet-stream", declared), default);
 
         var reserved = await harness.StorageAsync(tenant.Id);
         reserved.Used.Should().Be(declared, "the reservation was taken against the claim");
@@ -142,7 +142,7 @@ public class PerFileLimitTests
             tenant.Id, QuotaField.StorageBytes, 0, "Out of room.", null, default);
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("anything.bin", "application/octet-stream", 1024), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("anything.bin", "application/octet-stream", 1024), default);
 
         // The customer's own cap is true whichever way our supply is going, and they can act on it.
         // «آپلود موقتاً در دسترس نیست — تا ساعت ۱۰:۳۰ دوباره تلاش کنید» promises a retry that will not
@@ -164,10 +164,10 @@ public class PerFileLimitTests
             tenant.Id, QuotaField.StorageBytes, 3 * Multiple, "Tight.", null, default);
 
         await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("first.bin", "application/octet-stream", 2 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("first.bin", "application/octet-stream", 2 * Multiple), default);
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("second.bin", "application/octet-stream", 2 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("second.bin", "application/octet-stream", 2 * Multiple), default);
 
         var refusal = (await act.Should().ThrowAsync<PlanLimitExceededException>()).Which;
 
@@ -194,12 +194,12 @@ public class PerFileLimitTests
         {
             await harness.Uploads().BeginAsync(
                 tenant.Id,
-                new BeginUploadRequest($"part-{i}.bin", "application/octet-stream", 3 * Multiple),
+                ownerUserId: null, new BeginUploadRequest($"part-{i}.bin", "application/octet-stream", 3 * Multiple),
                 default);
         }
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("part-3.bin", "application/octet-stream", 3 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("part-3.bin", "application/octet-stream", 3 * Multiple), default);
 
         await act.Should().ThrowAsync<PlanLimitExceededException>();
 
@@ -216,7 +216,7 @@ public class PerFileLimitTests
         const long declared = 2 * Multiple;
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("real.bin", "application/octet-stream", declared), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("real.bin", "application/octet-stream", declared), default);
 
         (await harness.StorageAsync(tenant.Id)).Used.Should().Be(declared);
 
@@ -246,7 +246,7 @@ public class PerFileLimitTests
         const long declared = 2 * Multiple;
 
         var begun = await harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("abandoned.bin", "application/octet-stream", declared), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("abandoned.bin", "application/octet-stream", declared), default);
 
         harness.Clock.Advance(TimeSpan.FromDays(8));
 
@@ -272,7 +272,7 @@ public class PerFileLimitTests
         harness.SeedAccount(GoogleAccountStatus.Disconnected);
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("nowhere.bin", "application/octet-stream", 4 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("nowhere.bin", "application/octet-stream", 4 * Multiple), default);
 
         await act.Should().ThrowAsync<UploadRejectedException>();
 
@@ -294,7 +294,7 @@ public class PerFileLimitTests
             new Core.Abstractions.DriveApiException("Drive said no."));
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("unlucky.bin", "application/octet-stream", 4 * Multiple), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("unlucky.bin", "application/octet-stream", 4 * Multiple), default);
 
         await act.Should().ThrowAsync<Core.Abstractions.DriveApiException>();
 

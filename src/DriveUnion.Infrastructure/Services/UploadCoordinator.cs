@@ -28,17 +28,46 @@ namespace DriveUnion.Infrastructure.Services;
 public sealed class UploadCoordinator(
     DriveUnionDbContext db,
     IDriveClient drive,
+    IDriveFolders folders,
     IUploadTargetSelector targetSelector,
     TimeProvider clock) : IUploadCoordinator
 {
-    /// <summary>The <c>DriveUnion/</c> folder each account gets; tenants are folders inside it.</summary>
-    private const string RootFolderName = "DriveUnion";
-
     /// <summary>A browser that sends no type still gets a file, not a rejection.</summary>
     private const string FallbackMimeType = "application/octet-stream";
 
+    /// <summary>
+    /// The four-argument shape several harnesses outside this slice already build by hand.
+    ///
+    /// <para>It resolves folders through a cache of its own rather than the process-wide one, which
+    /// is a difference in requests spent and not in behaviour: find-or-create is idempotent, and the
+    /// cache only removes the asking. Anything resolved from the container gets the registered
+    /// resolver and the shared cache.</para>
+    /// </summary>
+    public UploadCoordinator(
+        DriveUnionDbContext db,
+        IDriveClient drive,
+        IUploadTargetSelector targetSelector,
+        TimeProvider clock)
+        : this(db, drive, new DriveFolders(db, drive, new DriveFolderCache()), targetSelector, clock)
+    {
+    }
+
+    /// <summary>
+    /// The same begin, told who is uploading, so the bytes land in that person's folder.
+    ///
+    /// <para>The owner is an argument and not something this class goes and finds. An ambient
+    /// principal read out of the request would make the folder a file lands in depend on state
+    /// nothing in the signature mentions, and this product scopes by explicit argument everywhere —
+    /// the model's own note about having no global query filters is the same decision.</para>
+    ///
+    /// <para>It is an overload because <see cref="IUploadCoordinator"/> lives in Core and takes a
+    /// tenant only. The panel is the one caller that knows who is signed in, and it reaches this
+    /// class through that interface, so until the interface carries a user the panel's uploads land
+    /// in the tenant folder.</para>
+    /// </summary>
     public async Task<BeginUploadResult> BeginAsync(
         Guid tenantId,
+        Guid? ownerUserId,
         BeginUploadRequest request,
         CancellationToken cancellationToken)
     {
@@ -52,10 +81,12 @@ public sealed class UploadCoordinator(
             throw new ArgumentOutOfRangeException(nameof(request), "An upload cannot be negative.");
         }
 
+        // The slug used to be read here to build the folder path. It is the resolver's to read now,
+        // and what is left is the one number this method enforces.
         var tenant = await db.Tenants
             .AsNoTracking()
             .Where(t => t.Id == tenantId)
-            .Select(t => new { t.Slug, t.MaxFileBytes })
+            .Select(t => new { t.MaxFileBytes })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException($"Tenant {tenantId} does not exist.");
 
@@ -91,25 +122,28 @@ public sealed class UploadCoordinator(
                 ?? throw new UploadRejectedException(
                     $"No connected Google account can accept a file of {request.SizeBytes} bytes.");
 
-            var account = await db.GoogleAccounts
-                .FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken)
-                ?? throw new UploadRejectedException(
+            // The account is confirmed to still be there and nothing about it is loaded: where a
+            // file goes is the resolver's answer now, and the row's remembered root is its business.
+            var accountExists = await db.GoogleAccounts
+                .AsNoTracking()
+                .AnyAsync(a => a.Id == accountId, cancellationToken);
+
+            if (!accountExists)
+            {
+                throw new UploadRejectedException(
                     $"Google account {accountId} was selected for this upload but no longer exists.");
+            }
 
-            // The root folder is created once per account and remembered; the tenant folder is asked
-            // for every time because find-or-create is what the Drive client does anyway and there is
-            // nowhere in the model to cache a per-tenant, per-account id.
-            account.RootFolderId ??= await drive.EnsureFolderAsync(
-                accountId, RootFolderName, null, cancellationToken);
-
-            var tenantFolderId = await drive.EnsureFolderAsync(
-                accountId, tenant.Slug, account.RootFolderId, cancellationToken);
+            // Asked for rather than derived here, and asked for once: the delete path needs the same
+            // answer later, and two derivations of one layout is how two folders with the same name
+            // end up holding half of somebody's files each.
+            var folderId = await folders.HomeAsync(accountId, tenantId, ownerUserId, cancellationToken);
 
             var mimeType = string.IsNullOrWhiteSpace(request.MimeType) ? FallbackMimeType : request.MimeType;
 
             var driveSession = await drive.BeginResumableUploadAsync(
                 accountId,
-                new DriveUploadRequest(request.FileName, mimeType, request.SizeBytes, tenantFolderId),
+                new DriveUploadRequest(request.FileName, mimeType, request.SizeBytes, folderId),
                 cancellationToken);
 
             var session = new UploadSession
@@ -117,6 +151,14 @@ public sealed class UploadCoordinator(
                 Id = Guid.NewGuid(),
                 TenantId = tenantId,
                 GoogleAccountId = accountId,
+
+                // Both are carried on the session because the row that will need them is created by
+                // a different request — whichever one lands the last chunk, which for a large file is
+                // hours later. Re-deriving the folder there would mean resolving a layout that may
+                // have been edited across the week a resumable session can live.
+                OwnerUserId = ownerUserId,
+                DriveFolderId = folderId,
+
                 FileName = request.FileName,
                 MimeType = mimeType,
                 SizeBytes = request.SizeBytes,
@@ -221,11 +263,21 @@ public sealed class UploadCoordinator(
         long? storedSizeBytes = null;
         if (outcome.Completed is { } metadata)
         {
+            // Both come off the session rather than being resolved again. This request is not the one
+            // that chose the folder — it is whichever one landed the last chunk, hours later for a
+            // large file — so re-deriving here would read a layout that may have changed in between,
+            // and would put the row's idea of where the file is at odds with where it actually went.
+            //
+            // A session opened before these columns existed carries null, and a row with a null
+            // DriveFolderId is exactly what the delete path already handles: ask Drive which folder
+            // this is in, once.
             var stored = new StoredFile
             {
                 Id = Guid.NewGuid(),
                 TenantId = session.TenantId,
                 GoogleAccountId = session.GoogleAccountId,
+                OwnerUserId = session.OwnerUserId,
+                DriveFolderId = session.DriveFolderId,
                 DriveFileId = metadata.FileId,
                 Name = metadata.Name,
                 MimeType = metadata.MimeType,

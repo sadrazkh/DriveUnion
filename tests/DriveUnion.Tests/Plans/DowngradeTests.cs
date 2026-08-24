@@ -44,7 +44,7 @@ public class DowngradeTests
             .Should().Be(2, "nothing is deleted, ever, by a pricing change");
 
         var act = () => harness.Uploads().BeginAsync(
-            tenant.Id, new BeginUploadRequest("more.bin", "application/octet-stream", 1024), default);
+            tenant.Id, ownerUserId: null, new BeginUploadRequest("more.bin", "application/octet-stream", 1024), default);
 
         var refusal = (await act.Should().ThrowAsync<PlanLimitExceededException>()).Which;
         refusal.Limit.Should().Be(PlanLimit.Storage);
@@ -124,7 +124,7 @@ public class DowngradeTests
         long sizeBytes)
     {
         var begun = await harness.Uploads().BeginAsync(
-            tenantId, new BeginUploadRequest(name, "application/octet-stream", sizeBytes), default);
+            tenantId, ownerUserId: null, new BeginUploadRequest(name, "application/octet-stream", sizeBytes), default);
 
         // One chunk. The fake Drive checks the body against the declared length, so this is the whole
         // file rather than a convenient prefix.

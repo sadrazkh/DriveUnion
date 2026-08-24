@@ -219,6 +219,49 @@ a:hover {
   gap: 10px;
 }
 
+/*
+ * The tenant's capacity card, in the slot the operator's daily-quota card sits in.
+ *
+ * It is the same .subcard box on purpose — the request was "like the operator" — and it carries
+ * three of the customer's own figures rather than any of the pool's. The rows are not .bar-label:
+ * that rule exists to sit above a bar and carries the 6px that does it, and two of these three have
+ * no bar under them.
+ */
+.capacity {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.capacity-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* The figure is what is being read; the label beside it is what it is called. */
+.capacity-row > .mono {
+  color: var(--text);
+}
+
+/*
+ * The trash row is a link, and `a { color: var(--accent) }` reaches it — the same trap .dtable-row
+ * already documents. A green label in a grey card reads as the one figure that is fine, which is
+ * the opposite of what this number means.
+ */
+.capacity-link {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.capacity-link:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
 .avatar {
   width: 28px;
   height: 28px;

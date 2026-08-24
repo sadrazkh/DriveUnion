@@ -24,6 +24,13 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ISlugGenerator, SlugGenerator>();
 
+        // The one piece of state in this layer that outlives a request, and it has to: a folder id
+        // cached per request is a folder id resolved per request, which is the pair of Drive calls
+        // the cache exists to stop making. The resolver over it stays scoped, because it reads the
+        // tenant's slug through the request's database context.
+        services.TryAddSingleton<DriveFolderCache>();
+
+        services.TryAddScoped<IDriveFolders, DriveFolders>();
         services.TryAddScoped<IFileCatalog, FileCatalog>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();

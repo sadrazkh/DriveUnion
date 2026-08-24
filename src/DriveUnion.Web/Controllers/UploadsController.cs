@@ -29,8 +29,10 @@ public sealed class UploadsController(IUploadCoordinator coordinator) : Controll
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
+        // Whose folder the bytes land in, taken from the principal and never from the payload.
         var result = await coordinator.BeginAsync(
             tenantId,
+            User.GetUserId(),
             new BeginUploadRequest(payload.FileName, payload.MimeType, payload.SizeBytes),
             cancellationToken);
 

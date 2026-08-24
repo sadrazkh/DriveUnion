@@ -57,6 +57,22 @@ public static class DriveUnionPrincipalExtensions
         return Guid.TryParse(raw, out var tenantId) && tenantId != Guid.Empty ? tenantId : null;
     }
 
+    /// <summary>
+    /// The signed-in person, for the paths that store something under their name.
+    ///
+    /// <para>Identity writes the user id into <see cref="ClaimTypes.NameIdentifier"/>. Read from the
+    /// principal and never from a request body: a user id a caller can name is a user id a caller can
+    /// name somebody else's, and this one decides which Drive folder bytes land in.</para>
+    ///
+    /// <para><c>Guid.Empty</c> is null here for the same reason it is on
+    /// <see cref="GetTenantId"/> — it is what a missing claim parses to, and it is a folder name.</para>
+    /// </summary>
+    public static Guid? GetUserId(this ClaimsPrincipal principal)
+    {
+        var raw = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(raw, out var userId) && userId != Guid.Empty ? userId : null;
+    }
+
     public static bool IsOperator(this ClaimsPrincipal principal) =>
         principal.HasClaim(DriveUnionClaimTypes.Operator, DriveUnionClaimTypes.OperatorValue);
 }

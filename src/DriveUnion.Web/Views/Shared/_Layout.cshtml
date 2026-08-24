@@ -1,4 +1,5 @@
 @using DriveUnion.Web.Security
+@using Microsoft.Extensions.DependencyInjection
 @{
     var shell = ShellContext.From(ViewData);
     var title = ViewData["Title"] as string;
@@ -30,6 +31,29 @@
     // filtered file list or a search survives the switch. The controller only follows it if it is
     // local.
     var here = Context.Request.Path + Context.Request.QueryString;
+
+    // The customer's own capacity card, which is the operator's card's box and none of its figures.
+    //
+    // Asked here rather than taken from each page's ShellContext, because the sidebar is drawn on
+    // every screen in the panel and those screens belong to other slices: a card that appeared only
+    // where somebody remembered to fill it in would be missing from exactly the pages a customer is
+    // on when they wonder where their space went. A page that does have the figures still wins, so
+    // nothing is read twice.
+    //
+    // Resolved rather than @injected, and null-tolerantly. The panel boots without this slice's
+    // registration until Program.cs carries `AddDriveUnionTrashPanel()`, and an @inject of an
+    // unregistered service is an exception on every page in the panel rather than one card fewer.
+    ShellCapacity? capacity = shell.Capacity;
+
+    if (capacity is null && !isOperator && User.GetTenantId() is { } shellTenantId)
+    {
+        var capacityReader = Context.RequestServices.GetService<IShellCapacity>();
+
+        if (capacityReader is not null)
+        {
+            capacity = await capacityReader.ReadAsync(shellTenantId, Context.RequestAborted);
+        }
+    }
 
     string NavClass(string name) =>
         string.Equals(controller, name, StringComparison.OrdinalIgnoreCase)
@@ -96,6 +120,16 @@
         <a class="@NavClass("Files")" href="/Files">
             <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Files
         </a>
+        @if (!isOperator && hasWorkspace)
+        {
+            @* The other half of «فایل‌ها», and a primary nav item rather than a link inside that
+               screen: a customer looking for the space a delete did not give back is looking at the
+               menu, not at the table they just deleted from. It is a tenant item — the operator's
+               trash is every workspace's at once, which is a screen nobody has asked for. *@
+            <a class="@NavClass("Trash")" href="/trash">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Trash.Title
+            </a>
+        }
         @*
             Queue and Settings are M3 and M6 (spec §12) and have no controller. Rendered so the
             shell is the comp's, marked so a click is not a 404 — a dead primary nav item teaches
@@ -133,20 +167,27 @@
             </a>
         }
         @*
-            The comp's last slot is «تنظیمات» and M6 owns that screen. Until it exists, the slot
-            carries the only settings a signed-in caller actually has — Telegram (Telegram design
-            §9.1 for the operator's bot, §9.2 for the customer's own link, which lives at its own
-            address until the settings screen is built to hold its card).
+            The comp's last slot is «تنظیمات», and it now exists — for the operator. It holds the
+            settings that belong to no workspace and apply to all of them, which is one so far: how
+            long the trash keeps a file. A customer has no such screen and must not be shown one,
+            because every setting on it is a decision about the operator's own storage.
 
-            Two audiences, two addresses, one slot. TelegramController authorises both ends itself,
-            so this decides what is drawn and not what is allowed: an operator following the
-            customer's address is still refused by the policy, and a customer who guesses
-            /telegram still gets a 403 rather than the operator's bot token screen.
+            Beside it, the only other settings a signed-in caller has — Telegram (Telegram design
+            §9.1 for the operator's bot, §9.2 for the customer's own link, which lives at its own
+            address until a customer-facing settings screen exists to hold its card).
+
+            Two audiences, two addresses. Each controller authorises its own end, so this decides
+            what is drawn and not what is allowed: a customer who guesses /operator/settings gets a
+            403 rather than the retention form, and one who guesses /telegram gets a 403 rather than
+            the operator's bot token screen.
         *@
         @if (isOperator)
         {
             <a class="@NavClass("Telegram")" href="/telegram">
                 <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TelegramBot
+            </a>
+            <a class="@NavClass("Settings")" href="/operator/settings">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Settings
             </a>
         }
         else if (hasWorkspace)
@@ -194,6 +235,45 @@
                         @* No quota reading yet — a skeleton, never a plausible number. *@
                         <div class="skeleton" style="height: 6px;"></div>
                     }
+                </div>
+            }
+            else if (capacity is not null)
+            {
+                @*
+                    The customer's card: the operator's box, and not one of the operator's figures.
+
+                    The ask was «like the operator», and the operator's card reads the daily 750 GB
+                    each Google account is allowed — a fact about the pool, and exactly what M1 §1.4
+                    says a customer must never see. These three are the customer's own: what they
+                    have stored against the cap they bought, the traffic their plan includes this
+                    month, and what their trash is holding.
+
+                    The trash figure is here because it is the difference between what a customer
+                    believes they freed and what they actually did, which is the misunderstanding
+                    this phase exists to end. It is a link, because the answer to «why is that not
+                    zero» is one press away.
+                *@
+                <div class="subcard capacity">
+                    <div class="capacity-row">
+                        <span>@UiText.Capacity.StorageLabel</span>
+                        <span class="mono" dir="ltr">@capacity.StorageText</span>
+                    </div>
+                    <div class="bar">
+                        <span class="@capacity.StorageFillClass"
+                              style="width: @capacity.StoragePercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                    </div>
+
+                    @* No bar. The spent half of this one is P2's meter, and a bar drawn from an
+                       allowance alone would be a bar that is always empty. *@
+                    <div class="capacity-row" title="@UiText.Capacity.TrafficNotMeteredYet">
+                        <span>@UiText.Capacity.TrafficLabel</span>
+                        <span class="mono" dir="ltr">@capacity.TrafficText</span>
+                    </div>
+
+                    <a class="capacity-row capacity-link" href="/trash" title="@UiText.Capacity.TrashTitle">
+                        <span>@UiText.Capacity.TrashLabel</span>
+                        <span class="mono" dir="ltr">@capacity.TrashText</span>
+                    </a>
                 </div>
             }
 
