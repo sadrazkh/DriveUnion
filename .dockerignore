@@ -1,0 +1,29 @@
+# Harbora reads this first when deciding what to upload, and Docker reads it when deciding what the
+# build can see. Keeping them the same file is the point: anything excluded here cannot be a thing
+# the Dockerfile quietly depended on.
+
+.git
+.artifacts
+**/bin
+**/obj
+**/node_modules
+
+# Both are produced inside the image by the assets stage. Uploading a local copy would ship whatever
+# a developer last built, and Harbora strips `build` from the upload anyway — so a deploy that
+# depended on it would arrive with no stylesheet and no explanation.
+src/DriveUnion.Web/wwwroot/build
+src/DriveUnion.Web/wwwroot/fonts
+
+# Not needed to build or run the panel. deploy/ is the self-hosted Telegram Bot API server, which is
+# systemd on its own host, not part of this image.
+tests
+docs
+deploy
+.claude
+
+.vs
+.idea
+.vscode
+*.log
+.env
+.env.local

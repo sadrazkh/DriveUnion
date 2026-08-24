@@ -18,10 +18,23 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("Default")
+// Three spellings, because the panel is configured by hand locally and by a platform in production.
+// Attaching Postgres on Harbora writes ConnectionStrings__DefaultConnection and DATABASE_DSN into
+// the environment; this app spells its key "Default", and reading all three here is cheaper than a
+// deployment that boots, fails its first query, and dies at the health check.
+//
+// DATABASE_URL is deliberately absent from the list. It is a URI, and every ADO.NET provider parses
+// keyword=value only — an app handed the URI starts and then throws a driver error that names
+// neither the database nor the attachment that was meant to supply it.
+var connectionString =
+    builder.Configuration.GetConnectionString("Default")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? builder.Configuration["DATABASE_DSN"]
     ?? throw new InvalidOperationException(
-        "ConnectionStrings:Default is not configured. The panel holds encrypted Google credentials; "
-        + "it must not fall back to an implicit or in-memory store.");
+        "No database connection string. Set ConnectionStrings:Default — in user-secrets for local "
+        + "work — or attach a Postgres database so ConnectionStrings__DefaultConnection or "
+        + "DATABASE_DSN is present. The panel holds encrypted Google credentials; it must not fall "
+        + "back to an implicit or in-memory store.");
 
 builder.Services.AddDbContext<DriveUnionDbContext>(options => options.UseNpgsql(connectionString));
 

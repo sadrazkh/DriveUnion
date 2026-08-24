@@ -1,0 +1,10 @@
+# Written by `harbora deploy`. Full schema: docs/cli-deploy.md in the Harbora repo.
+app: driveunion
+server: https://platform.irnetfree.info
+
+# Named explicitly rather than left to stack auto-detection. Auto-detection sees the .csproj files
+# and runs `dotnet publish` alone, which never builds the Vite bundle — the panel would come up with
+# no CSS and no islands, and nothing in the deploy log would say why.
+build:
+  dockerfile: Dockerfile
+  context: .
