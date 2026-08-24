@@ -1,5 +1,7 @@
 import { createApp } from 'vue';
 import ThemeLanguageToggle from './islands/ThemeLanguageToggle.vue';
+import UploadPanel from './islands/UploadPanel.vue';
+import { mountCopyLink } from './copyLink';
 import { mountGoogleConnect } from './googleConnect';
 import { mountNavToggle } from './nav';
 
@@ -20,6 +22,17 @@ const islands: Record<string, IslandMounter> = {
       showLanguage: el.dataset.showLanguage === 'true',
     }).mount(el);
   },
+
+  'upload-panel': (el) => {
+    createApp(UploadPanel, {
+      beginUrl: el.dataset.beginUrl ?? '/api/uploads',
+      antiforgeryHeader: el.dataset.antiforgeryHeader ?? '',
+      antiforgeryToken: el.dataset.antiforgeryToken ?? '',
+      lang: document.documentElement.lang === 'en' ? 'en' : 'fa',
+    }).mount(el);
+  },
+
+  'copy-link': mountCopyLink,
 };
 
 for (const [name, mount] of Object.entries(islands)) {
