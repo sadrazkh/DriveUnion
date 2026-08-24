@@ -34,12 +34,12 @@
 
     @if (!string.IsNullOrEmpty(Model.Error))
     {
-        <p class="page-sub" role="alert" style="color: var(--danger);">@Model.Error</p>
+        <p class="page-sub danger" role="alert">@Model.Error</p>
     }
 
     <div class="card card--pad" style="max-width: 900px;">
         <div class="row" style="gap: 12px; align-items: baseline;">
-            <span style="font-size: 14px; font-weight: 700;">راه‌اندازی ربات</span>
+            <span class="card-title">راه‌اندازی ربات</span>
             <span class="@(Model.IsComplete ? "badge" : "badge badge--warn") push-end">
                 @(Model.IsComplete ? "آماده" : "ناقص")
             </span>
@@ -168,7 +168,7 @@
 
     <div class="card card--pad" style="max-width: 900px;">
         <div class="row" style="gap: 12px; align-items: baseline;">
-            <span style="font-size: 14px; font-weight: 700;">دریافت پیام‌ها</span>
+            <span class="card-title">دریافت پیام‌ها</span>
             <span class="badge badge--muted push-end">@Model.UpdateModeText</span>
         </div>
 
@@ -230,7 +230,7 @@
     </div>
 
     <div class="card card--pad" style="max-width: 900px;">
-        <span style="font-size: 14px; font-weight: 700;">سرور تلگرام</span>
+        <span class="card-title">سرور تلگرام</span>
 
         <div class="setup-state" role="group" aria-label="سرور" style="margin-top: 12px;">
             <div class="setup-state-row">
@@ -273,7 +273,7 @@
     </div>
 
     <div class="card card--pad" style="max-width: 900px;">
-        <span style="font-size: 14px; font-weight: 700;">وضعیت</span>
+        <span class="card-title">وضعیت</span>
 
         <div class="setup-state" role="group" aria-label="شمارش‌ها" style="margin-top: 12px;">
             <div class="setup-state-row">

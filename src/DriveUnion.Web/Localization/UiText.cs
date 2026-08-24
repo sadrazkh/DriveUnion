@@ -43,6 +43,28 @@ public static partial class UiText
     /// </summary>
     private static string Pick(string fa, string en) => PanelCulture.IsPersian ? fa : en;
 
+    /// <summary>
+    /// Wraps a Latin readout so a Persian sentence cannot reorder it.
+    ///
+    /// <para><c>«تعهدشده: 14 TB از 10 TB»</c> is a Persian paragraph containing a European number,
+    /// a neutral space and a Latin run. The bidirectional algorithm resolves that space to the
+    /// paragraph's direction, which splits the number from its unit and lays them out as
+    /// <c>TB 14</c>. Every figure this panel interpolates into a sentence has that shape.</para>
+    ///
+    /// <para>A <c>dir</c> attribute cannot fix it, which is why this is here and not in a view: no
+    /// part of a string can be isolated from the rest of the same string. U+2066 (LRI) … U+2069
+    /// (PDI) does it inside the text, which is the only place the boundary exists.</para>
+    ///
+    /// <para>Applied to both languages. In an English paragraph the isolate is a no-op, and one
+    /// call site that reads the same either way is one fewer place to get it wrong.</para>
+    /// </summary>
+    /// <remarks>
+    /// Escaped rather than written literally. Both characters are invisible, so a literal pair is
+    /// something a later edit deletes without seeing and nothing catches until a number reads
+    /// backwards on a screen nobody re-checked.
+    /// </remarks>
+    private static string Ltr(string value) => $"\u2066{value}\u2069";
+
     public static class Brand
     {
         public static string Name => Pick("درایو یونیون", "Drive Union");
@@ -353,8 +375,8 @@ public static partial class UiText
         public static string NotFound => Pick("این فایل پیدا نشد.", "That file was not found.");
 
         public static string LinkCreated(string url) => Pick(
-            $"لینک ساخته شد: {url}",
-            $"Link created: {url}");
+            $"لینک ساخته شد: {Ltr(url)}",
+            $"Link created: {Ltr(url)}");
 
         public static string LinkRevoked => Pick("لینک ابطال شد.", "The link was revoked.");
 
@@ -542,6 +564,51 @@ public static partial class UiText
 
         public static string StatusDisconnected => Pick("قطع شده", "Disconnected");
 
+        // ─────────────────────────────────────────── which client an account belongs to, on its card
+
+        /// <summary>
+        /// The client that connected this account, by the handle the setup panel lists it under.
+        ///
+        /// It is on the card because a refresh token can only be presented by the client that issued
+        /// it: once the panel holds two, "which one" is the difference between an account that can be
+        /// repaired and one that cannot, and it used to be written down nowhere at all.
+        /// </summary>
+        public static string ClientNamed(string label) => Pick(
+            $"کلاینت {label}",
+            $"Client {label}");
+
+        public static string ClientFromConfiguration => Pick(
+            "کلاینتِ پیکربندی سرور",
+            "The client from the server configuration");
+
+        /// <summary>
+        /// The account predates the binding. Not a fault and not a warning: it is refreshed with
+        /// whatever is in force, which is the client that connected it, and the panel writes the
+        /// answer down the first time that works.
+        /// </summary>
+        public static string ClientNotRecorded => Pick(
+            "کلاینت ثبت نشده — در اولین تازه‌سازی مشخص می‌شود",
+            "Client not recorded — it is filled in at the next refresh");
+
+        /// <summary>
+        /// The failure this whole screen exists to make visible: the client this account was
+        /// connected with is gone, so nothing can refresh it. This is what a redeploy that deleted
+        /// <c>App_Data/google-oauth.json</c> did to an entire pool, silently.
+        /// </summary>
+        public static string ClientMissing => Pick(
+            "کلاینتی که این اکانت با آن وصل شده دیگر ذخیره نیست؛ تا وقتی برنگردد، این اکانت تازه "
+            + "نمی‌شود.",
+            "The client this account was connected with is not stored any more. Until it is back, "
+            + "this account cannot be refreshed.");
+
+        /// <summary>The operator's own diagnostic, in Google's words. Never shown to a tenant.</summary>
+        public static string LastFailure => Pick("آخرین خطا", "Last failure");
+
+        /// <param name="when">Already in this language's own numerals — see <c>DisplayFormats.PanelDateTime</c>.</param>
+        public static string LastFailureAt(string when) => Pick(
+            $"آخرین خطا در {when}",
+            $"Last failure at {when}");
+
         public static string SetupComplete => Pick(
             "کلاینت OAuth تنظیم شده است. برای تغییر یا بررسی، باز کنید.",
             "The OAuth client is configured. Open this to check or change it.");
@@ -687,7 +754,110 @@ public static partial class UiText
             $"آخرین تغییر: {when}",
             $"Last changed: {when}");
 
-        public static string DeleteStored => Pick("حذف اطلاعات ذخیره‌شده", "Delete the stored client");
+        // ─────────────────────────────────────────────────── the stored clients, on the setup panel
+
+        public static string ClientsHeading => Pick("کلاینت‌های ذخیره‌شده", "Stored clients");
+
+        /// <summary>
+        /// Why there is a list here at all. An account is tied to the client that connected it, so
+        /// swapping a client's values is not the same as adding one — the accounts already connected
+        /// keep needing the old one, and this is the sentence that says so before anybody deletes it.
+        /// </summary>
+        public static string ClientsWhy => Pick(
+            "هر اکانت به کلاینتی که با آن وصل شده گره خورده و فقط با همان تازه می‌شود. برای همین "
+            + "کلاینت‌ها کنار هم می‌مانند و کلاینتی که اکانتی به آن وابسته است حذف نمی‌شود.",
+            "Every account is tied to the client that connected it and can only be refreshed with "
+            + "that one. So clients live side by side here, and one that an account still depends on "
+            + "cannot be removed.");
+
+        public static string ClientsNone => Pick(
+            "هنوز کلاینتی ذخیره نشده است.",
+            "No client has been saved yet.");
+
+        public static string AddClient => Pick("+ افزودن کلاینت", "+ Add a client");
+
+        public static string RemoveClient => Pick("حذف", "Remove");
+
+        /// <summary>
+        /// The standing sentence for a panel whose stored clients are outranked. It is not the same
+        /// as the one over the form: nothing here has been overwritten, and these clients are still
+        /// doing the work of refreshing the accounts bound to them. Only the <em>next</em> connection
+        /// is decided elsewhere.
+        /// </summary>
+        public static string ClientsOverriddenBefore => Pick(
+            "اتصال بعدی با کلاینتِ پیکربندی سرور (",
+            "The next connection will use the client from the server configuration (");
+
+        public static string ClientsOverriddenAfter => Pick(
+            ") انجام می‌شود، نه با کلاینت انتخاب‌شده در این فهرست. کلاینت‌های زیر همچنان اکانت‌های "
+            + "وابسته به خودشان را تازه می‌کنند.",
+            "), not the one marked below. The clients below go on refreshing the accounts that "
+            + "belong to them.");
+
+        /// <summary>The accessible name of a per-client control, which without it is one of several
+        /// identical buttons — the same rule the account cards follow.</summary>
+        public static string EditClientNamed(string label) => Pick(
+            $"ویرایش کلاینت {label}",
+            $"Edit client {label}");
+
+        public static string RemoveClientNamed(string label) => Pick(
+            $"حذف کلاینت {label}",
+            $"Remove client {label}");
+
+        public static string UseClientNamed(string label) => Pick(
+            $"استفاده از کلاینت {label} برای اتصال‌های بعدی",
+            $"Use client {label} for the next connection");
+
+        /// <summary>On the client that new consent flows run with.</summary>
+        public static string ClientDefaultBadge => Pick("برای اتصال بعدی", "Next connection");
+
+        public static string UseThisClient => Pick("استفاده برای اتصال بعدی", "Use for the next connection");
+
+        public static string ClientAccountsNone => Pick(
+            "هیچ اکانتی به آن وابسته نیست",
+            "No account depends on it");
+
+        public static string ClientAccountsInUse(int count) => Pick(
+            $"{Numerals.Count(count)} اکانت با آن تازه می‌شود",
+            count == 1 ? "1 account is refreshed with it" : $"{count} accounts are refreshed with it");
+
+        public static string ClientNotFound => Pick(
+            "آن کلاینت پیدا نشد.",
+            "That client was not found.");
+
+        public static string ClientAlreadySaved => Pick(
+            "این Client ID از قبل ذخیره شده است. همان ردیف را ویرایش کنید.",
+            "That Client ID is already saved. Edit that row instead.");
+
+        public static string ClientInUse => Pick(
+            "اتصال‌های بعدی با این کلاینت انجام می‌شود. اکانت‌های موجود دست‌نخورده می‌مانند.",
+            "The next connection will use this client. The accounts already in the pool are untouched.");
+
+        /// <summary>
+        /// Promoting a stored client while the environment supplies one changes nothing about the
+        /// next connection, and an operator who was not told that would go looking for the fault in
+        /// Google Cloud.
+        /// </summary>
+        public static string ClientInUseButOverridden => Pick(
+            "انتخاب شد، اما پیکربندی سرور کلاینت خودش را اعمال می‌کند و اتصال بعدی با همان انجام "
+            + "می‌شود.",
+            "Chosen — but the server configuration supplies its own client, and that is what the "
+            + "next connection will use.");
+
+        /// <summary>
+        /// The refusal, naming the accounts. Removing a client in use does not fail when it is
+        /// pressed; it fails an hour later, on every account bound to it at once, as uploads
+        /// reporting that storage is unavailable — which is how this product lost its pool once.
+        /// </summary>
+        /// <param name="labels">Account labels, already joined with <see cref="LabelSeparator"/>.</param>
+        public static string ClientInUseByAccounts(string labels) => Pick(
+            $"این کلاینت حذف نشد: {labels} با آن تازه می‌شوند و بدون آن از کار می‌افتند. اول آن "
+            + "اکانت‌ها را با کلاینت دیگری وصل کنید.",
+            $"That client was not removed: {labels} are refreshed with it and would stop working "
+            + "without it. Connect those accounts under another client first.");
+
+        /// <summary>The list separator this language actually uses, not a comma in both.</summary>
+        public static string LabelSeparator => Pick("، ", ", ");
 
         public static string ClosePopup => Pick("بستن پنجره", "Close this window");
 
@@ -696,10 +866,6 @@ public static partial class UiText
         public static string PopupClosing => Pick(
             "این پنجره خودش بسته می‌شود…",
             "This window will close itself…");
-
-        public static string SaveFailed => Pick(
-            "ذخیره‌ی اطلاعات گوگل ناموفق بود. لاگ سرور را ببینید.",
-            "Saving the Google client failed. Check the server log.");
 
         public static string SavedButOverridden => Pick(
             "اطلاعات ذخیره شد، اما پیکربندی سرور اولویت دارد و همان اعمال می‌شود.",
@@ -710,16 +876,12 @@ public static partial class UiText
             "The Google OAuth client is saved. You can connect an account now.");
 
         public static string Cleared => Pick(
-            "اطلاعات OAuth ذخیره‌شده حذف شد.",
-            "The stored OAuth client was deleted.");
+            "کلاینت ذخیره‌شده حذف شد.",
+            "The stored client was deleted.");
 
         public static string NothingToClear => Pick(
             "چیزی برای حذف وجود نداشت.",
             "There was nothing to delete.");
-
-        public static string ClearFailed => Pick(
-            "حذف اطلاعات ذخیره‌شده ناموفق بود. لاگ سرور را ببینید.",
-            "Deleting the stored client failed. Check the server log.");
 
         public static string ClientIdRequired => Pick(
             "شناسه‌ی کلاینت (Client ID) را وارد کنید.",
@@ -1303,9 +1465,9 @@ public static partial class UiText
         /// big, and a customer who retries for an hour on that advice is a support ticket.</para>
         /// </summary>
         public static string RefusedFileTooLarge(string limit) => Pick(
-            $"فایل بزرگ‌تر از {limit} از هیچ راهی ذخیره نمی‌شود — نه از پنل و نه از تلگرام. "
+            $"فایل بزرگ‌تر از {Ltr(limit)} از هیچ راهی ذخیره نمی‌شود — نه از پنل و نه از تلگرام. "
             + "فایل کوچک‌تری بفرستید یا برای بالا بردن این سقف با ما تماس بگیرید.",
-            $"A file larger than {limit} will not be stored by any route — not the panel and not "
+            $"A file larger than {Ltr(limit)} will not be stored by any route — not the panel and not "
             + "Telegram. Send a smaller file, or ask us to raise this limit.");
 
         /// <summary>
@@ -1404,8 +1566,8 @@ public static partial class UiText
         /// requiring the sum to fit would make every new sign-up wait on a capacity purchase.
         /// </summary>
         public static string Committed(string committed, string pool) => Pick(
-            $"تعهدشده: {committed} از {pool}",
-            $"Committed: {committed} of {pool}");
+            $"تعهدشده: {Ltr(committed)} از {Ltr(pool)}",
+            $"Committed: {Ltr(committed)} of {Ltr(pool)}");
 
         public static string OverCommittedNote => Pick(
             "مجموع سقف‌ها از ظرفیت متصل بیشتر است. این عمدی است و جلوی آن گرفته نمی‌شود — سقف یک "
@@ -1414,8 +1576,8 @@ public static partial class UiText
             + "prevented — a cap is a ceiling, not a reservation.");
 
         public static string SoldTraffic(string sold) => Pick(
-            $"ترافیک فروخته‌شده: {sold} در ماه",
-            $"Traffic sold: {sold} a month");
+            $"ترافیک فروخته‌شده: {Ltr(sold)} در ماه",
+            $"Traffic sold: {Ltr(sold)} a month");
 
         /// <summary>
         /// No pool comparison for traffic, and the screen says why rather than leaving a reader to
@@ -1464,14 +1626,14 @@ public static partial class UiText
             "This workspace fits inside the new limits.");
 
         public static string PreviewStorageOverage(string overage) => Pick(
-            $"بلافاصله {overage} بیشتر از سقف فضا خواهد بود — آپلود جدید رد می‌شود.",
-            $"Immediately {overage} over the storage cap — new uploads will be refused.");
+            $"بلافاصله {Ltr(overage)} بیشتر از سقف فضا خواهد بود — آپلود جدید رد می‌شود.",
+            $"Immediately {Ltr(overage)} over the storage cap — new uploads will be refused.");
 
         public static string PreviewFilesOver(int files, string limit) => Pick(
-            $"{Numerals.Count(files)} فایل بزرگ‌تر از {limit} است. این‌ها دست‌نخورده می‌مانند و "
+            $"{Numerals.Count(files)} فایل بزرگ‌تر از {Ltr(limit)} است. این‌ها دست‌نخورده می‌مانند و "
             + "دانلود و اشتراکشان کار می‌کند.",
             files == 1
-                ? $"1 file is larger than {limit}. It is left alone and keeps downloading and sharing."
+                ? $"1 file is larger than {Ltr(limit)}. It is left alone and keeps downloading and sharing."
                 : $"{Numerals.Count(files)} files are larger than {limit}. They are left alone and "
                   + "keep downloading and sharing.");
 

@@ -44,9 +44,9 @@
     ];
 }
 
-<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+<div class="page-head" style="margin-bottom: 8px;">
     <h1 class="page-title">@UiText.Design.Title</h1>
-    <span class="mono muted" style="font-size: 11.5px;" dir="ltr">wwwroot/css/tokens.css · app.css</span>
+    <span class="mono muted push-end" style="font-size: 11.5px;" dir="ltr">wwwroot/css/tokens.css · app.css</span>
 </div>
 <p class="page-sub" style="margin-bottom: 18px; max-width: 70ch;">
     @UiText.Design.IntroBefore<span class="mono" dir="ltr">var(--token)</span>@UiText.Design.IntroAfter
@@ -67,8 +67,7 @@
     {
         @* Each panel carries its own data-theme, so both palettes are on screen at once instead of
            one being a memory of the last time you clicked the toggle. *@
-        <div data-theme="@theme"
-             style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px;">
+        <div class="theme-sample" data-theme="@theme">
             <div class="row" style="justify-content: space-between; margin-bottom: 14px;">
                 <h3 class="card-title">@label</h3>
                 <span class="mono muted" style="font-size: 11px;" dir="ltr">
@@ -233,13 +232,11 @@
 <p class="muted" style="font-size: 11.5px; margin: 0 0 14px;">
     @UiText.Design.ThemeNoteBefore<span class="mono" dir="ltr">data-theme</span>@UiText.Design.ThemeNoteAfter
 </p>
-<div data-theme="light"
-     style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 26px;">
+<div class="theme-sample" data-theme="light" style="margin-bottom: 26px;">
     <partial name="_Gallery" model="@("light")" />
 </div>
 
 <h2 class="section-title" id="dark" style="margin-bottom: 14px;">@UiText.Design.SectionComponentsDark</h2>
-<div data-theme="dark"
-     style="background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 18px;">
+<div class="theme-sample" data-theme="dark">
     <partial name="_Gallery" model="@("dark")" />
 </div>

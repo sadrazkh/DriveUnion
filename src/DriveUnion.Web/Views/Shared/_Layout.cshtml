@@ -231,12 +231,13 @@
                         border: 0, font: inherit, transparent background, cursor: pointer — so this
                         is the sidebar's own control at the row's end rather than a second one bolted
                         underneath. It sits in the identity row because that is whose session it is.
+                        The smaller padding and type it wears there are in app.css, under
+                        .sidebar-identity-out, rather than in a style attribute nothing can test.
                     *@
                     <form method="post" action="/Identity/Account/Logout" class="push-end sidebar-identity-out">
                         @Html.AntiForgeryToken()
                         <button type="submit"
                                 class="nav-item"
-                                style="padding: 6px 10px; font-size: 12px;"
                                 title="@UiText.Shell.SignOutTitle">@UiText.Shell.SignOut</button>
                     </form>
                 }

@@ -4,31 +4,30 @@
     ViewData["Title"] = UiText.Tenants.WorkspaceHeading(Model.Name);
 
     const string MemberCols = "--cols: minmax(0,1fr) 130px 90px 130px 300px";
-    const string HistoryCols = "--cols: 150px 130px minmax(0,1fr) minmax(0,1fr)";
 
-    const string InputStyle =
-        "border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px;";
+    // The same five tracks the plan screen's copy of this table uses, for the same rows: when,
+    // which number, from, to, why. It used to be four, with «از» and «به» merged into one «تغییر»
+    // cell — see the history table below for why that could not stay.
+    const string HistoryCols = "--cols: 150px 130px 110px 110px minmax(0,1fr)";
 
     var message = TempData["TenantsMessage"] as string;
     var error = ViewData["TenantsError"] as string ?? TempData["TenantsError"] as string;
 }
 
 <div class="stack" style="gap: 16px;">
-    <div class="row" style="align-items: baseline; gap: 12px;">
+    <div class="page-head">
         <h1 class="page-title">@UiText.Tenants.WorkspaceHeading(Model.Name)</h1>
         <a class="page-sub" href="@Url.Action("Index", "Tenants")">@UiText.Tenants.BackToTenants</a>
     </div>
 
     @if (message is not null)
     {
-        <div class="card"><div class="card-body"><span style="font-size: 12.5px;">@message</span></div></div>
+        <p class="notice" role="status">@message</p>
     }
 
     @if (error is not null)
     {
-        <div class="card">
-            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@error</span></div>
-        </div>
+        <p class="notice notice--danger" role="alert">@error</p>
     }
 
     <div class="card">
@@ -126,10 +125,10 @@
                                     setting somebody else's credential, and a browser that offered to
                                     fill it with the operator's own would be offering to hand it over.
                                 *@
-                                <input name="Password" type="password" required dir="ltr"
+                                <input name="Password" type="password" class="control" required dir="ltr"
                                        autocomplete="new-password"
                                        aria-label="@UiText.Tenants.PasswordField"
-                                       style="@InputStyle width: 150px;" />
+                                       style="width: 150px;" />
                                 <button type="submit" class="btn btn--sm">@UiText.Tenants.ResetPassword</button>
                             </form>
                         </div>
@@ -146,7 +145,7 @@
                     and the sentence names the change — a disabled form with no explanation is how
                     somebody concludes the panel is broken.
                 *@
-                <span style="font-size: 12.5px; color: var(--warn);">@UiText.Tenants.SeatsFullHere</span>
+                <span class="warn" style="font-size: 12.5px;">@UiText.Tenants.SeatsFullHere</span>
             }
             else
             {
@@ -156,22 +155,22 @@
 
                     <div class="card-title">@UiText.Tenants.AddMemberHeading</div>
 
+                    @* .form-field around the label and .control on the box, like every other form in
+                       the panel. These three wrapped the pair in .field, which is the box itself. *@
                     <div class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
-                        <div class="field" style="flex: 1 1 220px;">
+                        <div class="form-field" style="flex: 1 1 220px;">
                             <label class="field-label" for="member-email">@UiText.Tenants.EmailField</label>
-                            <input id="member-email" name="Email" type="email" required dir="ltr"
-                                   value="@Model.Form.Email"
-                                   style="@InputStyle width: 100%;" />
+                            <input id="member-email" name="Email" type="email" class="control"
+                                   required dir="ltr" value="@Model.Form.Email" />
                         </div>
 
-                        <div class="field" style="flex: 1 1 180px;">
+                        <div class="form-field" style="flex: 1 1 180px;">
                             <label class="field-label" for="member-name">@UiText.Tenants.DisplayNameField</label>
-                            <input id="member-name" name="DisplayName" maxlength="200"
-                                   value="@Model.Form.DisplayName"
-                                   style="@InputStyle width: 100%;" />
+                            <input id="member-name" name="DisplayName" class="control"
+                                   maxlength="200" value="@Model.Form.DisplayName" />
                         </div>
 
-                        <div class="field" style="flex: 1 1 180px;">
+                        <div class="form-field" style="flex: 1 1 180px;">
                             <label class="field-label" for="member-password">@UiText.Tenants.PasswordField</label>
                             @*
                                 Never given a value attribute, on any path. A refused password
@@ -179,17 +178,16 @@
                                 the back-forward cache and in anything between here and the browser
                                 that keeps response bodies.
                             *@
-                            <input id="member-password" name="Password" type="password" required dir="ltr"
-                                   autocomplete="new-password"
-                                   style="@InputStyle width: 100%;" />
+                            <input id="member-password" name="Password" type="password" class="control"
+                                   required dir="ltr" autocomplete="new-password" />
                         </div>
 
                         <button type="submit" class="btn btn--primary">@UiText.Tenants.AddMember</button>
                     </div>
 
                     <div class="stack" style="gap: 4px;">
-                        <span class="muted" style="font-size: 12px;">@UiText.Tenants.DisplayNameHint</span>
-                        <span class="muted" style="font-size: 12px;">@UiText.Tenants.PasswordHint</span>
+                        <span class="hint">@UiText.Tenants.DisplayNameHint</span>
+                        <span class="hint">@UiText.Tenants.PasswordHint</span>
                     </div>
                 </form>
             }
@@ -200,6 +198,13 @@
         One workspace's quota history on one workspace's page — the answer to «چرا سهمیه‌ام عوض شد».
         It is the same table the plans screen draws and it is not, and must not become, a general
         audit log.
+
+        The same table, now in the same shape: «از» and «به» are two columns here as they are there,
+        and they were one merged «تغییر» cell. The merge was what broke it. «500 GB ← 1 TB» is one
+        string holding two Latin quantities and an arrow, and no part of it can be isolated from the
+        rest — the bidi algorithm resolves the neutral run between «500» and «GB» to the paragraph's
+        own direction and the cell renders «GB ← 1 TB 500». Two cells can each carry dir="ltr", and
+        the reading order the arrow was standing in for is the column order.
     *@
     <div class="card card--flush">
         <div class="card-head">
@@ -210,7 +215,8 @@
             <div class="dtable-head">
                 <div>@UiText.Tenants.ColumnWhen</div>
                 <div>@UiText.Plans.ColumnField</div>
-                <div>@UiText.Tenants.ColumnChange</div>
+                <div>@UiText.Plans.ColumnFrom</div>
+                <div>@UiText.Plans.ColumnTo</div>
                 <div>@UiText.Tenants.ColumnReason</div>
             </div>
 
@@ -225,9 +231,10 @@
                 @foreach (var row in Model.History)
                 {
                     <div class="dtable-row">
-                        <div style="font-size: 12px;">@row.WhenText</div>
-                        <div style="font-size: 12px;">@row.FieldText</div>
-                        <div class="cell-num">@UiText.Tenants.FromTo(row.FromText, row.ToText)</div>
+                        <div>@row.WhenText</div>
+                        <div>@row.FieldText</div>
+                        <div class="cell-num" dir="ltr">@row.FromText</div>
+                        <div class="cell-num" dir="ltr">@row.ToText</div>
                         <div class="cell-muted" title="@row.Reason">@row.Reason</div>
                     </div>
                 }
@@ -244,7 +251,7 @@
     *@
     <div class="card">
         <div class="card-head">
-            <div class="card-title" style="color: var(--muted);">@UiText.Tenants.NoDeletionHeading</div>
+            <div class="card-title muted">@UiText.Tenants.NoDeletionHeading</div>
         </div>
         <div class="card-body">
             <p style="font-size: 12.5px; margin: 0;">@UiText.Tenants.NoDeletionBody</p>

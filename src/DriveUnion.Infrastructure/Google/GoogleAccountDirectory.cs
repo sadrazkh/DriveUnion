@@ -134,6 +134,17 @@ public sealed class GoogleAccountDirectory : IGoogleAccountDirectory
             account.Email = about.Email;
         }
 
+        // The client that issued this refresh token, and the only one that will ever be able to
+        // present it. Written on a reconnection too, and not just on a new row: reconnecting under a
+        // different client is exactly how an operator moves an account from one Google project to
+        // another, and a stale binding here would make the account unrefreshable an hour later —
+        // with the panel blaming the consent screen.
+        account.OAuthClientId = grant.ClientId;
+
+        // Whatever the account last failed with is answered by this grant.
+        account.LastFailureReason = null;
+        account.LastFailureAt = null;
+
         account.AccessTokenProtected = _protector.Protect(grant.AccessToken);
         account.AccessTokenExpiresAt = grant.ExpiresAt;
         account.QuotaTotalBytes = about.LimitBytes;

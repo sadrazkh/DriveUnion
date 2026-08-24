@@ -183,6 +183,62 @@
   text-wrap: pretty;
 }
 
+/* ------------------------------------------------------- what an account card says about its client */
+
+/*
+ * Which OAuth client connected this account, under the address. Muted, because on a healthy pool it
+ * is a fact nobody needs — it becomes the most important line on the card only when the client is
+ * gone, which is what the --warn variant is for.
+ */
+.account-client {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.account-client--warn {
+  color: var(--danger);
+}
+
+/*
+ * The operator's own diagnostic. It is deliberately unmissable — a whole block rather than a line —
+ * because the failure it reports is one an operator can act on and was previously reported nowhere
+ * at all: the pool went dark on a redeploy and the only visible symptom was a customer being told
+ * storage was unavailable.
+ */
+.account-failure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--danger-soft);
+}
+
+.account-failure-head {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/*
+ * Google's own sentence, kept as it arrived. `anywhere` because it can carry a URI, and one
+ * unbreakable token is enough to widen the card past a 375px window.
+ */
+.account-failure-text {
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 /* ------------------------------------------------------- the setup panel on /accounts */
 
 /*
@@ -379,6 +435,80 @@
   border-radius: 11px;
   background: var(--danger-soft);
   color: var(--text);
+}
+
+/* ------------------------------------------------------- the stored clients, inside the setup panel */
+
+.setup-clients {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* A heading inside a card, not a page title: the panel's own summary is the largest thing here. */
+.setup-subhead {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.setup-client {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface2);
+}
+
+.setup-client-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* How many accounts depend on this client. Pushed to the row's inline end so the two badges read as
+   a pair and this reads as the row's own fact. */
+.setup-client-count {
+  margin-inline-start: auto;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* The client id and the redirect URI. Both are strings the operator compares character for
+   character against Google Cloud, so they are LTR monospace in an RTL card, and both can be long
+   enough to widen the panel past a narrow window without the break rule. */
+.setup-client-value {
+  font-size: 11.5px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.setup-client-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* Folded by default: the list is what the operator came to read, and three text boxes per client
+   would bury it. Same <details> reasoning as the panel around it — no script involved. */
+.setup-client-edit-summary {
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.setup-client-edit-summary::-webkit-details-marker {
+  display: none;
+}
+
+.setup-client-edit[open] > .setup-client-edit-summary {
+  margin-bottom: 10px;
 }
 
 .setup-form {

@@ -13,12 +13,17 @@ using Microsoft.Extensions.Options;
 namespace DriveUnion.Tests.Accounts;
 
 /// <summary>
-/// The settings the operator types in, and the rule that decides which of two sources wins.
+/// The settings the operator types in, the rule that decides which of two sources wins, and — since
+/// the panel can hold more than one client — which client a given account is refreshed with.
 ///
-/// The rule is the whole point of this file: a deployment that puts <c>Google:ClientId</c> in the
-/// environment must not have it silently replaced by something typed into a web form. The reverse —
-/// a form that quietly loses to an environment variable nobody mentioned — is just as bad, so the
-/// screen is also required to say when it is happening.
+/// The precedence rule is the older half of this file: a deployment that puts <c>Google:ClientId</c>
+/// in the environment must not have it silently replaced by something typed into a web form, and the
+/// reverse is just as bad, so the screen is required to say when it is happening.
+///
+/// The newer half is the binding. A refresh token can only be presented by the client that issued
+/// it, so "which client is in force" and "which client refreshes this account" are two different
+/// questions with two different answers, and conflating them is the failure that looks like working
+/// multi-client support until the first hour elapses.
 /// </summary>
 public class GoogleCredentialSettingsTests
 {
@@ -107,8 +112,8 @@ public class GoogleCredentialSettingsTests
     [InlineData("   ")]
     public void A_blank_configuration_value_is_not_a_configuration_value(string blank)
     {
-        var store = new FakeCredentialStore();
-        store.Save(PanelClientId, PanelSecret, PanelRedirectUri);
+        var store = new FakeGoogleOAuthClientStore();
+        store.Save(id: null, PanelClientId, PanelSecret, PanelRedirectUri);
 
         var resolver = Resolver(store, new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -130,7 +135,7 @@ public class GoogleCredentialSettingsTests
     public void Whitespace_around_a_value_is_not_part_of_the_value()
     {
         var resolver = Resolver(
-            new FakeCredentialStore(),
+            new FakeGoogleOAuthClientStore(),
             new Dictionary<string, string?>(StringComparer.Ordinal)
             {
                 ["ClientId"] = $"  {PanelClientId}\n",
@@ -158,6 +163,72 @@ public class GoogleCredentialSettingsTests
         harness.Credentials.Describe().ClientSecretSource.Should().Be(GoogleCredentialSource.None);
     }
 
+    // ────────────────────────────────────────── which client refreshes which account
+
+    /// <summary>
+    /// The lookup the whole multi-client story rests on. An account connected under one client
+    /// cannot be refreshed by another — Google answers <c>invalid_grant</c>, which this codebase
+    /// turns into "reconnect this account" — so the refresh asks for a client by id rather than for
+    /// whatever is in force.
+    /// </summary>
+    [Fact]
+    public void A_stored_client_can_be_resolved_by_its_own_client_id_even_when_another_is_in_force()
+    {
+        var harness = ConnectFlowHarness.Create(configured: false);
+
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+        Save(harness, "second.apps.googleusercontent.com", "GOCSPX-second", PanelRedirectUri);
+
+        // The first is still what a new connection would use — adding a client must not move that.
+        harness.Credentials.Value.ClientId.Should().Be(PanelClientId);
+
+        var second = harness.Credentials.ForClientId("second.apps.googleusercontent.com");
+
+        second.Should().NotBeNull();
+        second!.ClientSecret.Should().Be(
+            "GOCSPX-second",
+            "an account connected under the second client is refreshed with the second client's secret");
+    }
+
+    /// <summary>
+    /// The configured client has no row, and an account connected under it still has to be
+    /// refreshable — so the lookup answers for it too, and answers for it first.
+    /// </summary>
+    [Fact]
+    public void The_configured_client_answers_for_its_own_id_and_a_stored_row_cannot_shadow_it()
+    {
+        var harness = ConnectFlowHarness.Create(configured: true);
+
+        // The same client id, saved into the panel with a different secret. Configuration wins.
+        Save(harness, ConnectFlowHarness.ClientId, "GOCSPX-typed-over-the-environment", PanelRedirectUri);
+
+        var resolved = harness.Credentials.ForClientId(ConnectFlowHarness.ClientId);
+
+        resolved.Should().NotBeNull();
+        resolved!.ClientSecret.Should().Be(ConnectFlowHarness.ClientSecret);
+    }
+
+    [Fact]
+    public void A_client_id_nothing_holds_resolves_to_nothing_rather_than_to_the_wrong_client()
+    {
+        var harness = ConnectFlowHarness.Create(configured: true);
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+
+        harness.Credentials.ForClientId("removed-last-week.apps.googleusercontent.com").Should().BeNull();
+    }
+
+    [Fact]
+    public void A_stored_client_whose_secret_no_longer_decrypts_resolves_to_nothing()
+    {
+        var harness = ConnectFlowHarness.Create(configured: false);
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+
+        harness.Store.SecretIsUnreadable = true;
+
+        harness.Credentials.ForClientId(PanelClientId).Should().BeNull(
+            "half a client cannot refresh anything, and pretending otherwise is a 401 an hour later");
+    }
+
     /// <summary>
     /// The mechanism the whole feature rests on, pinned in the container.
     ///
@@ -173,7 +244,8 @@ public class GoogleCredentialSettingsTests
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?>(StringComparer.Ordinal)
             {
-                // Its own file, so this test cannot write into the test host's content root.
+                // A path that does not exist, so the one-time import of the retired JSON file walks
+                // straight back out and this test never touches the database it has no schema for.
                 [$"{GoogleOAuthOptions.SectionName}:CredentialStorePath"] =
                     Path.Combine(Path.GetTempPath(), $"driveunion-di-{Guid.NewGuid():N}.json"),
             }).Build();
@@ -209,19 +281,25 @@ public class GoogleCredentialSettingsTests
         var setup = (await PageAsync(harness)).Setup;
 
         setup.SecretIsSet.Should().BeTrue();
-        setup.StoredSecretIsSet.Should().BeTrue();
+        setup.Clients.Should().ContainSingle().Which.SecretIsSet.Should().BeTrue();
 
         // Every string the view model carries, checked as a set: the secret is not in any of them,
         // so no future change to the template can start rendering one.
-        foreach (var value in new[]
-                 {
-                     setup.ClientId,
-                     setup.RedirectUri,
-                     setup.SuggestedRedirectUri,
-                     setup.FormClientId,
-                     setup.FormRedirectUri,
-                     setup.StoredUpdatedText ?? string.Empty,
-                 })
+        var rendered = new[]
+        {
+            setup.ClientId,
+            setup.RedirectUri,
+            setup.SuggestedRedirectUri,
+            setup.FormRedirectUri,
+        }.Concat(setup.Clients.SelectMany(c => new[]
+        {
+            c.Label,
+            c.ClientId,
+            c.RedirectUri,
+            c.UpdatedText,
+        }));
+
+        foreach (var value in rendered)
         {
             value.Should().NotContain(PanelSecret);
         }
@@ -246,7 +324,7 @@ public class GoogleCredentialSettingsTests
         setup.RedirectUri.Should().Be(ConnectFlowHarness.SuggestedRedirectUri);
         setup.RedirectUriSource.Should().Be(GoogleCredentialSource.None);
 
-        // And the form is pre-filled with it, so a first-time operator's only action is «ذخیره».
+        // And the «add» form is pre-filled with it, so a first-time operator's only action is «ذخیره».
         setup.FormRedirectUri.Should().Be(ConnectFlowHarness.SuggestedRedirectUri);
     }
 
@@ -265,19 +343,27 @@ public class GoogleCredentialSettingsTests
         setup.SuggestedRedirectUri.Should().Be(ConnectFlowHarness.SuggestedRedirectUri);
     }
 
+    /// <summary>
+    /// Each stored client is edited on its own row, pre-filled with its own values. Typing over a
+    /// box that showed the environment's value would do nothing, which is the most confusing form a
+    /// form can take — and with several clients there is no single "the panel's copy" to show.
+    /// </summary>
     [Fact]
-    public async Task The_form_is_pre_filled_from_the_panels_own_copy_and_not_from_the_environment()
+    public async Task Every_stored_client_is_listed_with_its_own_values_whatever_is_in_force()
     {
         var harness = ConnectFlowHarness.Create(configured: true);
         Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
 
         var setup = (await PageAsync(harness)).Setup;
 
-        // Typing over a box that showed the environment's value would do nothing, which is the most
-        // confusing form a form can take.
-        setup.FormClientId.Should().Be(PanelClientId);
-        setup.ClientId.Should().Be(ConnectFlowHarness.ClientId);
+        var row = setup.Clients.Should().ContainSingle().Subject;
+        row.ClientId.Should().Be(PanelClientId);
+        row.RedirectUri.Should().Be(PanelRedirectUri);
+        row.IsDefault.Should().BeTrue();
+
+        setup.ClientId.Should().Be(ConnectFlowHarness.ClientId, "the environment is what is in force");
         setup.ConfigurationOutranksPanel.Should().BeTrue();
+        setup.ConfigurationSuppliesTheClient.Should().BeTrue();
     }
 
     [Fact]
@@ -289,9 +375,9 @@ public class GoogleCredentialSettingsTests
 
         page.ConsentConfigured.Should().BeFalse();
         page.Setup.IsComplete.Should().BeFalse();
-        page.Setup.HasStoredClient.Should().BeFalse();
         page.Setup.SecretIsSet.Should().BeFalse();
         page.Setup.ClientId.Should().BeEmpty();
+        page.Setup.Clients.Should().BeEmpty();
     }
 
     // ─────────────────────────────────────────────────────────────────────────── refusals
@@ -330,13 +416,32 @@ public class GoogleCredentialSettingsTests
         harness.Credentials.Value.RedirectUri.Should().Be("http://localhost:7169/accounts/callback");
     }
 
+    /// <summary>
+    /// Adding a client always needs its own secret; only an edit of the client that already holds
+    /// one may leave the field blank. A blank secret on an add would store a client that cannot
+    /// exchange anything, and the operator would meet that at Google's screen.
+    /// </summary>
     [Fact]
-    public void The_secret_may_be_left_blank_once_one_is_stored()
+    public void A_second_client_cannot_borrow_the_first_ones_secret_by_leaving_the_field_blank()
     {
         var harness = ConnectFlowHarness.Create(configured: false);
         Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
 
-        Save(harness, "corrected.apps.googleusercontent.com", clientSecret: null, PanelRedirectUri);
+        Save(harness, "second.apps.googleusercontent.com", clientSecret: null, PanelRedirectUri);
+
+        harness.TempData["Error"].Should().Be("کلید محرمانه (Client Secret) را وارد کنید.");
+        harness.Credentials.Describe().StoredClients.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void The_secret_may_be_left_blank_when_editing_the_client_that_holds_one()
+    {
+        var harness = ConnectFlowHarness.Create(configured: false);
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+
+        var id = harness.Credentials.Describe().StoredClients.Single().Id;
+
+        Save(harness, "corrected.apps.googleusercontent.com", clientSecret: null, PanelRedirectUri, id);
 
         harness.TempData["Error"].Should().BeNull();
         harness.Credentials.Value.ClientId.Should().Be("corrected.apps.googleusercontent.com");
@@ -344,24 +449,100 @@ public class GoogleCredentialSettingsTests
     }
 
     [Fact]
-    public void Clearing_takes_the_panels_copy_away_and_leaves_configuration_alone()
+    public void Removing_a_client_takes_the_panels_copy_away_and_leaves_configuration_alone()
     {
         var harness = ConnectFlowHarness.Create(configured: true);
         Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
 
-        harness.Controller.ClearGoogleCredentials().Should().BeOfType<RedirectToActionResult>();
+        var id = harness.Credentials.Describe().StoredClients.Single().Id;
+
+        harness.Controller.RemoveGoogleClient(id).Should().BeOfType<RedirectToActionResult>();
 
         harness.Credentials.Describe().Stored.Should().BeNull();
         harness.Credentials.Value.ClientId.Should().Be(ConnectFlowHarness.ClientId);
+    }
+
+    /// <summary>
+    /// The refusal, in a sentence, naming the accounts. Removing a client accounts still depend on
+    /// does not fail when it is pressed — it fails an hour later, on every one of them at once, as
+    /// uploads reporting that storage is unavailable. Which is how this product lost its pool once.
+    /// </summary>
+    [Fact]
+    public void Removing_a_client_accounts_still_need_is_refused_and_the_screen_names_them()
+    {
+        var harness = ConnectFlowHarness.Create(configured: false);
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+
+        var id = harness.Credentials.Describe().StoredClients.Single().Id;
+        harness.Store.DependentAccounts[PanelClientId] = ["A1", "A2"];
+
+        harness.Controller.RemoveGoogleClient(id).Should().BeOfType<RedirectToActionResult>();
+
+        harness.TempData["Error"].Should().NotBeNull();
+        harness.TempData["Error"]!.ToString().Should().Contain("A1، A2");
+        harness.Credentials.Describe().StoredClients.Should().ContainSingle("nothing was removed");
+    }
+
+    [Fact]
+    public void Promoting_a_client_moves_what_the_next_connection_uses()
+    {
+        var harness = ConnectFlowHarness.Create(configured: false);
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+        Save(harness, "second.apps.googleusercontent.com", "GOCSPX-second", PanelRedirectUri);
+
+        var second = harness.Credentials.Describe().StoredClients
+            .Single(c => c.ClientId == "second.apps.googleusercontent.com");
+
+        harness.Controller.UseGoogleClient(second.Id).Should().BeOfType<RedirectToActionResult>();
+
+        harness.Credentials.Value.ClientId.Should().Be("second.apps.googleusercontent.com");
+        harness.TempData["Notice"].Should().Be(
+            "اتصال‌های بعدی با این کلاینت انجام می‌شود. اکانت‌های موجود دست‌نخورده می‌مانند.");
+    }
+
+    /// <summary>
+    /// Promoting a stored client while the environment supplies one changes nothing about the next
+    /// connection. An operator who was not told that would go looking for the fault in Google Cloud.
+    /// </summary>
+    [Fact]
+    public void Promoting_a_client_that_configuration_outranks_says_so()
+    {
+        var harness = ConnectFlowHarness.Create(configured: true);
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+        Save(harness, "second.apps.googleusercontent.com", "GOCSPX-second", PanelRedirectUri);
+
+        var second = harness.Credentials.Describe().StoredClients
+            .Single(c => c.ClientId == "second.apps.googleusercontent.com");
+
+        harness.Controller.UseGoogleClient(second.Id);
+
+        harness.Credentials.Value.ClientId.Should().Be(ConnectFlowHarness.ClientId);
+        harness.TempData["Notice"].Should().Be(
+            "انتخاب شد، اما پیکربندی سرور کلاینت خودش را اعمال می‌کند و اتصال بعدی با همان انجام می‌شود.");
+    }
+
+    [Fact]
+    public void One_client_id_cannot_be_saved_twice()
+    {
+        var harness = ConnectFlowHarness.Create(configured: false);
+        Save(harness, PanelClientId, PanelSecret, PanelRedirectUri);
+
+        Save(harness, PanelClientId, "GOCSPX-a-second-secret", PanelRedirectUri);
+
+        harness.TempData["Error"].Should().Be(
+            "این Client ID از قبل ذخیره شده است. همان ردیف را ویرایش کنید.");
+        harness.Credentials.Describe().StoredClients.Should().ContainSingle();
     }
 
     private static IActionResult Save(
         ConnectFlowHarness harness,
         string clientId,
         string? clientSecret,
-        string redirectUri) =>
+        string redirectUri,
+        Guid? id = null) =>
         harness.Controller.SaveGoogleCredentials(new GoogleCredentialsForm
         {
+            Id = id,
             ClientId = clientId,
             ClientSecret = clientSecret,
             RedirectUri = redirectUri,
@@ -371,7 +552,7 @@ public class GoogleCredentialSettingsTests
         ConnectFlowHarness.PageModel(await harness.Controller.Index(CancellationToken.None));
 
     private static GoogleOAuthCredentialResolver Resolver(
-        FakeCredentialStore store,
+        FakeGoogleOAuthClientStore store,
         Dictionary<string, string?> googleSection)
     {
         var settings = googleSection.ToDictionary(

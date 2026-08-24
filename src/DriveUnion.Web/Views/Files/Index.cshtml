@@ -22,7 +22,7 @@
      data-antiforgery-header="@Model.Antiforgery.HeaderName"
      data-antiforgery-token="@Model.Antiforgery.Token">
 
-    <div class="row" style="align-items: baseline; gap: 12px;">
+    <div class="page-head">
         <h1 class="page-title">@UiText.Files.Title</h1>
         <span class="page-sub">@UiText.Files.FileCount(Model.Rows.Count)</span>
     </div>
@@ -93,7 +93,7 @@
                 }
                 else
                 {
-                    <div class="ph" style="height: 150px; border-bottom: 1px solid var(--line);">
+                    <div class="ph detail-preview">
                         <span class="ph-label">@Model.Selected.KindText</span>
                     </div>
 

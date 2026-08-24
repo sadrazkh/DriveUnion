@@ -4,10 +4,20 @@ namespace DriveUnion.Infrastructure.Google;
 /// What Google handed back from the token endpoint. The refresh token is present only on the
 /// authorization-code exchange — a refresh grant reuses the one already stored.
 /// </summary>
+/// <param name="ClientId">
+/// The OAuth client this grant was obtained with, carried out because the caller has to store it.
+///
+/// A refresh token can only be presented by the client that issued it, so an account has to record
+/// which one that was — and it has to be the client the exchange actually used, not whatever is in
+/// force by the time the row is written. If the operator promotes a different client while the
+/// consent window is open, the exchange fails at Google and no account is written at all, which is
+/// the right outcome and a much better one than a row bound to a client that never saw it.
+/// </param>
 public sealed record GoogleTokenGrant(
     string AccessToken,
     string? RefreshToken,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    string ClientId);
 
 /// <summary>
 /// Owns every access token in the process.

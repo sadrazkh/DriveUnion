@@ -46,6 +46,28 @@ public sealed class GoogleAccount
     /// <summary>Short operator-facing handle: <c>A1</c>, <c>A2</c>. Shown on the account cards.</summary>
     public required string Label { get; set; }
 
+    /// <summary>
+    /// Google's own client id — the <c>…apps.googleusercontent.com</c> string — of the OAuth client
+    /// this account was connected under.
+    ///
+    /// <para><b>A refresh token belongs to the client that issued it.</b> Presenting it to a
+    /// different client is an <c>invalid_grant</c>, which this product turns into "reconnect this
+    /// account", so the moment the panel holds more than one client the refresh has to know which
+    /// one — and get it from here rather than from whatever happens to be in force. That is the part
+    /// of multi-client support that looks like it works until the first hour elapses.</para>
+    ///
+    /// <para>The client id itself and not a key into the clients table, because it is what Google
+    /// binds the grant to: removing a stored client and pasting the same one back leaves these rows
+    /// pointing at a client that still works, where a foreign key would leave them pointing at
+    /// nothing. It also covers the client a deployment supplies from its environment, which has no
+    /// row at all.</para>
+    ///
+    /// <para>Null on the rows written before this column existed. They are refreshed with the client
+    /// in force — which is the client that connected them, because there was only one — and this is
+    /// filled in the first time that succeeds, so the fallback retires itself.</para>
+    /// </summary>
+    public string? OAuthClientId { get; set; }
+
     /// <summary>Encrypted at rest. Never logged, never returned by an API.</summary>
     public required string RefreshTokenProtected { get; set; }
 
@@ -62,6 +84,28 @@ public sealed class GoogleAccount
     public long QuotaUsedBytes { get; set; }
 
     public GoogleAccountStatus Status { get; set; }
+
+    /// <summary>
+    /// Why this account last stopped working, for the operator.
+    ///
+    /// <para><see cref="Status"/> says <c>Disconnected</c> and nothing said why. The customer's
+    /// sentence — «storage is unavailable» — is correct for them, because Google's own error text can
+    /// carry a session URI or the address of an account they must never learn about. But the operator
+    /// is the one person who can fix it, and they were being told nothing at all: a pool that died
+    /// because a redeploy deleted the OAuth client read exactly like a pool whose consent screen had
+    /// expired, and both read like nothing.</para>
+    ///
+    /// <para>Google's words, kept as they arrived and not translated: this is a diagnostic, and a
+    /// paraphrase of an OAuth error is worth less than the string that can be searched for. It is
+    /// only ever rendered on the operator-only accounts screen.</para>
+    /// </summary>
+    public string? LastFailureReason { get; set; }
+
+    /// <summary>
+    /// When <see cref="LastFailureReason"/> was recorded. Without it the card cannot tell a failure
+    /// from a minute ago from one that was fixed by a reconnection last week.
+    /// </summary>
+    public DateTimeOffset? LastFailureAt { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 

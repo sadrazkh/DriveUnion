@@ -144,6 +144,153 @@
             </p>
         }
 
+        @*
+            The stored clients.
+
+            They are rows in the database now, encrypted with the same key ring as the refresh
+            tokens — the version before this wrote a JSON file inside the container, a redeploy
+            deleted it, and the whole pool went dark because a refresh needs the client id and secret
+            that had just been destroyed. There is more than one because an account is bound to the
+            client that connected it: replacing a client's values is not the same as adding a client,
+            and the accounts already connected go on needing the old one.
+        *@
+        <div class="setup-clients">
+            <h2 class="setup-subhead">@UiText.Accounts.ClientsHeading</h2>
+            <p class="setup-note">@UiText.Accounts.ClientsWhy</p>
+
+            @if (Model.ConfigurationSuppliesTheClient && Model.Clients.Count > 0)
+            {
+                @* Which client the next connection actually uses, said before the badge below can
+                   be mistaken for the last word. Not the same warning as the one over the form:
+                   nothing here has been overwritten, and these clients are still refreshing the
+                   accounts bound to them. *@
+                <p class="setup-note">
+                    @UiText.Accounts.ClientsOverriddenBefore<span class="mono" dir="ltr">@UiText.Accounts.ConfigurationKeys</span>@UiText.Accounts.ClientsOverriddenAfter
+                </p>
+            }
+
+            @if (Model.Clients.Count == 0)
+            {
+                <p class="setup-note">@UiText.Accounts.ClientsNone</p>
+            }
+
+            @foreach (var client in Model.Clients)
+            {
+                <div class="setup-client">
+                    <div class="setup-client-head">
+                        <span class="badge">@client.Label</span>
+
+                        @if (client.IsDefault)
+                        {
+                            @* Which client the next consent flow runs with — and, when the server
+                               supplies one, the note that says this badge is not the last word. *@
+                            <span class="badge badge--muted">@UiText.Accounts.ClientDefaultBadge</span>
+                        }
+
+                        <span class="setup-client-count">
+                            @(client.AccountCount == 0
+                                ? UiText.Accounts.ClientAccountsNone
+                                : UiText.Accounts.ClientAccountsInUse(client.AccountCount))
+                        </span>
+                    </div>
+
+                    <div class="setup-client-value mono" dir="ltr">@client.ClientId</div>
+                    <div class="setup-client-value mono" dir="ltr">@client.RedirectUri</div>
+
+                    <div class="setup-client-meta">
+                        <span>@(client.SecretIsSet ? UiText.Accounts.SecretStored : UiText.Accounts.SourceUnset)</span>
+                        <span>@UiText.Accounts.LastChanged(client.UpdatedText)</span>
+                    </div>
+
+                    @* Folded, because the list is what the operator came to read and three text
+                       boxes per client would bury it. *@
+                    <details class="setup-client-edit">
+                        <summary class="setup-client-edit-summary">@UiText.Accounts.EditClientNamed(client.Label)</summary>
+
+                        <form class="setup-form" method="post" action="@Url.Action("SaveGoogleCredentials", "Accounts")">
+                            @Html.AntiForgeryToken()
+
+                            @* The one field that turns this from an insert into an edit. The «add»
+                               form below does not render it at all, so a blank id cannot silently
+                               become an edit of nothing. *@
+                            <input type="hidden" name="Id" value="@client.Id" />
+
+                            <div class="stack" style="gap: 4px;">
+                                <label class="field-label" for="client-id-@client.Id">Client ID</label>
+                                <span class="field">
+                                    <input id="client-id-@client.Id"
+                                           name="ClientId"
+                                           dir="ltr"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           value="@client.ClientId" />
+                                </span>
+                            </div>
+
+                            <div class="stack" style="gap: 4px;">
+                                <label class="field-label" for="client-secret-@client.Id">Client Secret</label>
+                                @* type=password, and never a value attribute: the secret leaves this
+                                   server exactly once, on its way to Google. Blank means
+                                   «unchanged», which the placeholder says. *@
+                                <span class="field">
+                                    <input id="client-secret-@client.Id"
+                                           name="ClientSecret"
+                                           type="password"
+                                           dir="ltr"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           placeholder="@(client.SecretIsSet ? UiText.Accounts.SecretPlaceholder : "GOCSPX-…")" />
+                                </span>
+                            </div>
+
+                            <div class="stack" style="gap: 4px;">
+                                <label class="field-label" for="client-redirect-@client.Id">Redirect URI</label>
+                                <span class="field">
+                                    <input id="client-redirect-@client.Id"
+                                           name="RedirectUri"
+                                           dir="ltr"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           value="@client.RedirectUri" />
+                                </span>
+                                <span class="setup-hint">@UiText.Accounts.RedirectUriHint</span>
+                            </div>
+
+                            <div class="row" style="gap: 8px;">
+                                <button type="submit" class="btn btn--primary btn--sm">@UiText.Accounts.Save</button>
+                            </div>
+                        </form>
+                    </details>
+
+                    <div class="row" style="gap: 8px;">
+                        @if (!client.IsDefault)
+                        {
+                            <form method="post" action="@Url.Action("UseGoogleClient", "Accounts", new { id = client.Id })">
+                                @Html.AntiForgeryToken()
+                                <button type="submit"
+                                        class="btn btn--sm"
+                                        aria-label="@UiText.Accounts.UseClientNamed(client.Label)">@UiText.Accounts.UseThisClient</button>
+                            </form>
+                        }
+
+                        @* A separate form, because a delete inside the edit form is one stray Enter
+                           away from being the button that submits. *@
+                        <form method="post" action="@Url.Action("RemoveGoogleClient", "Accounts", new { id = client.Id })">
+                            @Html.AntiForgeryToken()
+                            <button type="submit"
+                                    class="btn btn--danger btn--sm"
+                                    aria-label="@UiText.Accounts.RemoveClientNamed(client.Label)">@UiText.Accounts.RemoveClient</button>
+                        </form>
+                    </div>
+                </div>
+            }
+
+        </div>
+
+        @* The «add» form. It stays unfolded and pre-filled with this panel's own redirect URI,
+           because on a fresh deployment the operator's only action here is «ذخیره». *@
+        <h2 class="setup-subhead">@UiText.Accounts.AddClient</h2>
+
         <form class="setup-form" method="post" action="@Url.Action("SaveGoogleCredentials", "Accounts")">
             @Html.AntiForgeryToken()
 
@@ -158,18 +305,12 @@
                            dir="ltr"
                            autocomplete="off"
                            spellcheck="false"
-                           placeholder="123456789-abc.apps.googleusercontent.com"
-                           value="@Model.FormClientId" />
+                           placeholder="123456789-abc.apps.googleusercontent.com" />
                 </span>
             </div>
 
             <div class="stack" style="gap: 4px;">
                 <label class="field-label" for="setup-client-secret">Client Secret</label>
-                @*
-                    type=password so a shoulder or a screen share does not read it, and no value
-                    attribute ever — the secret leaves this server exactly once, on its way to
-                    Google. Blank means «unchanged», which the placeholder says.
-                *@
                 <span class="field">
                     <input id="setup-client-secret"
                            name="ClientSecret"
@@ -177,7 +318,7 @@
                            dir="ltr"
                            autocomplete="off"
                            spellcheck="false"
-                           placeholder="@(Model.StoredSecretIsSet ? UiText.Accounts.SecretPlaceholder : "GOCSPX-…")" />
+                           placeholder="GOCSPX-…" />
                 </span>
             </div>
 
@@ -196,22 +337,7 @@
 
             <div class="row" style="gap: 8px;">
                 <button type="submit" class="btn btn--primary">@UiText.Accounts.Save</button>
-
-                @if (Model.HasStoredClient)
-                {
-                    <span class="setup-hint push-end">@UiText.Accounts.LastChanged(Model.StoredUpdatedText ?? string.Empty)</span>
-                }
             </div>
         </form>
-
-        @if (Model.HasStoredClient)
-        {
-            @* A separate form, because a delete inside the save form is one stray Enter away from
-               being the button that submits. *@
-            <form method="post" action="@Url.Action("ClearGoogleCredentials", "Accounts")">
-                @Html.AntiForgeryToken()
-                <button type="submit" class="btn btn--danger btn--sm">@UiText.Accounts.DeleteStored</button>
-            </form>
-        }
     </div>
 </details>

@@ -43,8 +43,24 @@ public class PublicRateLimitTests
         rejected.Headers.Should().ContainKey("Retry-After");
     }
 
+    /// <summary>
+    /// The stream limiter refuses a sustained burst, and does not refuse one that is merely large.
+    ///
+    /// <para>Asserted as a range rather than as "the 121st request is the one that fails", which is
+    /// what this test used to say and what made it the suite's only reliable failure once the suite
+    /// grew past two thousand tests. The bucket replenishes on its own timer — 60 tokens a minute,
+    /// <c>AutoReplenishment = true</c> — and the old version's reasoning was that 121 in-process
+    /// requests finish long before a tick. Under a loaded machine they do not: the run that broke
+    /// this saw request 121 answered 200, which is exactly one refill's worth of tokens arriving
+    /// mid-loop.</para>
+    ///
+    /// <para>The product's promise is not arithmetic about the 121st request. It is that a burst of
+    /// this shape is eventually refused and that a legitimate one — a video being scrubbed — is not
+    /// refused early. Both bounds are asserted, so a bucket shrunk to ten would fail the lower one
+    /// and a limiter that never refuses would fail the upper, while a timer tick changes neither.</para>
+    /// </summary>
     [Fact]
-    public async Task The_stream_limiter_rejects_with_429_once_its_bucket_of_a_hundred_and_twenty_is_empty()
+    public async Task The_stream_limiter_refuses_a_sustained_burst_and_not_a_short_one()
     {
         // A bucket rather than a window because scrubbing a video legitimately fires a burst of
         // ranged requests. What the refill actually caps is the sustained rate a scanner needs.
@@ -53,14 +69,36 @@ public class PublicRateLimitTests
 
         using var client = harness.NewClient();
 
-        for (var i = 1; i <= DownloadBurst; i++)
+        // Generous enough to survive several refills arriving mid-loop, and still far below what a
+        // limiter that had stopped refusing anything would need.
+        const int Ceiling = DownloadBurst * 8;
+
+        var permitted = 0;
+        HttpStatusCode? refusedWith = null;
+
+        for (var i = 1; i <= Ceiling; i++)
         {
-            using var permitted = await client.GetAsync($"/d/{seeded.Slug}/file");
-            permitted.StatusCode.Should().Be(HttpStatusCode.OK, "request {0} is inside the bucket of 120", i);
+            using var response = await client.GetAsync($"/d/{seeded.Slug}/file");
+
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                refusedWith = response.StatusCode;
+                break;
+            }
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK, "request {0} was neither served nor refused", i);
+            permitted++;
         }
 
-        using var rejected = await client.GetAsync($"/d/{seeded.Slug}/file");
-        rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        refusedWith.Should().Be(
+            HttpStatusCode.TooManyRequests,
+            "a burst of {0} requests to an anonymous streaming route has to be refused at some point",
+            Ceiling);
+
+        permitted.Should().BeGreaterThanOrEqualTo(
+            DownloadBurst,
+            "the bucket holds {0}, so refusing earlier than that would cut off a viewer scrubbing a video",
+            DownloadBurst);
     }
 
     [Fact]

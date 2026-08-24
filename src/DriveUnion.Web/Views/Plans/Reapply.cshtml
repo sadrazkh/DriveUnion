@@ -13,16 +13,14 @@
     including a customer carrying a ceiling somebody negotiated for them.
 *@
 <div class="stack" style="gap: 16px;">
-    <div class="row" style="align-items: baseline; gap: 12px;">
+    <div class="page-head">
         <h1 class="page-title">@Model.Title</h1>
         <a class="page-sub" href="@Url.Action("Tier", "Plans", new { code = Model.Code })">@UiText.Plans.BackToPlans</a>
     </div>
 
     @if (error is not null)
     {
-        <div class="card">
-            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@error</span></div>
-        </div>
+        <p class="notice notice--danger" role="alert">@error</p>
     }
 
     <div class="card">
@@ -55,13 +53,13 @@
                 <span style="font-size: 12.5px;">@Model.CountsText</span>
 
                 @* The expensive mistake this button can make, said before it is pressed. *@
-                <span style="font-size: 12.5px; color: var(--warn);">@UiText.PlanAdmin.ReapplyTakesBackOverrides</span>
+                <span class="warn" style="font-size: 12.5px;">@UiText.PlanAdmin.ReapplyTakesBackOverrides</span>
 
-                <span class="muted" style="font-size: 12px;">@UiText.PlanAdmin.ReapplyIsAudited</span>
+                <span class="hint">@UiText.PlanAdmin.ReapplyIsAudited</span>
 
                 @* A downgrade constrains the next action, never an existing one — the same line the
                    per-workspace screen shows, because this is the same write done in a loop. *@
-                <span class="muted" style="font-size: 12px;">@UiText.Plans.PreviewRule</span>
+                <span class="hint">@UiText.Plans.PreviewRule</span>
             </div>
         </div>
 
@@ -72,10 +70,9 @@
                       class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap; width: 100%;">
                     @Html.AntiForgeryToken()
 
-                    <div style="flex: 1 1 260px;">
+                    <div class="form-field" style="flex: 1 1 260px;">
                         <label class="field-label" for="reapply-reason">@UiText.Plans.AssignReasonField</label>
-                        <input id="reapply-reason" name="Reason" required maxlength="512"
-                               style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px; width: 100%;" />
+                        <input id="reapply-reason" name="Reason" class="control" required maxlength="512" />
                     </div>
 
                     <button type="submit" class="btn btn--primary">@UiText.PlanAdmin.ReapplyConfirm</button>
@@ -84,5 +81,5 @@
         }
     </div>
 
-    <span class="muted" style="font-size: 12px;">@UiText.Plans.AssignReasonHint</span>
+    <span class="hint">@UiText.Plans.AssignReasonHint</span>
 </div>

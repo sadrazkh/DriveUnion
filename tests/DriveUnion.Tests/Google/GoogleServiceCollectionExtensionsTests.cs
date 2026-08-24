@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace DriveUnion.Tests.Google;
@@ -29,6 +30,18 @@ public class GoogleServiceCollectionExtensionsTests
         scope.ServiceProvider.GetRequiredService<IGoogleAccountDirectory>()
             .Should().BeOfType<GoogleAccountDirectory>();
         scope.ServiceProvider.GetRequiredService<ITokenProtector>().Should().NotBeNull();
+
+        // The OAuth clients, and what the accounts screen asks about them. Both arrive with
+        // AddGoogleDrive so that moving the credentials into the database costs Program.cs nothing.
+        scope.ServiceProvider.GetRequiredService<IGoogleOAuthClientStore>()
+            .Should().BeOfType<GoogleOAuthClientStore>();
+        scope.ServiceProvider.GetRequiredService<IGoogleClientUsageReader>()
+            .Should().BeOfType<GoogleClientUsageReader>();
+
+        // The one-time carry of the retired App_Data/google-oauth.json, registered unconditionally
+        // because it walks straight back out when there is no file.
+        scope.ServiceProvider.GetServices<IHostedService>()
+            .Should().ContainSingle(service => service is GoogleOAuthClientImport);
     }
 
     [Fact]

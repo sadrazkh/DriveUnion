@@ -69,10 +69,10 @@ public static partial class UiText
             "The default tier does not exist");
 
         public static string DefaultMissingBody(string code) => Pick(
-            $"Plans:DefaultPlanCode روی «{code}» تنظیم شده و هیچ ردیفی این کد را ندارد. ثبت‌نام "
+            $"Plans:DefaultPlanCode روی «{Ltr(code)}» تنظیم شده و هیچ ردیفی این کد را ندارد. ثبت‌نام "
             + "بعدی با خطای ۵۰۰ رد می‌شود. یا پلنی با همین کد بسازید، یا تنظیمات را روی یکی از "
             + "پلن‌های زیر ببرید.",
-            $"Plans:DefaultPlanCode is set to «{code}» and no tier holds that code. The next sign-up "
+            $"Plans:DefaultPlanCode is set to «{Ltr(code)}» and no tier holds that code. The next sign-up "
             + "fails with a 500. Either create a tier with that code, or point the setting at one of "
             + "the tiers below.");
 
@@ -115,8 +115,8 @@ public static partial class UiText
             + "box next time.");
 
         public static string StoredExactly(string size) => Pick(
-            $"ذخیره‌شده: {size}",
-            $"Stored: {size}");
+            $"ذخیره‌شده: {Ltr(size)}",
+            $"Stored: {Ltr(size)}");
 
         /// <summary>
         /// Only reachable for a row that was not written through this form. Saying it beats rounding

@@ -13,7 +13,7 @@
     goes nowhere is worse than its absence; the line under the card says who does change a plan.
 *@
 <div class="stack" style="gap: 16px;">
-    <div class="row" style="align-items: baseline; gap: 12px;">
+    <div class="page-head">
         <h1 class="page-title">@UiText.Plans.Title</h1>
         <span class="page-sub">@Model.FileCountText</span>
     </div>
@@ -42,7 +42,7 @@
                     {
                         @* Said in words rather than only in red: nothing has been deleted, and the
                            way out is deleting files, which needs the panel, which still works. *@
-                        <p class="muted" style="font-size: 12px; margin: 0;">@UiText.Plans.OverStorage</p>
+                        <p class="hint">@UiText.Plans.OverStorage</p>
                     }
                 </div>
 
@@ -52,7 +52,7 @@
                         <span style="font-size: 12.5px;">@UiText.Plans.FileLabel</span>
                         <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.MaxFileText</span>
                     </div>
-                    <p class="muted" style="font-size: 12px; margin: 0;">@Model.MaxFileExplanation</p>
+                    <p class="hint">@Model.MaxFileExplanation</p>
                 </div>
 
                 @* Traffic. The allowance is real and sold; the usage is not measured yet, and the
@@ -62,7 +62,7 @@
                         <span style="font-size: 12.5px;">@UiText.Plans.TrafficLabel</span>
                         <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.MonthlyTrafficText</span>
                     </div>
-                    <p class="muted" style="font-size: 12px; margin: 0;">@UiText.Plans.TrafficNotMeteredYet</p>
+                    <p class="hint">@UiText.Plans.TrafficNotMeteredYet</p>
                 </div>
 
                 @* Seats: a count of people, so Persian digits rather than a monospace readout. *@
@@ -74,7 +74,7 @@
         </div>
 
         <div class="card-foot">
-            <span class="muted" style="font-size: 12px;">@UiText.Plans.PlanChangeIsOperator</span>
+            <span class="hint">@UiText.Plans.PlanChangeIsOperator</span>
         </div>
     </div>
 </div>

@@ -18,16 +18,17 @@
         <p class="page-sub">@UiText.Plans.OperatorSubtitle</p>
     </div>
 
+    @* role="status" and role="alert" because these two sentences are the whole of what the screen
+       says back after a write, and until they were their own element there was nothing to put the
+       role on — an operator using a screen reader was told nothing had happened. *@
     @if (message is not null)
     {
-        <div class="card"><div class="card-body"><span style="font-size: 12.5px;">@message</span></div></div>
+        <p class="notice" role="status">@message</p>
     }
 
     @if (error is not null)
     {
-        <div class="card">
-            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@error</span></div>
-        </div>
+        <p class="notice notice--danger" role="alert">@error</p>
     }
 
     @*
@@ -40,7 +41,7 @@
     {
         <div class="card">
             <div class="card-head">
-                <div class="card-title" style="color: var(--danger);">@UiText.PlanAdmin.DefaultMissingHeading</div>
+                <div class="card-title danger">@UiText.PlanAdmin.DefaultMissingHeading</div>
             </div>
             <div class="card-body">
                 <p style="font-size: 12.5px; margin: 0;">@Model.DefaultMissingText</p>
@@ -54,7 +55,7 @@
     *@
     <div class="card">
         <div class="card-head">
-            <div class="card-title" style="color: var(--warn);">@UiText.Plans.PlaceholderHeading</div>
+            <div class="card-title warn">@UiText.Plans.PlaceholderHeading</div>
         </div>
         <div class="card-body">
             <p style="font-size: 12.5px; margin: 0;">@UiText.Plans.PlaceholderBody</p>
@@ -99,11 +100,15 @@
                             <span class="badge badge--muted" title="@UiText.PlanAdmin.DefaultBadgeTitle">@UiText.PlanAdmin.DefaultBadge</span>
                         }
                     </div>
-                    <div class="cell-num">@plan.StorageText</div>
-                    <div class="cell-num">@plan.MaxFileText</div>
-                    <div class="cell-num">@plan.MonthlyTrafficText</div>
+                    @* dir="ltr" on the three byte readouts and not on the fourth. «5 GB» is a number
+                       and a Latin unit with a space between them: in an RTL cell the bidi algorithm
+                       resolves that space to the paragraph's own direction and lays the two out as
+                       «GB 5». The seat count is Persian numerals in Persian and needs no isolate. *@
+                    <div class="cell-num" dir="ltr">@plan.StorageText</div>
+                    <div class="cell-num" dir="ltr">@plan.MaxFileText</div>
+                    <div class="cell-num" dir="ltr">@plan.MonthlyTrafficText</div>
                     <div class="cell-num">@plan.SeatsText</div>
-                    <div style="font-size: 12px; @(plan.IsRetired ? "color: var(--muted);" : string.Empty)">@plan.StatusText</div>
+                    <div class="@(plan.IsRetired ? "cell-muted" : null)">@plan.StatusText</div>
                     @* How many workspaces carry this tier — the size of a re-apply, never the size of
                        an edit. Editing the row above moves none of them. *@
                     <div class="cell-num">@plan.WorkspacesText</div>
@@ -137,7 +142,7 @@
         <div class="card-foot">
             @* Retire is the verb, and the screen says why here rather than in a refusal after the
                operator has already pressed something else. *@
-            <span class="muted" style="font-size: 12px;">@UiText.PlanAdmin.RetireRatherThanDelete</span>
+            <span class="hint">@UiText.PlanAdmin.RetireRatherThanDelete</span>
         </div>
     </div>
 
@@ -148,9 +153,15 @@
                 Over-commitment is shown rather than prevented: a cap is a per-customer ceiling, not
                 a reservation, and requiring the sum to fit the pool would make every new workspace
                 wait on a capacity purchase.
+
+                No dir="ltr" and no .mono, both of which this line used to carry. «تعهدشده: ۱۴ TB از
+                ۱۰ TB» is a Persian sentence with two Latin quantities set into it, and an LTR
+                isolate around the whole of it lays the sentence out left to right — the label ends
+                up on the wrong side and the reader starts at the last word. Left in the document's
+                direction the sentence reads correctly; what is still wrong is inside the two
+                quantities, and that can only be fixed where the sentence is assembled.
             *@
-            <span class="mono" dir="ltr"
-                  style="font-size: 11.5px; @(Model.IsOverCommitted ? "color: var(--warn);" : string.Empty)">@Model.CommittedText</span>
+            <span class="@(Model.IsOverCommitted ? "warn" : null)" style="font-size: 11.5px;">@Model.CommittedText</span>
         </div>
 
         <div class="dtable" style="@TenantCols">
@@ -182,7 +193,7 @@
                             </div>
                         </div>
                         <div class="cell-num">@tenant.FilesText</div>
-                        <div style="font-size: 12px;">@tenant.MembersText</div>
+                        <div>@tenant.MembersText</div>
                     </a>
                 }
             }
@@ -192,15 +203,18 @@
             <div class="stack" style="gap: 4px;">
                 @if (Model.IsOverCommitted)
                 {
-                    <span style="font-size: 12px; color: var(--warn);">@UiText.Plans.OverCommittedNote</span>
+                    <span class="warn" style="font-size: 12px;">@UiText.Plans.OverCommittedNote</span>
                 }
                 @*
                     Traffic gets no pool comparison, and the screen says why rather than leaving a
                     reader hunting for the second number: the box's egress ceiling is a bandwidth
                     figure and nobody has measured it yet.
+
+                    A sentence, not a readout — see «تعهدشده» above for why it is neither monospace
+                    nor an LTR isolate.
                 *@
-                <span class="mono" dir="ltr" style="font-size: 11.5px;">@Model.SoldTrafficText</span>
-                <span class="muted" style="font-size: 12px;">@UiText.Plans.SoldTrafficNote</span>
+                <span style="font-size: 11.5px;">@Model.SoldTrafficText</span>
+                <span class="hint">@UiText.Plans.SoldTrafficNote</span>
             </div>
         </div>
     </div>

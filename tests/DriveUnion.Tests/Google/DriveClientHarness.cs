@@ -12,7 +12,16 @@ internal sealed class StubTokenService : IGoogleTokenService
 {
     public const string AccessToken = "ya29.stub-access-token";
 
+    /// <summary>
+    /// The client this stub pretends the exchange ran under. The account directory writes it onto
+    /// the row, because a refresh token can only ever be presented by the client that issued it.
+    /// </summary>
+    public const string ExchangedClientId = "stub-client.apps.googleusercontent.com";
+
     public int Calls { get; private set; }
+
+    /// <summary>Set to make the exchange report a different client, the way a promoted one would.</summary>
+    public string ClientId { get; set; } = ExchangedClientId;
 
     public Task<string> GetAccessTokenAsync(Guid accountId, CancellationToken cancellationToken)
     {
@@ -27,7 +36,8 @@ internal sealed class StubTokenService : IGoogleTokenService
         Task.FromResult(new GoogleTokenGrant(
             AccessToken,
             "1//stub-refresh-token",
-            new DateTimeOffset(2026, 8, 23, 13, 0, 0, TimeSpan.Zero)));
+            new DateTimeOffset(2026, 8, 23, 13, 0, 0, TimeSpan.Zero),
+            ClientId));
 }
 
 internal static class DriveClientHarness

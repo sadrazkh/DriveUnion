@@ -9,6 +9,16 @@ namespace DriveUnion.Web.Models;
 /// One card on «اکانت‌های گوگل». This is operator-only screen data — the email on it is the
 /// operator's own, and it must never be reachable by a tenant session.
 /// </summary>
+/// <param name="ClientText">
+/// Which OAuth client connected this account, in words. It is on the card because a refresh token
+/// can only be presented by the client that issued it: with two clients in the panel, "which one"
+/// is the difference between an account that can be repaired and one that cannot.
+/// </param>
+/// <param name="FailureReason">
+/// Google's own words for why this account last stopped working, or null when nothing has. Not
+/// translated and not paraphrased — it is a diagnostic the operator will search for, and it is shown
+/// here and nowhere else because it can name a session URI or an address a tenant must never learn.
+/// </param>
 public sealed record AccountCardViewModel(
     Guid Id,
     string Email,
@@ -17,7 +27,12 @@ public sealed record AccountCardViewModel(
     GoogleAccountStatus Status,
     string UsedText,
     string TotalText,
-    int UsedPercent)
+    int UsedPercent,
+    string ClientText,
+    string? ClientId,
+    bool ClientIsUsable,
+    string? FailureReason,
+    string? FailureAtText)
 {
     /// <summary>
     /// True when this card's own repair is the thing to do next, which is what promotes «اتصال
@@ -29,8 +44,10 @@ public sealed record AccountCardViewModel(
     /// </summary>
     public bool NeedsReconnect => Status is GoogleAccountStatus.Disconnected;
 
-    public static AccountCardViewModel From(GoogleAccountSummary account)
+    public static AccountCardViewModel From(GoogleAccountSummary account, GoogleAccountClientNote? note)
     {
+        ArgumentNullException.ThrowIfNull(account);
+
         var percent = account.QuotaTotalBytes <= 0
             ? 0
             : (int)Math.Clamp(account.QuotaUsedBytes * 100 / account.QuotaTotalBytes, 0, 100);
@@ -48,8 +65,25 @@ public sealed record AccountCardViewModel(
             account.Status,
             DisplayFormats.Bytes(account.QuotaUsedBytes),
             DisplayFormats.Bytes(account.QuotaTotalBytes),
-            percent);
+            percent,
+            ClientSentence(note),
+            note?.ClientIsUsable is false ? note.ClientId : null,
+            note?.ClientIsUsable ?? true,
+            note?.LastFailureReason,
+            note?.LastFailureAt is { } at ? DisplayFormats.PanelDateTime(at) : null);
     }
+
+    /// <summary>
+    /// The four things a card can say about its client, and none of them is a client id on its own:
+    /// seventy characters of base64 tells an operator nothing they can act on.
+    /// </summary>
+    private static string ClientSentence(GoogleAccountClientNote? note) => note switch
+    {
+        null or { ClientId: null } => UiText.Accounts.ClientNotRecorded,
+        { ClientLabel: { } label } => UiText.Accounts.ClientNamed(label),
+        { FromConfiguration: true } => UiText.Accounts.ClientFromConfiguration,
+        _ => UiText.Accounts.ClientMissing,
+    };
 }
 
 public sealed record AccountsPageViewModel(
@@ -67,6 +101,12 @@ public sealed record AccountsPageViewModel(
 /// </summary>
 public sealed class GoogleCredentialsForm
 {
+    /// <summary>
+    /// The client being edited, or null to add one. A hidden field on each stored client's own form;
+    /// the «add» form does not render it at all, so a blank id cannot be an accidental edit.
+    /// </summary>
+    public Guid? Id { get; set; }
+
     public string? ClientId { get; set; }
 
     public string? ClientSecret { get; set; }
@@ -75,8 +115,25 @@ public sealed class GoogleCredentialsForm
 }
 
 /// <summary>
-/// The setup panel on «اکانت‌های گوگل»: what is in force, where each part came from, and the
-/// instructions for producing the parts that are missing.
+/// One stored OAuth client, as a row on the setup panel.
+/// </summary>
+/// <param name="AccountCount">
+/// How many accounts are refreshed with this client. It is on the row so the operator learns that
+/// removal is refused <em>before</em> pressing remove, rather than only from the sentence afterwards.
+/// </param>
+public sealed record GoogleClientRowViewModel(
+    Guid Id,
+    string Label,
+    string ClientId,
+    string RedirectUri,
+    bool SecretIsSet,
+    bool IsDefault,
+    string UpdatedText,
+    int AccountCount);
+
+/// <summary>
+/// The setup panel on «اکانت‌های گوگل»: what is in force, where each part came from, every client
+/// the panel is holding, and the instructions for producing one.
 ///
 /// This is the first screen a new operator meets, so it is written as instructions rather than as an
 /// error. Everything on it that a human has to copy into Google Cloud is rendered from this running
@@ -84,6 +141,11 @@ public sealed class GoogleCredentialsForm
 /// hand is the single most common way a first connection fails, and Google's answer to a mismatch
 /// says nothing useful.
 /// </summary>
+/// <param name="Clients">
+/// Every stored client, oldest first. More than one exists because a Google Cloud project has its
+/// own quota and its own consent screen, and because an account connected under one client cannot be
+/// refreshed by another — so replacing a client is not something that can be done in place.
+/// </param>
 public sealed record GoogleSetupViewModel(
     bool IsComplete,
     string ClientId,
@@ -93,12 +155,9 @@ public sealed record GoogleSetupViewModel(
     string RedirectUri,
     GoogleCredentialSource RedirectUriSource,
     string SuggestedRedirectUri,
-    string FormClientId,
     string FormRedirectUri,
-    bool HasStoredClient,
-    bool StoredSecretIsSet,
-    string? StoredUpdatedText,
-    bool ConfigurationOutranksPanel)
+    bool ConfigurationOutranksPanel,
+    IReadOnlyList<GoogleClientRowViewModel> Clients)
 {
     /// <summary>
     /// The restricted scope this product asks for. Rendered on the screen because it is what the
@@ -107,11 +166,21 @@ public sealed record GoogleSetupViewModel(
     /// </summary>
     public static string Scope => GoogleOAuthUrls.DriveScope;
 
-    public static GoogleSetupViewModel From(GoogleOAuthCredentialState state, string suggestedRedirectUri)
+    /// <summary>
+    /// True when the operator's next connection will use the server's configuration and the stored
+    /// clients are only there to refresh the accounts already bound to them. The screen says so,
+    /// because otherwise promoting a stored client looks like it should have an effect and has none.
+    /// </summary>
+    public bool ConfigurationSuppliesTheClient =>
+        ClientIdSource is GoogleCredentialSource.Configuration;
+
+    public static GoogleSetupViewModel From(
+        GoogleOAuthCredentialState state,
+        string suggestedRedirectUri,
+        IReadOnlyDictionary<string, int> accountsPerClientId)
     {
         ArgumentNullException.ThrowIfNull(state);
-
-        var stored = state.Stored;
+        ArgumentNullException.ThrowIfNull(accountsPerClientId);
 
         return new GoogleSetupViewModel(
             state.IsComplete,
@@ -127,15 +196,20 @@ public sealed record GoogleSetupViewModel(
             state.RedirectUri.Source,
             suggestedRedirectUri,
 
-            // The form edits the panel's own copy, so it is pre-filled from the panel's own copy —
-            // not from the effective value, which may be the environment's and which typing over
-            // would not change.
-            stored?.ClientId ?? string.Empty,
-            stored?.RedirectUri ?? suggestedRedirectUri,
-            stored is not null,
-            stored?.HasClientSecret ?? false,
-            stored is null ? null : DisplayFormats.PanelDateTime(stored.UpdatedAt),
-            state.ConfigurationOutranksPanel);
+            // Only the redirect URI is pre-filled: the «add» form adds, so a client id and a secret
+            // in it would be somebody else's. Editing a client is done on that client's own row,
+            // from that client's own values.
+            suggestedRedirectUri,
+            state.ConfigurationOutranksPanel,
+            [.. state.StoredClients.Select(client => new GoogleClientRowViewModel(
+                client.Id,
+                client.Label,
+                client.ClientId,
+                client.RedirectUri,
+                client.HasClientSecret,
+                client.IsDefault,
+                DisplayFormats.PanelDateTime(client.UpdatedAt),
+                accountsPerClientId.GetValueOrDefault(client.ClientId)))]);
     }
 
     /// <summary>Where a value comes from, in the words the screen uses for it.</summary>

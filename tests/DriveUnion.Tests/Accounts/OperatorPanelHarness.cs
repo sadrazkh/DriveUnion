@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Storage;
+using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
@@ -53,8 +54,9 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
         GoogleConfigured = googleConfigured;
         IsOperator = isOperator;
 
-        // Its own file per harness, because the panel's stored credentials are a file on disk and
-        // two tests sharing one would be two tests sharing a client id. Removed on Dispose.
+        // Where the retired JSON credential store would have been. Its own path per harness, and
+        // deliberately a file that does not exist: the one-time import walks straight back out, so
+        // nothing here depends on a file the product no longer writes.
         CredentialStorePath = Path.Combine(
             Path.GetTempPath(),
             $"driveunion-oauth-{Guid.NewGuid():N}.json");
@@ -79,12 +81,23 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
     /// </summary>
     public bool IsOperator { get; }
 
-    /// <summary>Where the panel writes the OAuth client the operator types in.</summary>
+    /// <summary>Where the credential file this product used to write would be, if it still did.</summary>
     public string CredentialStorePath { get; }
 
-    /// <summary>The store file exactly as it sits on disk, or null when nothing has been saved.</summary>
-    public string? CredentialStoreText() =>
-        File.Exists(CredentialStorePath) ? File.ReadAllText(CredentialStorePath) : null;
+    /// <summary>
+    /// The OAuth client rows exactly as they sit in the database.
+    ///
+    /// This is the assertion the file store could not support and the reason it was replaced: a
+    /// redeploy destroyed the file while these rows — and the Data Protection key ring that reads
+    /// them — survived, so every account had a refresh token nothing could refresh.
+    /// </summary>
+    public IReadOnlyList<GoogleOAuthClient> StoredClients()
+    {
+        using var db = new DriveUnionDbContext(
+            new DbContextOptionsBuilder<DriveUnionDbContext>().UseSqlite(_connection).Options);
+
+        return [.. db.GoogleOAuthClients.AsNoTracking()];
+    }
 
     /// <summary>
     /// Puts a pool in the database, the way a completed consent flow would leave one.
@@ -140,14 +153,83 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
     }
 
     /// <summary>
+    /// One account with the two columns the cards grew for the operator: the OAuth client it was
+    /// connected under, and why it last stopped working. Same rules as <see cref="SeedPool"/> —
+    /// straight to the table, before the first request.
+    /// </summary>
+    public GoogleAccount SeedAccount(
+        string email,
+        string label,
+        string? oauthClientId = null,
+        string? failureReason = null)
+    {
+        using var db = new DriveUnionDbContext(
+            new DbContextOptionsBuilder<DriveUnionDbContext>().UseSqlite(_connection).Options);
+
+        var account = new GoogleAccount
+        {
+            Id = Guid.CreateVersion7(),
+            Email = email,
+            Label = label,
+            RefreshTokenProtected = "not-a-real-protected-token",
+            QuotaTotalBytes = 5497558138880,
+            QuotaUsedBytes = 1099511627776,
+            OAuthClientId = oauthClientId,
+            LastFailureReason = failureReason,
+            LastFailureAt = failureReason is null
+                ? null
+                : new DateTimeOffset(2026, 8, 24, 9, 30, 0, TimeSpan.Zero),
+            Status = failureReason is null ? GoogleAccountStatus.Healthy : GoogleAccountStatus.Disconnected,
+            CreatedAt = new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero),
+        };
+
+        db.GoogleAccounts.Add(account);
+        db.SaveChanges();
+
+        return account;
+    }
+
+    /// <summary>
+    /// An OAuth client in the table, the way a save from the screen leaves one. The secret is a
+    /// placeholder: nothing the accounts screen renders decrypts it, and a value that could be
+    /// decrypted would be a secret sitting in a fixture for no reason.
+    /// </summary>
+    public GoogleOAuthClient SeedClient(string clientId, string label = "C1", bool isDefault = true)
+    {
+        using var db = new DriveUnionDbContext(
+            new DbContextOptionsBuilder<DriveUnionDbContext>().UseSqlite(_connection).Options);
+
+        var client = new GoogleOAuthClient
+        {
+            Id = Guid.CreateVersion7(),
+            Label = label,
+            ClientId = clientId,
+            ClientSecretProtected = "not-a-real-protected-secret",
+            RedirectUri = OriginRedirectUri,
+            IsDefault = isDefault,
+            CreatedAt = new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero),
+            UpdatedAt = new DateTimeOffset(2026, 8, 23, 12, 0, 0, TimeSpan.Zero),
+        };
+
+        db.GoogleOAuthClients.Add(client);
+        db.SaveChanges();
+
+        return client;
+    }
+
+    /// <summary>
     /// Saves an OAuth client the way the operator does: a form post from the accounts screen, with
     /// that screen's antiforgery token.
     /// </summary>
+    /// <param name="id">
+    /// The client being edited. Null adds one, which is what the «add» form on the screen posts.
+    /// </param>
     public static async Task<HttpResponseMessage> SaveCredentialsAsync(
         HttpClient client,
         string clientId,
         string? clientSecret,
-        string redirectUri)
+        string redirectUri,
+        Guid? id = null)
     {
         var token = await AntiforgeryTokenAsync(client);
 
@@ -159,6 +241,7 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
         };
 
         if (clientSecret is not null) fields["ClientSecret"] = clientSecret;
+        if (id is { } editing) fields["Id"] = editing.ToString();
 
         return await client.PostAsync("/accounts/google-credentials", new FormUrlEncodedContent(fields));
     }
@@ -210,8 +293,9 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
         // while the host is still being built. The registration it produces is replaced below.
         builder.UseSetting("ConnectionStrings:Default", "Host=unreachable.invalid;Database=unused");
 
-        // Always set, configured or not: the store is where the panel writes what the operator
-        // types, and a harness that let it default would write into the test host's content root.
+        // Always set, configured or not. It is only where the one-time import of the retired JSON
+        // credential file looks; letting it default would point every test host at the App_Data
+        // directory under the test project's content root.
         builder.UseSetting("Google:CredentialStorePath", CredentialStorePath);
 
         if (GoogleConfigured)
@@ -260,9 +344,6 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
         if (!disposing) return;
 
         _connection.Dispose();
-
-        // The credential store outlives the host: it is a file, which is the whole point of it.
-        if (File.Exists(CredentialStorePath)) File.Delete(CredentialStorePath);
     }
 
     private void ReplaceNpgsqlWithSqlite(IServiceCollection services)

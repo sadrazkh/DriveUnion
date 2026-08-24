@@ -214,10 +214,25 @@
 
 <h3 class="section-title" style="margin-bottom: 12px;">@UiText.Design.FormControls</h3>
 <div class="card card--pad" style="margin-bottom: 22px;">
-    <label class="field-label" for="slug-@s">@UiText.Design.CustomAddress</label>
-    <div class="field" dir="ltr" style="margin-bottom: 16px;">
-        <span class="field-prefix">yourdomain.com/d/</span>
-        <input id="slug-@s" value="kx91mz" />
+    @*
+        The two boxes side by side, because which one to reach for is the thing that went wrong on
+        five screens. .field is the box a control shares with something else — the prefix below, a
+        «کپی» button, a GB suffix. .control is the box for a control that shares one with nothing,
+        and .form-field is the wrapper that puts a label above either of them. They are the same
+        height to the pixel on purpose; a row that mixes them must not look ragged.
+    *@
+    <div class="row" style="gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;">
+        <div class="form-field" style="flex: 1 1 240px;">
+            <label class="field-label" for="slug-@s">@UiText.Design.CustomAddress</label>
+            <div class="field" dir="ltr">
+                <span class="field-prefix">yourdomain.com/d/</span>
+                <input id="slug-@s" value="kx91mz" />
+            </div>
+        </div>
+        <div class="form-field" style="flex: 1 1 180px;">
+            <label class="field-label" for="reason-@s">@UiText.Plans.AssignReasonField</label>
+            <input id="reason-@s" class="control" value="" />
+        </div>
     </div>
 
     <span class="field-label">@UiText.Design.ExpiryDate</span>

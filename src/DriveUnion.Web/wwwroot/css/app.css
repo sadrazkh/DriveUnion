@@ -276,6 +276,14 @@ a:hover {
   flex: 0 0 auto;
 }
 
+/* The sign-out control wears .nav-item because that rule is already a button reset. It is the one
+   nav item that sits in a row rather than in the list, so it is the one that is smaller — which the
+   shell used to say in a style attribute on the button. */
+.sidebar-identity-out .nav-item {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .app-main {
   flex: 1;
   min-width: 0;
@@ -360,6 +368,27 @@ a:hover {
   display: none;
 }
 
+/*
+ * The box an island occupies before its bundle has run.
+ *
+ * The theme control is mounted by Vue, so until then the header holds an empty span and every
+ * control beside it — the language form, «آپلود فایل» — is laid out where the button is not yet.
+ * When it lands they all move. The floor is reserved on the mount point rather than server-rendered
+ * inside it because `mount()` replaces the mount point's contents wholesale: a placeholder button
+ * would be painted and then thrown away, which is the flash this is about.
+ *
+ * The numbers are what .btn--sm measures: 12px of text at line-height 1.4 between 6px paddings and
+ * a 1px border is 30.8px tall, and one 13px glyph between 12px paddings and the same border is 39px
+ * wide. The public download card's mount point holds a language link as well and is wider than the
+ * floor, so it pays nothing for this.
+ */
+[data-island="theme-language"] {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 31px;
+  min-inline-size: 39px;
+}
+
 /* ---------------------------------------------------------------- type */
 
 .page-title {
@@ -381,10 +410,45 @@ a:hover {
   font-weight: 700;
 }
 
+/*
+ * The sentence under a control, or under a figure, that explains it.
+ *
+ * The single most repeated declaration in the panel: twenty-five places wrote «muted, 12px, no
+ * margin» as a style attribute. accounts.css already calls its own .setup-hint, and this is the
+ * same thing on the screens that do not load that file.
+ */
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
 .section-title {
   margin: 0;
   font-size: 15px;
   font-weight: 800;
+
+  /* The style guide's chip row is six fragment links into these headings, and the header above
+     them is sticky — without a scroll margin the browser puts the heading at y = 0, under it. 80px
+     is what accounts.css already reserves for the setup panel: a .btn--lg between the header's 14px
+     paddings, plus air. */
+  scroll-margin-block-start: 80px;
+}
+
+/*
+ * A page's title and whatever stands beside it — a count, a back link, a sync time.
+ *
+ * Eight screens wrote this as `.row` with the same two overrides, and none of them wrapped: at
+ * 375px «فضای کاری Acme Bolts» and its back link share 341px, and .row's items shrink until the
+ * link is unreadable rather than taking the next line. It is the same answer .app-header already
+ * gives, for the same reason.
+ */
+.page-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 /* ---------------------------------------------------------------- cards */
@@ -418,6 +482,11 @@ a:hover {
   gap: 10px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--line);
+
+  /* A card head is a title and an action, and on the operator's plan screen it is a title, a
+     sentence and a button. Three items in 288px of card at 375px squeeze the title to nothing;
+     wrapping costs a row of card head on a phone and nothing on a desktop. */
+  flex-wrap: wrap;
 }
 
 .card-body {
@@ -447,6 +516,34 @@ a:hover {
   box-shadow: none;
   padding: 22px;
   color: var(--muted);
+}
+
+/*
+ * What a screen says back after a write, and what it says when it refuses one.
+ *
+ * Six screens drew this as a .card holding a .card-body holding a sized span — three boxes and a
+ * shadow for one line of text — and each of them wrote the size, and the refusal's colour, in a
+ * style attribute. None of them carried a role, because the sentence had no element of its own to
+ * put one on: an operator using a screen reader was told nothing at all had happened.
+ *
+ * 12px radius is the handoff's inner card. It is not a .card: a notice is not a surface anything
+ * else sits on, and the shadow is what says "this is a thing" rather than "this is a sentence".
+ */
+.notice {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface2);
+  padding: 12px 16px;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+/* A refusal borrows the border rather than the fill: --danger-soft is a block of red on a screen
+   whose next line may already be red, and the two together read as an error state for the page. */
+.notice--danger {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .grid-2 {
@@ -808,6 +905,10 @@ a:hover {
   background: var(--surface2);
   font-size: 12px;
   color: var(--muted);
+
+  /* The selected file's name on one side and its actions on the other. A file name has almost no
+     break opportunity, so at 375px it is the buttons that were pushed out of the card. */
+  flex-wrap: wrap;
 }
 
 .rowbox {
@@ -1017,6 +1118,38 @@ a:hover {
   color: var(--muted);
 }
 
+/*
+ * A control that is its own box: a select, or a text input with nothing beside it.
+ *
+ * .field is the box for a control that *shares* one — with a `yourdomain.com/d/` prefix, with a
+ * «کپی» button, with a GB suffix — and five screens reached for it as a wrapper for a label and an
+ * input instead. That drew a bordered monospace box around the label, stood the label beside the
+ * input rather than above it, and then drew the input's own border inside it, because each of those
+ * screens also wrote this rule out as a style attribute on the input. Ten copies, four of them
+ * subtly different.
+ *
+ * Same border, radius, padding and fill as .field, so a .control and a .field in one row are the
+ * same height to the pixel. The font is the panel's own rather than .field's monospace: these hold
+ * a workspace name and a reason for a quota change, not an id.
+ */
+.control {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface2);
+  color: var(--text);
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 12px;
+}
+
+/* A label above its control. min-width: 0 because these are flex items in a wrapping row, and a
+   select as wide as its longest option must not push the row past the card. */
+.form-field {
+  display: block;
+  min-width: 0;
+}
+
 /* Segmented choice — the comp's expiry row. */
 .seg {
   display: flex;
@@ -1167,6 +1300,13 @@ a:hover {
   justify-content: center;
 }
 
+/* The file detail panel's preview stand-in, with the rule that separates it from the card body.
+   .public-preview is the same thing at the public card's 230px. */
+.detail-preview {
+  height: 150px;
+  border-bottom: 1px solid var(--line);
+}
+
 .ph-label {
   font-family: var(--font-mono);
   font-size: 11.5px;
@@ -1174,6 +1314,23 @@ a:hover {
   background: var(--surface);
   padding: 6px 12px;
   border-radius: 8px;
+}
+
+/* ---------------------------------------------------------------- style guide */
+
+/*
+ * A panel carrying its own data-theme, so the guide can put the light palette and the dark one on
+ * screen at once instead of one of them being a memory of the last time somebody clicked the
+ * toggle. It is .card.card--pad in every respect but one, and that one is the reason it exists: it
+ * paints the page's background rather than a card's, because what is being shown is what a page
+ * looks like in that theme.
+ */
+.theme-sample {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
 }
 
 /* ---------------------------------------------------------------- public download page */
@@ -1283,6 +1440,13 @@ a:hover {
   gap: 12px;
   font-size: 11.5px;
   color: var(--muted);
+
+  /* A share address and a download count. The address is one unbreakable token on a card that is
+     339px wide at 375px, so on a phone the count is what leaves the card. `anywhere` is the other
+     half: it lowers the address's min-content width, which is what a flex item's automatic minimum
+     is measured against, so a long host breaks instead of hanging over the card's rounded edge. */
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
 }
 
 .public-note {
@@ -1291,6 +1455,50 @@ a:hover {
   color: var(--muted);
   margin-top: 26px;
   line-height: 1.9;
+}
+
+/* ---------------------------------------------------------------- dark-mode ink on accent */
+
+/*
+ * White on the accent is right in light mode and unreadable in dark.
+ *
+ * `--accent` is a deep green in light (`#0F9D77`) and a pale one in dark (`oklch(0.78 0.12 168)`),
+ * because the surface under it inverted. White text on the pale version is about 1.8:1 — WCAG AA
+ * asks 4.5:1 for body text and 3:1 for large — so the label on the panel's most-used button is a
+ * bright shape rather than a word. Painting the dark surface colour on it instead is about 7.8:1,
+ * and needs no token that does not already exist.
+ *
+ * The comp does specify white in both themes, and this is a deliberate departure from it, agreed
+ * with the owner. It is the one place the design is followed less closely than everywhere else,
+ * because the alternative is a button some people cannot read.
+ */
+[data-theme="dark"] .btn--primary,
+[data-theme="dark"] .btn--primary:hover,
+[data-theme="dark"] .btn--primary:disabled,
+[data-theme="dark"] .btn--primary[aria-disabled="true"],
+[data-theme="dark"] .badge--count,
+[data-theme="dark"] .brand-mark {
+  color: var(--bg);
+}
+
+/* ---------------------------------------------------------------- colour utilities */
+
+/*
+ * The other two text colours the panel actually uses, beside .muted: fifteen
+ * `style="color: var(--warn)"` attributes across six screens before they existed, and a colour a
+ * view carries in an attribute is a colour no audit of this stylesheet can find.
+ *
+ * Last in the file on purpose, and this is the whole of why they work. They are one class deep, and
+ * so is every component they are put on — `.page-sub.danger` on a refusal, `.card-title.warn` on a
+ * warning heading. At equal specificity the later rule wins, so a utility that has to outrank the
+ * component it is correcting has to be written after it.
+ */
+.warn {
+  color: var(--warn);
+}
+
+.danger {
+  color: var(--danger);
 }
 
 /* ---------------------------------------------------------------- responsive */

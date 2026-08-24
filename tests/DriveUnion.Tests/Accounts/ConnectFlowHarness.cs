@@ -47,13 +47,15 @@ public sealed class ConnectFlowHarness
     private ConnectFlowHarness(
         AccountsController controller,
         FakeAccountDirectory directory,
-        FakeCredentialStore store,
-        GoogleOAuthCredentialResolver credentials)
+        FakeGoogleOAuthClientStore store,
+        GoogleOAuthCredentialResolver credentials,
+        FakeClientUsageReader usage)
     {
         Controller = controller;
         Directory = directory;
         Store = store;
         Credentials = credentials;
+        Usage = usage;
     }
 
     public AccountsController Controller { get; }
@@ -61,7 +63,10 @@ public sealed class ConnectFlowHarness
     public FakeAccountDirectory Directory { get; }
 
     /// <summary>What the panel has saved, in memory.</summary>
-    public FakeCredentialStore Store { get; }
+    public FakeGoogleOAuthClientStore Store { get; }
+
+    /// <summary>Which client each account belongs to, and why it last failed — supplied by hand.</summary>
+    public FakeClientUsageReader Usage { get; }
 
     /// <summary>The real resolver, so these tests exercise the real precedence rule.</summary>
     public GoogleOAuthCredentialResolver Credentials { get; }
@@ -78,8 +83,9 @@ public sealed class ConnectFlowHarness
     public static ConnectFlowHarness Create(bool configured = true, params GoogleAccountSummary[] pool)
     {
         var directory = new FakeAccountDirectory(pool);
-        var store = new FakeCredentialStore();
+        var store = new FakeGoogleOAuthClientStore();
         var credentials = new GoogleOAuthCredentialResolver(BuildSection(configured), store);
+        var usage = new FakeClientUsageReader();
 
         var http = new DefaultHttpContext();
 
@@ -91,7 +97,7 @@ public sealed class ConnectFlowHarness
         var controller = new AccountsController(
             directory,
             credentials,
-            credentials,
+            usage,
             NullLogger<AccountsController>.Instance)
         {
             ControllerContext = new ControllerContext(
@@ -103,7 +109,7 @@ public sealed class ConnectFlowHarness
             new EmptyModelMetadataProvider(),
             controller.ModelState);
 
-        return new ConnectFlowHarness(controller, directory, store, credentials);
+        return new ConnectFlowHarness(controller, directory, store, credentials, usage);
     }
 
     /// <summary>The view model the accounts screen was rendered with.</summary>
@@ -146,63 +152,162 @@ public sealed class ConnectFlowHarness
 }
 
 /// <summary>
-/// The panel's own copy of the OAuth client, in memory.
+/// The panel's own copy of the OAuth clients, in memory.
 ///
-/// It stands in for the file store on the controller lane only. Whether the secret survives
-/// encryption is <see cref="GoogleOAuthCredentialStoreTests"/>'s question, over the real store and
-/// the real Data Protection protector; this one is about what the controller does with it.
+/// It stands in for the database store on the controller lane only. Whether a secret survives
+/// encryption and a restart is <c>GoogleOAuthClientStoreTests</c>'s question, over the real store,
+/// a real database and the real Data Protection protector; this one is about what the controller
+/// does with the answers.
 /// </summary>
-public sealed class FakeCredentialStore : IGoogleOAuthCredentialStore
+public sealed class FakeGoogleOAuthClientStore : IGoogleOAuthClientStore
 {
-    private string? _clientId;
-    private string? _redirectUri;
-    private string? _secret;
-    private DateTimeOffset _updatedAt;
-
-    /// <summary>
-    /// The plaintext secret as the store received it. Tests read it to prove the value that went in
-    /// is the value that comes back out — and never to render it.
-    /// </summary>
-    public string? Secret => _secret;
+    private readonly List<Row> _rows = [];
 
     public int SaveCalls { get; private set; }
 
-    /// <summary>Set to make a stored secret undecryptable, which is a lost Data Protection key.</summary>
+    /// <summary>Set to make every stored secret undecryptable, which is a lost Data Protection key.</summary>
     public bool SecretIsUnreadable { get; set; }
 
-    public StoredGoogleOAuthClient? Read() =>
-        _clientId is null || _redirectUri is null
-            ? null
-            : new StoredGoogleOAuthClient(
-                _clientId,
-                _redirectUri,
-                _secret is not null && !SecretIsUnreadable,
-                _updatedAt);
+    /// <summary>
+    /// Which accounts a client is refused removal over, by label. Set by a test; the real store
+    /// reads it off the accounts table.
+    /// </summary>
+    public Dictionary<string, string[]> DependentAccounts { get; } = new(StringComparer.Ordinal);
 
-    public string? ReadClientSecret() => SecretIsUnreadable ? null : _secret;
+    /// <summary>
+    /// The plaintext secret of the default client, as the store received it. Tests read it to prove
+    /// the value that went in is the value that comes back out — and never to render it.
+    /// </summary>
+    public string? Secret => Default() is { } client ? ReadSecret(client.Id) : null;
 
-    public StoredGoogleOAuthClient Save(string clientId, string? clientSecret, string redirectUri)
+    public IReadOnlyList<StoredGoogleOAuthClient> List() => [.. _rows.Select(Describe)];
+
+    public StoredGoogleOAuthClient? Default()
+    {
+        var row = _rows.FirstOrDefault(r => r.IsDefault) ?? _rows.FirstOrDefault();
+
+        return row is null ? null : Describe(row);
+    }
+
+    public StoredGoogleOAuthClient? Find(Guid id) =>
+        _rows.FirstOrDefault(r => r.Id == id) is { } row ? Describe(row) : null;
+
+    public StoredGoogleOAuthClient? FindByClientId(string clientId) =>
+        _rows.FirstOrDefault(r => r.ClientId == clientId) is { } row ? Describe(row) : null;
+
+    public string? ReadSecret(Guid id) =>
+        SecretIsUnreadable ? null : _rows.FirstOrDefault(r => r.Id == id)?.Secret;
+
+    public string? ReadSecretForClientId(string clientId) =>
+        SecretIsUnreadable ? null : _rows.FirstOrDefault(r => r.ClientId == clientId)?.Secret;
+
+    public GoogleOAuthClientSaveResult Save(
+        Guid? id,
+        string clientId,
+        string? clientSecret,
+        string redirectUri)
     {
         SaveCalls++;
 
-        _clientId = clientId;
-        _redirectUri = redirectUri;
-        _secret = string.IsNullOrEmpty(clientSecret) ? _secret : clientSecret;
-        _updatedAt = DateTimeOffset.UtcNow;
+        if (_rows.Any(r => r.Id != id && r.ClientId == clientId))
+        {
+            return new GoogleOAuthClientSaveResult(GoogleOAuthClientSave.DuplicateClientId, null);
+        }
 
-        return Read()!;
+        Row row;
+
+        if (id is { } existing)
+        {
+            if (_rows.FirstOrDefault(r => r.Id == existing) is not { } found)
+            {
+                return new GoogleOAuthClientSaveResult(GoogleOAuthClientSave.NotFound, null);
+            }
+
+            row = found;
+        }
+        else
+        {
+            row = new Row(Guid.CreateVersion7(), $"C{_rows.Count + 1}") { IsDefault = _rows.Count == 0 };
+            _rows.Add(row);
+        }
+
+        row.ClientId = clientId;
+        row.RedirectUri = redirectUri;
+        row.Secret = string.IsNullOrEmpty(clientSecret) ? row.Secret : clientSecret;
+        row.UpdatedAt = DateTimeOffset.UtcNow;
+
+        return new GoogleOAuthClientSaveResult(GoogleOAuthClientSave.Saved, Describe(row));
     }
 
-    public bool Clear()
+    public bool MakeDefault(Guid id)
     {
-        var had = _clientId is not null;
+        if (_rows.All(r => r.Id != id)) return false;
 
-        _clientId = null;
-        _redirectUri = null;
-        _secret = null;
+        foreach (var row in _rows) row.IsDefault = row.Id == id;
 
-        return had;
+        return true;
     }
+
+    public GoogleOAuthClientRemovalResult Remove(Guid id)
+    {
+        if (_rows.FirstOrDefault(r => r.Id == id) is not { } row)
+        {
+            return new GoogleOAuthClientRemovalResult(GoogleOAuthClientRemoval.NotFound, []);
+        }
+
+        if (DependentAccounts.TryGetValue(row.ClientId, out var labels) && labels.Length > 0)
+        {
+            return new GoogleOAuthClientRemovalResult(
+                GoogleOAuthClientRemoval.InUseByAccounts,
+                labels);
+        }
+
+        _rows.Remove(row);
+
+        if (row.IsDefault && _rows.Count > 0) _rows[0].IsDefault = true;
+
+        return new GoogleOAuthClientRemovalResult(GoogleOAuthClientRemoval.Removed, []);
+    }
+
+    private StoredGoogleOAuthClient Describe(Row row) => new(
+        row.Id,
+        row.Label,
+        row.ClientId,
+        row.RedirectUri,
+        row.Secret is not null && !SecretIsUnreadable,
+        row.IsDefault,
+        row.UpdatedAt);
+
+    private sealed class Row(Guid id, string label)
+    {
+        public Guid Id { get; } = id;
+
+        public string Label { get; } = label;
+
+        public string ClientId { get; set; } = string.Empty;
+
+        public string RedirectUri { get; set; } = string.Empty;
+
+        public string? Secret { get; set; }
+
+        public bool IsDefault { get; set; }
+
+        public DateTimeOffset UpdatedAt { get; set; }
+    }
+}
+
+/// <summary>
+/// What the accounts screen is told about the clients, supplied by hand. The real reader joins the
+/// accounts table to the stored clients; on this lane there is no database at all.
+/// </summary>
+public sealed class FakeClientUsageReader : IGoogleClientUsageReader
+{
+    public Dictionary<Guid, GoogleAccountClientNote> Accounts { get; } = [];
+
+    public Dictionary<string, int> AccountsPerClientId { get; } = new(StringComparer.Ordinal);
+
+    public Task<GoogleClientUsage> ReadAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new GoogleClientUsage(Accounts, AccountsPerClientId));
 }
 
 /// <summary>The operator's pool, in memory, with no Google behind it.</summary>

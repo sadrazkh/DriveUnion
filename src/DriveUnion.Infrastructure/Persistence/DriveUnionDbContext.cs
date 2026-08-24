@@ -4,6 +4,7 @@ using DriveUnion.Core.Storage;
 using DriveUnion.Core.Telegram;
 using DriveUnion.Core.Tenancy;
 using DriveUnion.Core.Uploads;
+using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Identity;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
@@ -17,6 +18,17 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
 {
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<GoogleAccount> GoogleAccounts => Set<GoogleAccount>();
+
+    /// <summary>
+    /// The operator's Google OAuth clients, with their secrets encrypted by the same key ring as the
+    /// refresh tokens below.
+    ///
+    /// They were a JSON file in <c>App_Data</c> until a redeploy deleted it and took the whole pool
+    /// with it: the refresh tokens survived — they are rows — but a refresh has to present the client
+    /// id and secret alongside the token, and those were gone. A table is the only store here that is
+    /// known to survive a deploy, which is the same argument <see cref="DataProtectionKeys"/> makes.
+    /// </summary>
+    public DbSet<GoogleOAuthClient> GoogleOAuthClients => Set<GoogleOAuthClient>();
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
@@ -159,6 +171,16 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.Property(a => a.RootFolderId).HasMaxLength(256);
             e.Property(a => a.GoogleUserId).HasMaxLength(64);
 
+            // Google's client ids run to about 75 characters today. 128 is room for that plus a
+            // format change, and a cap rather than unbounded text because this column is compared
+            // against on every refresh.
+            e.Property(a => a.OAuthClientId).HasMaxLength(128);
+
+            // Google's own error text, kept verbatim. The same width UploadSession.FailureReason
+            // uses, and for the same reason: long enough to hold the sentence, short enough that a
+            // pathological body cannot become the largest thing in the table.
+            e.Property(a => a.LastFailureReason).HasMaxLength(1024);
+
             // The address stays unique because two rows spelled identically are still a mistake,
             // and because it is what the operator reads. It is not what identity is decided on.
             e.HasIndex(a => a.Email).IsUnique();
@@ -173,6 +195,29 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.HasIndex(a => a.GoogleUserId)
                 .IsUnique()
                 .HasFilter("\"GoogleUserId\" IS NOT NULL");
+        });
+
+        builder.Entity<GoogleOAuthClient>(e =>
+        {
+            e.Property(c => c.Label).HasMaxLength(16);
+            e.Property(c => c.ClientId).HasMaxLength(128);
+            e.Property(c => c.RedirectUri).HasMaxLength(2048);
+
+            // Data Protection ciphertext is base64url and grows with the plaintext; a Google client
+            // secret is short, and this is the same allowance the Telegram bot token gets.
+            e.Property(c => c.ClientSecretProtected).HasMaxLength(2048);
+
+            // Two rows holding the same client id would be two secrets for one credential, and which
+            // one a refresh found would depend on row order — which is precisely the kind of answer
+            // this table exists to stop being a coin toss. GoogleAccount.OAuthClientId names this
+            // value, so it has to be the key an account is resolved by.
+            e.HasIndex(c => c.ClientId).IsUnique();
+
+            // No foreign key from GoogleAccounts to here, deliberately. An account may be connected
+            // under the client a deployment supplies from its environment, which has no row at all,
+            // and a constraint that could not express that would have to be satisfied by inventing
+            // one. The dependency is enforced where it can be explained — GoogleOAuthClientStore
+            // refuses to remove a client accounts still name, in a sentence.
         });
 
         builder.Entity<StoredFile>(e =>

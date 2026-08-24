@@ -23,6 +23,7 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
     private readonly DataProtectionTokenProtector _protector;
     private readonly StubAboutReader _about = new();
     private readonly StubDriveClient _drive = new();
+    private readonly StubTokenService _tokens = new();
     private readonly ImmediateTimeProvider _time = new();
     private readonly GoogleAccountDirectory _directory;
 
@@ -42,7 +43,7 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
 
         _directory = new GoogleAccountDirectory(
             _db,
-            new StubTokenService(),
+            _tokens,
             _about,
             _drive,
             _protector,
@@ -282,6 +283,61 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
         (await _directory.ListAsync(CancellationToken.None))
             .Single(a => a.Email == "pool-a3@example.com")
             .Label.Should().Be("A3", "A2 is still taken, and «archive» takes nothing");
+    }
+
+    /// <summary>
+    /// Which client obtained the grant, written onto the row.
+    ///
+    /// A refresh token can only be presented by the client that issued it; anything else is
+    /// <c>invalid_grant</c>, which this product reports as an account the operator has to reconnect.
+    /// So the binding is not an audit field — it is what makes the account refreshable at all once
+    /// the panel holds more than one client.
+    /// </summary>
+    [Fact]
+    public async Task Connecting_records_the_client_the_grant_was_obtained_with()
+    {
+        var id = await Connect();
+
+        (await _db.GoogleAccounts.AsNoTracking().SingleAsync(a => a.Id == id))
+            .OAuthClientId.Should().Be(StubTokenService.ExchangedClientId);
+    }
+
+    /// <summary>
+    /// Reconnecting under a different client is how an operator moves an account from one Google
+    /// project to another. The new grant belongs to the new client, so the binding has to move with
+    /// it — a stale one here makes the account unrefreshable an hour later, with the panel blaming
+    /// the consent screen.
+    /// </summary>
+    [Fact]
+    public async Task Reconnecting_under_a_different_client_moves_the_binding()
+    {
+        var id = await Connect();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        _tokens.ClientId = "a-second-project.apps.googleusercontent.com";
+
+        (await Connect()).Should().Be(id, "it is the same account, approved again");
+
+        (await _db.GoogleAccounts.AsNoTracking().SingleAsync(a => a.Id == id))
+            .OAuthClientId.Should().Be("a-second-project.apps.googleusercontent.com");
+    }
+
+    [Fact]
+    public async Task Connecting_clears_the_failure_the_card_was_showing()
+    {
+        var id = await Connect();
+
+        var account = await _db.GoogleAccounts.SingleAsync(a => a.Id == id);
+        account.LastFailureReason = "Google rejected the grant (invalid_grant).";
+        account.LastFailureAt = _time.Now;
+        await _db.SaveChangesAsync();
+
+        _time.Now = _time.Now.AddMinutes(5);
+        await Connect();
+
+        var reconnected = await _db.GoogleAccounts.AsNoTracking().SingleAsync(a => a.Id == id);
+        reconnected.LastFailureReason.Should().BeNull("a new grant is the answer to whatever failed");
+        reconnected.LastFailureAt.Should().BeNull();
     }
 
     [Fact]

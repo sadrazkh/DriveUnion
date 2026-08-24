@@ -10,21 +10,19 @@
 }
 
 <div class="stack" style="gap: 16px;">
-    <div class="row" style="align-items: baseline; gap: 12px;">
+    <div class="page-head">
         <h1 class="page-title">@UiText.Plans.TenantHeading(Model.TenantName)</h1>
         <a class="page-sub" href="@Url.Action("Operator", "Plans")">@UiText.Plans.BackToPlans</a>
     </div>
 
     @if (message is not null)
     {
-        <div class="card"><div class="card-body"><span style="font-size: 12.5px;">@message</span></div></div>
+        <p class="notice" role="status">@message</p>
     }
 
     @if (error is not null)
     {
-        <div class="card">
-            <div class="card-body"><span style="font-size: 12.5px; color: var(--danger);">@error</span></div>
-        </div>
+        <p class="notice notice--danger" role="alert">@error</p>
     }
 
     @* What this workspace's numbers are right now. They are on its own row, copied from a tier that
@@ -66,11 +64,16 @@
                     The preview is a GET, so an operator can look at what a tier would do as often as
                     they like without writing anything. Only the second form writes.
                 *@
+                @*
+                    .form-field, not .field: .field is the bordered box a control sits *in*, and
+                    using it as this wrapper drew that box around the label too and stood the label
+                    beside the select instead of above it — with the select's own border inside it,
+                    because the select carried a copy of the same four declarations inline.
+                *@
                 <form method="get" class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
-                    <div class="field">
+                    <div class="form-field" style="flex: 1 1 180px;">
                         <label class="field-label" for="preview-plan">@UiText.Plans.AssignPlanField</label>
-                        <select id="preview-plan" name="plan"
-                                style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px;">
+                        <select id="preview-plan" name="plan" class="control">
                             @foreach (var plan in Model.Assignable)
                             {
                                 <option value="@plan.Code" selected="@(plan.Code == Model.SelectedPlanCode)">@plan.Name</option>
@@ -113,7 +116,7 @@
                             {
                                 @if (preview.StorageOverageText is not null)
                                 {
-                                    <span style="font-size: 12.5px; color: var(--warn);">@preview.StorageOverageText</span>
+                                    <span class="warn" style="font-size: 12.5px;">@preview.StorageOverageText</span>
                                 }
                                 @if (preview.FilesOverText is not null)
                                 {
@@ -127,7 +130,7 @@
 
                             @* The one line that covers all four dimensions, said before the operator
                                confirms rather than after the customer notices. *@
-                            <span class="muted" style="font-size: 12px;">@UiText.Plans.PreviewRule</span>
+                            <span class="hint">@UiText.Plans.PreviewRule</span>
                         </div>
                     </div>
                 }
@@ -136,10 +139,9 @@
                       class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
                     @Html.AntiForgeryToken()
 
-                    <div class="field">
+                    <div class="form-field" style="flex: 1 1 180px;">
                         <label class="field-label" for="apply-plan">@UiText.Plans.AssignPlanField</label>
-                        <select id="apply-plan" name="PlanCode"
-                                style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px;">
+                        <select id="apply-plan" name="PlanCode" class="control">
                             @foreach (var plan in Model.Assignable)
                             {
                                 <option value="@plan.Code" selected="@(plan.Code == Model.SelectedPlanCode)">@plan.Name</option>
@@ -147,16 +149,15 @@
                         </select>
                     </div>
 
-                    <div class="field" style="flex: 1 1 260px;">
+                    <div class="form-field" style="flex: 1 1 260px;">
                         <label class="field-label" for="apply-reason">@UiText.Plans.AssignReasonField</label>
-                        <input id="apply-reason" name="Reason" required maxlength="512"
-                               style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px; width: 100%;" />
+                        <input id="apply-reason" name="Reason" class="control" required maxlength="512" />
                     </div>
 
                     <button type="submit" class="btn btn--primary">@UiText.Plans.Apply</button>
                 </form>
 
-                <span class="muted" style="font-size: 12px;">@UiText.Plans.AssignReasonHint</span>
+                <span class="hint">@UiText.Plans.AssignReasonHint</span>
             </div>
         </div>
     </div>
@@ -172,10 +173,9 @@
                   class="row" style="gap: 8px; align-items: flex-end; flex-wrap: wrap;">
                 @Html.AntiForgeryToken()
 
-                <div class="field">
+                <div class="form-field" style="flex: 1 1 180px;">
                     <label class="field-label" for="override-field">@UiText.Plans.OverrideField</label>
-                    <select id="override-field" name="Field"
-                            style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px;">
+                    <select id="override-field" name="Field" class="control">
                         @foreach (var (field, label) in Model.Fields)
                         {
                             <option value="@field">@label</option>
@@ -183,22 +183,21 @@
                     </select>
                 </div>
 
-                <div class="field">
+                <div class="form-field" style="flex: 1 1 140px;">
                     <label class="field-label" for="override-value">@UiText.Plans.OverrideValue</label>
-                    <input id="override-value" name="Value" type="number" min="0" step="1" required dir="ltr"
-                           style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px;" />
+                    <input id="override-value" name="Value" class="control"
+                           type="number" min="0" step="1" required dir="ltr" />
                 </div>
 
-                <div class="field" style="flex: 1 1 260px;">
+                <div class="form-field" style="flex: 1 1 260px;">
                     <label class="field-label" for="override-reason">@UiText.Plans.AssignReasonField</label>
-                    <input id="override-reason" name="Reason" required maxlength="512"
-                           style="border: 1px solid var(--line); border-radius: 9px; font-size: 12.5px; padding: 7px 10px; width: 100%;" />
+                    <input id="override-reason" name="Reason" class="control" required maxlength="512" />
                 </div>
 
                 <button type="submit" class="btn">@UiText.Plans.Apply</button>
             </form>
 
-            <span class="muted" style="font-size: 12px;">@UiText.Plans.OverrideValueHint</span>
+            <span class="hint">@UiText.Plans.OverrideValueHint</span>
         </div>
     </div>
 
@@ -233,10 +232,13 @@
                 @foreach (var row in Model.History)
                 {
                     <div class="dtable-row">
-                        <div style="font-size: 12px;">@row.WhenText</div>
-                        <div style="font-size: 12px;">@row.FieldText</div>
-                        <div class="cell-num">@row.FromText</div>
-                        <div class="cell-num">@row.ToText</div>
+                        <div>@row.WhenText</div>
+                        <div>@row.FieldText</div>
+                        @* Three of the four dimensions are byte quantities — «500 GB» — and the
+                           fourth is a seat count in Persian numerals. The isolate is what keeps the
+                           unit beside its number in an RTL cell; a bare number is unharmed by it. *@
+                        <div class="cell-num" dir="ltr">@row.FromText</div>
+                        <div class="cell-num" dir="ltr">@row.ToText</div>
                         <div class="cell-muted" title="@row.Reason">@row.Reason</div>
                     </div>
                 }

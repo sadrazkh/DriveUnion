@@ -157,12 +157,48 @@
                     <span class="mono" dir="ltr" style="font-size: 14px; font-weight: 700;">@account.Email</span>
                     @* The OAuth scope's short name, which is Google's own word in both languages. *@
                     <span class="mono muted" dir="ltr" style="font-size: 11px;">scope: drive</span>
+
+                    @*
+                        Which OAuth client connected this account. It is on the card because a
+                        refresh token can only be presented by the client that issued it: with two
+                        clients in the panel, this line is the difference between an account that can
+                        be repaired and one that cannot — and it used to be written down nowhere.
+                    *@
+                    <span class="account-client @(account.ClientIsUsable ? null : "account-client--warn")">
+                        @account.ClientText
+                        @if (account.ClientId is { Length: > 0 } missing)
+                        {
+                            <span class="mono" dir="ltr">@missing</span>
+                        }
+                    </span>
                 </span>
 
                 <span class="badge @(account.Status == GoogleAccountStatus.Healthy ? null : "badge--warn")">
                     @account.StatusText
                 </span>
             </div>
+
+            @if (account.FailureReason is { Length: > 0 } reason)
+            {
+                @*
+                    Why this account is unusable, for the one person who can fix it.
+
+                    The customer is told «فضای ذخیره‌سازی در دسترس نیست» and that stays true for
+                    them — Google's own error text can carry a resumable session URI or the address
+                    of an operator account, and neither belongs in front of a tenant. But the
+                    operator was being told nothing at all: Status said «قطع شده» and the reason
+                    lived only in a log nobody on this box can read. Google's words, kept verbatim
+                    and left LTR, because they are what an operator would search for.
+                *@
+                <div class="account-failure" role="status">
+                    <span class="account-failure-head">
+                        @(account.FailureAtText is { Length: > 0 } when
+                            ? UiText.Accounts.LastFailureAt(when)
+                            : UiText.Accounts.LastFailure)
+                    </span>
+                    <span class="account-failure-text mono" dir="ltr">@reason</span>
+                </div>
+            }
 
             <div style="margin-top: 14px; max-width: 320px;">
                 <div class="bar-label">

@@ -128,7 +128,7 @@ public class GoogleCredentialPanelTests
     }
 
     [Fact]
-    public async Task A_saved_secret_is_encrypted_on_disk_and_never_comes_back_down_the_wire()
+    public async Task A_saved_secret_is_encrypted_in_the_database_and_never_comes_back_down_the_wire()
     {
         using var harness = new OperatorPanelHarness(googleConfigured: false);
         using var client = harness.NewClient();
@@ -141,9 +141,15 @@ public class GoogleCredentialPanelTests
 
         saved.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
-        var onDisk = harness.CredentialStoreText();
-        onDisk.Should().NotBeNull();
-        onDisk.Should().NotContain(TypedSecret, "the secret is protected at rest by the token protector");
+        // A row, not a file. The file this replaced lived inside the container and a redeploy
+        // deleted it, taking the whole pool down with it — the refresh tokens survived and could no
+        // longer be refreshed.
+        var row = harness.StoredClients().Should().ContainSingle().Subject;
+        row.ClientId.Should().Be(TypedClientId);
+        row.ClientSecretProtected.Should().NotBeNull();
+        row.ClientSecretProtected.Should().NotContain(
+            TypedSecret,
+            "the secret is protected at rest by the token protector");
 
         // Every response the operator's browser can get its hands on, checked for the secret.
         foreach (var path in new[] { "/accounts", "/accounts/google-credentials" })
@@ -154,7 +160,8 @@ public class GoogleCredentialPanelTests
                     client,
                     TypedClientId,
                     clientSecret: null,
-                    OperatorPanelHarness.OriginRedirectUri);
+                    OperatorPanelHarness.OriginRedirectUri,
+                    row.Id);
 
             var body = WebUtility.HtmlDecode(await page.Content.ReadAsStringAsync());
             body.Should().NotContain(TypedSecret, "a secret that can be rendered eventually is");
@@ -205,6 +212,8 @@ public class GoogleCredentialPanelTests
     public async Task The_settings_surface_is_operator_only()
     {
         using var harness = new OperatorPanelHarness(googleConfigured: false, isOperator: false);
+        var seeded = harness.SeedClient("already-there.apps.googleusercontent.com");
+
         using var client = harness.NewClient();
 
         using var page = await client.GetAsync("/accounts");
@@ -223,10 +232,19 @@ public class GoogleCredentialPanelTests
 
         save.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
-        using var clear = await client.PostAsync("/accounts/google-credentials/clear", EmptyForm());
-        clear.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        // The two routes that reach a client already in the table. Removing one strands every
+        // account it refreshes, and promoting one decides which client the next account is bound to.
+        using var remove = await client.PostAsync(
+            $"/accounts/google-credentials/{seeded.Id}/remove",
+            EmptyForm());
+        remove.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
-        harness.CredentialStoreText().Should().BeNull("nothing a customer sent may have been written");
+        using var use = await client.PostAsync(
+            $"/accounts/google-credentials/{seeded.Id}/use",
+            EmptyForm());
+        use.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        harness.StoredClients().Should().ContainSingle("nothing a customer sent may have changed a row");
     }
 
     /// <summary>
@@ -248,7 +266,7 @@ public class GoogleCredentialPanelTests
             }));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        harness.CredentialStoreText().Should().BeNull();
+        harness.StoredClients().Should().BeEmpty();
     }
 
     /// <summary>
@@ -283,19 +301,94 @@ public class GoogleCredentialPanelTests
             OperatorPanelHarness.OriginRedirectUri);
         saved.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
+        var id = harness.StoredClients().Should().ContainSingle().Subject.Id;
+
         var token = await OperatorPanelHarness.AntiforgeryTokenAsync(client);
         using var cleared = await client.PostAsync(
-            "/accounts/google-credentials/clear",
+            $"/accounts/google-credentials/{id}/remove",
             new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = token,
             }));
 
         cleared.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        harness.CredentialStoreText().Should().BeNull();
+        harness.StoredClients().Should().BeEmpty();
 
         var html = WebUtility.HtmlDecode(await client.GetStringAsync("/accounts"));
         html.Should().NotContain(TypedClientId);
+    }
+
+    /// <summary>
+    /// The refusal, end to end and in a sentence. A refresh token can only be presented by the
+    /// client that issued it, so removing a client accounts still name does not fail when it is
+    /// pressed — it fails an hour later, on every one of them at once, as uploads reporting that
+    /// storage is unavailable. Which is how this product lost its pool once already.
+    /// </summary>
+    [Fact]
+    public async Task A_client_an_account_still_needs_cannot_be_removed()
+    {
+        using var harness = new OperatorPanelHarness(googleConfigured: false);
+        var seeded = harness.SeedClient(TypedClientId);
+        harness.SeedAccount("pool-a1@example.com", "A1", TypedClientId);
+
+        using var client = harness.NewClient();
+        var token = await OperatorPanelHarness.AntiforgeryTokenAsync(client);
+
+        using var response = await client.PostAsync(
+            $"/accounts/google-credentials/{seeded.Id}/remove",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = token,
+            }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        harness.StoredClients().Should().ContainSingle();
+
+        var html = WebUtility.HtmlDecode(await client.GetStringAsync("/accounts"));
+        html.Should().Contain("این کلاینت حذف نشد");
+        html.Should().Contain("A1", "the refusal names the account standing in the way");
+    }
+
+    /// <summary>
+    /// Status said «قطع شده» and nothing said why, so a pool that died because a redeploy deleted
+    /// its OAuth client read exactly like one whose consent screen had expired — and both read like
+    /// nothing. The customer still gets the generic sentence; the operator gets Google's own words.
+    /// </summary>
+    [Fact]
+    public async Task An_account_card_says_which_client_connected_it_and_why_it_last_failed()
+    {
+        using var harness = new OperatorPanelHarness(googleConfigured: false);
+        harness.SeedClient(TypedClientId, "C1");
+        harness.SeedAccount(
+            "pool-a1@example.com",
+            "A1",
+            TypedClientId,
+            "Google rejected the grant (invalid_grant: Token has been expired or revoked).");
+
+        using var client = harness.NewClient();
+        var html = WebUtility.HtmlDecode(await client.GetStringAsync("/accounts"));
+
+        html.Should().Contain("کلاینت C1");
+        html.Should().Contain("Token has been expired or revoked");
+        html.Should().Contain("آخرین خطا");
+    }
+
+    /// <summary>
+    /// The card an operator would have needed on the morning the pool went dark: the account names a
+    /// client that is not stored any more, so nothing can refresh it, and the screen says exactly
+    /// that instead of showing a status badge with no explanation.
+    /// </summary>
+    [Fact]
+    public async Task An_account_whose_client_is_gone_is_called_out_on_its_card()
+    {
+        using var harness = new OperatorPanelHarness(googleConfigured: false);
+        harness.SeedAccount("pool-a1@example.com", "A1", "deleted-last-deploy.apps.googleusercontent.com");
+
+        using var client = harness.NewClient();
+        var html = WebUtility.HtmlDecode(await client.GetStringAsync("/accounts"));
+
+        html.Should().Contain("کلاینتی که این اکانت با آن وصل شده دیگر ذخیره نیست");
+        html.Should().Contain("deleted-last-deploy.apps.googleusercontent.com");
     }
 
     private static FormUrlEncodedContent EmptyForm() =>

@@ -17,7 +17,8 @@ public static class GoogleServiceCollectionExtensions
     /// rest.
     ///
     /// Call it after <c>AddDataProtection()</c> and <c>AddDbContext&lt;DriveUnionDbContext&gt;()</c>:
-    /// the token protector needs the key ring and the token service needs the accounts table.
+    /// the token protector needs the key ring, and the credentials and the token service both need
+    /// the tables.
     /// </summary>
     public static IServiceCollection AddGoogleDrive(
         this IServiceCollection services,
@@ -31,26 +32,26 @@ public static class GoogleServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ITokenProtector, DataProtectionTokenProtector>();
 
-        // Where the OAuth client the operator types into the panel is kept. Registered as a factory
-        // rather than by type so that IHostEnvironment can be optional: this same registration has
-        // to resolve inside a bare ServiceCollection in the tests, which has no host at all.
-        services.TryAddSingleton<IGoogleOAuthCredentialStore>(sp => new FileGoogleOAuthCredentialStore(
-            CredentialStorePath(sp, section),
-            sp.GetRequiredService<ITokenProtector>(),
-            sp.GetRequiredService<ILogger<FileGoogleOAuthCredentialStore>>()));
+        // Where the OAuth clients the operator types into the panel are kept: rows, with their
+        // secrets encrypted by the key ring that is itself a table. This used to be a JSON file
+        // inside the container, and a redeploy deleting it took the whole pool down with it — the
+        // refresh tokens survived and could not be refreshed. See GoogleOAuthClient.
+        //
+        // A singleton, because the resolver below is one and IOptions<T> is read synchronously; it
+        // opens its own scope per call rather than holding a context.
+        services.TryAddSingleton<IGoogleOAuthClientStore, GoogleOAuthClientStore>();
 
         services.TryAddSingleton(sp => new GoogleOAuthCredentialResolver(
             section,
-            sp.GetRequiredService<IGoogleOAuthCredentialStore>()));
+            sp.GetRequiredService<IGoogleOAuthClientStore>()));
 
         // ────────────────────────────────────────────────────────────────────────────────────────
         // This replaces the ordinary AddOptions().Bind() for GoogleOAuthOptions, and it is not an
         // accident. Binding computes the options once, while the container is being built; the
         // operator's client id arrives later, by hand, into a panel that is already running. An
         // explicit closed-generic registration outranks the open generic IOptions<> that the
-        // options infrastructure provides, so every existing consumer — GoogleTokenService, the
-        // accounts controller — keeps asking for exactly what it asked for before and starts
-        // getting an answer that is resolved per read.
+        // options infrastructure provides, so every existing consumer keeps asking for exactly what
+        // it asked for before and starts getting an answer that is resolved per read.
         //
         // Configuration still wins over the panel, field by field. See
         // GoogleOAuthCredentialResolver for why that direction and not the other.
@@ -64,6 +65,16 @@ public static class GoogleServiceCollectionExtensions
 
         services.TryAddSingleton<IGoogleOAuthCredentials>(
             sp => sp.GetRequiredService<GoogleOAuthCredentialResolver>());
+
+        // The one-time carry of App_Data/google-oauth.json into the table above. It walks straight
+        // back out when there is no file, which is every deployment that has already lost one and
+        // every test host in this repository — so registering it unconditionally costs nothing.
+        services.AddHostedService(sp => new GoogleOAuthClientImport(
+            LegacyCredentialFilePath(sp, section),
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            sp.GetRequiredService<ITokenProtector>(),
+            sp.GetRequiredService<IGoogleOAuthClientStore>(),
+            sp.GetRequiredService<ILogger<GoogleOAuthClientImport>>()));
 
         services.AddTransient<DriveRetryHandler>();
 
@@ -94,20 +105,23 @@ public static class GoogleServiceCollectionExtensions
 
         services.AddScoped<IGoogleAccountDirectory, GoogleAccountDirectory>();
 
+        // What the accounts screen shows beyond the pool's own summary: which client connected each
+        // account, and why it last stopped working.
+        services.AddScoped<IGoogleClientUsageReader, GoogleClientUsageReader>();
+
         return services;
     }
 
     /// <summary>
-    /// Where <see cref="FileGoogleOAuthCredentialStore"/> writes.
+    /// Where the OAuth client used to be written, and the only place
+    /// <see cref="GoogleOAuthClientImport"/> looks.
     ///
-    /// <c>Google:CredentialStorePath</c> overrides it, which is how a deployment puts the file on a
-    /// volume that outlives the container — worth doing, because unlike the Data Protection key
-    /// ring this file is not in the database and a redeploy that loses it costs the operator a
-    /// re-paste. The default is the content root, not <c>AppContext.BaseDirectory</c>: in
-    /// development the latter is <c>bin/Debug</c>, and <c>dotnet clean</c> would take the
-    /// credentials with it.
+    /// <c>Google:CredentialStorePath</c> still overrides it, because a deployment that took that
+    /// advice and put the file on a volume is exactly the deployment that still has one to import.
+    /// The default is the content root, not <c>AppContext.BaseDirectory</c>: that is where the old
+    /// store wrote, and a path that does not match it would import nothing and say nothing.
     /// </summary>
-    private static string CredentialStorePath(IServiceProvider services, IConfiguration section)
+    private static string LegacyCredentialFilePath(IServiceProvider services, IConfiguration section)
     {
         if (section["CredentialStorePath"] is { } configured && !string.IsNullOrWhiteSpace(configured))
         {

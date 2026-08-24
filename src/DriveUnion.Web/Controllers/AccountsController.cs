@@ -10,7 +10,6 @@ using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
-using Microsoft.Extensions.Options;
 
 namespace DriveUnion.Web.Controllers;
 
@@ -25,8 +24,8 @@ namespace DriveUnion.Web.Controllers;
 [Route("accounts")]
 public sealed class AccountsController(
     IGoogleAccountDirectory directory,
-    IOptions<GoogleOAuthOptions> googleOptions,
     IGoogleOAuthCredentials credentials,
+    IGoogleClientUsageReader usage,
     ILogger<AccountsController> logger) : Controller
 {
     private const string StateCookie = "du_google_oauth_state";
@@ -63,6 +62,7 @@ public sealed class AccountsController(
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
         var accounts = await directory.ListAsync(cancellationToken);
+        var clients = await usage.ReadAsync(cancellationToken);
 
         ViewData[ShellContext.Key] = new ShellContext
         {
@@ -72,11 +72,16 @@ public sealed class AccountsController(
         };
 
         return View(new AccountsPageViewModel(
-            [.. accounts.Select(AccountCardViewModel.From)],
+            [.. accounts.Select(a => AccountCardViewModel.From(
+                a,
+                clients.Accounts.GetValueOrDefault(a.Id)))],
             TempData["Notice"] as string,
             TempData["Error"] as string,
             Google() is not null,
-            GoogleSetupViewModel.From(credentials.Describe(), SuggestedRedirectUri())));
+            GoogleSetupViewModel.From(
+                credentials.Describe(),
+                SuggestedRedirectUri(),
+                clients.AccountsPerClientId)));
     }
 
     /// <summary>
@@ -86,6 +91,9 @@ public sealed class AccountsController(
     /// environment variable were never going to be how this gets configured. Google still will not
     /// take a request without a client id — that part is Google's — but needing a shell to supply
     /// one was ours.
+    ///
+    /// A blank <see cref="GoogleCredentialsForm.Id"/> adds a client; a filled one edits that client.
+    /// The two are different forms on the screen, so an edit cannot become an accidental insert.
     ///
     /// A POST behind the same antiforgery token as everything else on this screen, and behind the
     /// same operator policy the controller carries: this writes the credential that reaches the
@@ -105,8 +113,10 @@ public sealed class AccountsController(
         // trimming is right, and Google's secrets have never contained leading or trailing space.
         var clientSecret = form.ClientSecret?.Trim();
 
-        var state = credentials.Describe();
-        var secretAlreadyStored = state.Stored is { HasClientSecret: true };
+        // A secret already stored is only an excuse to leave the field blank when this is an edit of
+        // the client that holds it. Adding a client always needs its own.
+        var secretAlreadyStored = form.Id is { } editing
+            && credentials.Describe().StoredClients.Any(c => c.Id == editing && c.HasClientSecret);
 
         if (Validate(clientId, clientSecret, redirectUri, secretAlreadyStored) is { } complaint)
         {
@@ -114,16 +124,14 @@ public sealed class AccountsController(
             return RedirectToAction(nameof(Index));
         }
 
-        try
+        var saved = credentials.Save(form.Id, clientId, clientSecret, redirectUri);
+
+        if (saved.Outcome is not GoogleOAuthClientSave.Saved)
         {
-            credentials.Save(clientId, clientSecret, redirectUri);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // The message is not shown: it carries the path of the store, and the operator cannot
-            // act on it from a browser anyway.
-            logger.LogError(exception, "Saving the Google OAuth client failed");
-            TempData["Error"] = UiText.Accounts.SaveFailed;
+            TempData["Error"] = saved.Outcome is GoogleOAuthClientSave.DuplicateClientId
+                ? UiText.Accounts.ClientAlreadySaved
+                : UiText.Accounts.ClientNotFound;
+
             return RedirectToAction(nameof(Index));
         }
 
@@ -137,22 +145,61 @@ public sealed class AccountsController(
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost("google-credentials/clear")]
+    /// <summary>
+    /// Promotes one stored client to the one new connections run with.
+    ///
+    /// This is how a second Google project becomes reachable: the accounts already in the pool keep
+    /// being refreshed with the client that connected them — that binding is on the account row —
+    /// and only the next consent flow uses this one.
+    /// </summary>
+    [HttpPost("google-credentials/{id:guid}/use")]
     [ValidateAntiForgeryToken]
-    public IActionResult ClearGoogleCredentials()
+    public IActionResult UseGoogleClient(Guid id)
     {
-        try
+        if (!credentials.MakeDefault(id))
         {
-            var removed = credentials.Clear();
-
-            TempData[removed ? "Notice" : "Error"] = removed
-                ? UiText.Accounts.Cleared
-                : UiText.Accounts.NothingToClear;
+            TempData["Error"] = UiText.Accounts.ClientNotFound;
+            return RedirectToAction(nameof(Index));
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+
+        // Promoting a client while configuration is supplying one changes nothing about the next
+        // connection, and an operator who was not told that would go looking for the fault in Google
+        // Cloud. Configuration outranks the panel; this is where that stops being abstract.
+        TempData["Notice"] = credentials.Describe().ClientId.Source is GoogleCredentialSource.Configuration
+            ? UiText.Accounts.ClientInUseButOverridden
+            : UiText.Accounts.ClientInUse;
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// Forgets a stored client — unless accounts are still refreshed with it.
+    ///
+    /// That refusal is the whole reason this is not a plain delete. A refresh token can only be
+    /// presented by the client that issued it, so removing a client in use does not fail here: it
+    /// fails an hour later, on every account bound to it at once, as uploads reporting that storage
+    /// is unavailable. Which is exactly how this product lost its pool once already.
+    /// </summary>
+    [HttpPost("google-credentials/{id:guid}/remove")]
+    [ValidateAntiForgeryToken]
+    public IActionResult RemoveGoogleClient(Guid id)
+    {
+        var removal = credentials.Remove(id);
+
+        switch (removal.Outcome)
         {
-            logger.LogError(exception, "Removing the stored Google OAuth client failed");
-            TempData["Error"] = UiText.Accounts.ClearFailed;
+            case GoogleOAuthClientRemoval.Removed:
+                TempData["Notice"] = UiText.Accounts.Cleared;
+                break;
+
+            case GoogleOAuthClientRemoval.InUseByAccounts:
+                TempData["Error"] = UiText.Accounts.ClientInUseByAccounts(
+                    string.Join(UiText.Accounts.LabelSeparator, removal.AccountLabels));
+                break;
+
+            default:
+                TempData["Error"] = UiText.Accounts.NothingToClear;
+                break;
         }
 
         return RedirectToAction(nameof(Index));
@@ -439,7 +486,7 @@ public sealed class AccountsController(
     /// where they fix it.
     /// </summary>
     private GoogleOAuthOptions? Google() =>
-        googleOptions.Value is { } options && options.IsConfigured() ? options : null;
+        credentials.InForce is { } options && options.IsConfigured() ? options : null;
 
     private static bool StateMatches(string? returned, string? expected)
     {

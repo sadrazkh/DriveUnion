@@ -21,7 +21,7 @@
 
     @if (!string.IsNullOrEmpty(Model.Error))
     {
-        <p class="page-sub" role="alert" style="color: var(--danger);">@Model.Error</p>
+        <p class="page-sub danger" role="alert">@Model.Error</p>
     }
 
     <div class="card card--pad" style="max-width: 720px;">
@@ -33,7 +33,7 @@
                 instead of drawing a button that fails.
             *@
             <div class="stack" style="gap: 8px;">
-                <span style="font-size: 14px; font-weight: 700;">تلگرام</span>
+                <span class="card-title">تلگرام</span>
                 <p class="page-sub">
                     ربات تلگرام این سرویس هنوز راه‌اندازی نشده است. تا آن زمان امکان اتصال وجود ندارد.
                 </p>
@@ -43,7 +43,7 @@
         {
             <div class="row" style="gap: 16px; align-items: flex-start;">
                 <span class="stack" style="gap: 4px; flex: 1; min-width: 0;">
-                    <span style="font-size: 14px; font-weight: 700;">@linked.Title</span>
+                    <span class="card-title">@linked.Title</span>
                     @* The numeric Telegram id is never here. The @username is the customer's own and
                        the only handle they recognise. *@
                     @if (linked.Handle is { Length: > 0 } handle)
@@ -77,7 +77,7 @@
         else
         {
             <div class="stack" style="gap: 8px;">
-                <span style="font-size: 14px; font-weight: 700;">اتصال حساب تلگرام</span>
+                <span class="card-title">اتصال حساب تلگرام</span>
                 <p class="page-sub">
                     پس از اتصال، فایلی که برای ربات بفرستید همین‌جا ذخیره می‌شود، و فایلی که اینجا
                     دارید را می‌توانید از تلگرام بخواهید.
