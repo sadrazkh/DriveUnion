@@ -127,13 +127,36 @@ var trustedProxies = builder.Configuration
     .GetSection("DriveUnion:TrustedProxies")
     .Get<string[]>() ?? [];
 
+// ASP.NET trusts a forwarding proxy only on loopback by default. On a platform like Harbora the
+// proxy sits on a container network, so the headers are dropped — and nothing reports it. What is
+// seen instead is a panel served over https whose Request.Scheme is http, every visitor arriving
+// from the proxy's own address, the /d/* rate limiter putting the whole internet in one bucket, and
+// the download log recording four hundred different people as one party.
+//
+// Off unless asked for. Turning it on clears the loopback-only defaults and takes the headers from
+// whatever is in front, which is safe exactly while nothing can reach the container except the
+// platform's proxy. That is the arrangement here, and it is written down rather than assumed —
+// the day it stops being true, a client can name its own address.
+//
+// A named list wins when there is one, because naming the proxy is stricter than trusting any.
+var trustAnyProxy = builder.Configuration.GetValue("DriveUnion:TrustAnyProxy", false);
+
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
+    // X-Forwarded-Host is deliberately not among these. The host arrives intact already, and
+    // honouring the header would let whatever is in front rewrite the address this panel believes
+    // it lives at — including the redirect URI it tells the operator to register with Google.
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 
-    foreach (var proxy in trustedProxies.Where(p => !string.IsNullOrWhiteSpace(p)))
+    var named = trustedProxies.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+    if (named.Count > 0)
     {
-        options.KnownProxies.Add(IPAddress.Parse(proxy.Trim()));
+        foreach (var proxy in named) options.KnownProxies.Add(IPAddress.Parse(proxy.Trim()));
+    }
+    else if (trustAnyProxy)
+    {
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
     }
 });
 
