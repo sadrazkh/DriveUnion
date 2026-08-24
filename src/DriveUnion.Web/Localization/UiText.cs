@@ -31,7 +31,11 @@ namespace DriveUnion.Web.Localization;
 /// supplied at the same line, so an entry that exists in one culture and not the other cannot be
 /// written; <c>LocalizationCatalogueTests</c> proves the rest.</para>
 /// </summary>
-public static class UiText
+// Partial so a screen can bring its own words in its own file. This one table had become the single
+// place three unrelated pieces of work all had to edit at once, which is a merge conflict wearing
+// the costume of a design decision. The rule the class exists for is unchanged: a key is a member,
+// so a typo is a build error rather than a screen that ships "Nav.Fils" to a paying customer.
+public static partial class UiText
 {
     /// <summary>
     /// The one place the language is branched on. Both sides are evaluated, which costs nothing for
