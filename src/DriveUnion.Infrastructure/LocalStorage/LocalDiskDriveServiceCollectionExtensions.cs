@@ -58,6 +58,11 @@ public static class LocalDiskDriveServiceCollectionExtensions
 
         services.AddHostedService<LocalDiskDriveAnnouncement>();
 
+        // Replacing IDriveClient is not enough on its own: the upload path looks for an account, not
+        // for a client. Without a row in the pool every upload is refused before the disk is ever
+        // reached, which is what it did.
+        services.AddHostedService<LocalDiskPoolAccount>();
+
         return services;
     }
 }

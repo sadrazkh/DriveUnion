@@ -9,12 +9,24 @@
  * a plain block at the top of the page while the shell has no `data-nav` attribute, so a checkout
  * with no bundle — or a bundle that failed to load — is still navigable on a phone. This function
  * is what sets `data-nav="closed"` and thereby opts into the off-canvas behaviour.
+ *
+ * All three elements it binds to live above `main.app-content`, so a navigation no longer disturbs
+ * any of them: this is mounted once and survives every swap. The one thing a swap has to be told is
+ * that the drawer should close behind it — see the controller returned below.
  */
-export function mountNavToggle(): void {
+export interface NavToggle {
+  /** Closes the drawer, taking focus out of it first if that is where the reader left it. */
+  close(): void;
+}
+
+export function mountNavToggle(): NavToggle {
   const shell = document.querySelector<HTMLElement>('[data-shell]');
   const toggle = document.querySelector<HTMLButtonElement>('[data-nav-toggle]');
   const scrim = document.querySelector<HTMLElement>('[data-nav-scrim]');
-  if (!shell || !toggle) return;
+
+  // The public download page has no shell and no drawer. A controller that does nothing is the
+  // honest answer there; the alternative is every caller asking whether the panel exists.
+  if (!shell || !toggle) return { close: () => {} };
 
   const sidebar = document.querySelector<HTMLElement>('.app-sidebar');
 
@@ -50,4 +62,9 @@ export function mountNavToggle(): void {
   matchMedia('(min-width: 901px)').addEventListener('change', (event) => {
     if (event.matches) set(false);
   });
+
+  // Navigation no longer reloads the page, so nothing closes the drawer on the way through a link
+  // any more: on a phone the menu would stay open on top of the screen it was used to reach, and
+  // the reader would have to dismiss the thing they just successfully used.
+  return { close: () => set(false, true) };
 }

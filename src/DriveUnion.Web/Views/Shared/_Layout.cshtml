@@ -399,6 +399,21 @@
              data-antiforgery-token="@uploadTokens.RequestToken"
              data-lang="@PanelCulture.Code"
              hidden></div>
+
+        @*
+            The other fixture: the dock, in the bottom inline-end corner of every screen in the
+            panel, showing what is uploading and opening the upload screen when it is pressed.
+
+            Outside `main.app-content` deliberately — that is the box navigation replaces, and a
+            dock swapped out mid-transfer would take its own progress with it. It is empty on
+            purpose: no server-rendered fallback, because without the bundle there is no queue for
+            a fallback to describe, and a mount point that leaves a sentence behind for ever is the
+            defect IslandRegistrationTests was written for.
+
+            It draws nothing until there is something in the queue; app.css gives the mount point
+            `display: contents` so that «nothing» costs no box either.
+        *@
+        <div data-island="upload-dock"></div>
     }
 </div>
 @await RenderSectionAsync("Scripts", required: false)

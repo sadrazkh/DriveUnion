@@ -1,5 +1,3 @@
-@using DriveUnion.Web.Models
-@model AntiforgeryTokenViewModel
 @{
     ViewData["Title"] = UiText.Files.UploadTitle;
 }
@@ -12,14 +10,18 @@
 
     <div class="card card--pad">
         @*
-            The mount point's data-* are its props: the upload island posts to /api/uploads, then
-            PUTs each chunk with a Content-Range. Both need the antiforgery header, because the
-            panel authenticates with a cookie.
+            The mount point carries no props any more, and that is the change this screen is.
+
+            The queue is not this page's — it lives in the shell, above the content navigation
+            swaps, so a transfer survives walking around the panel. Everything the island needs
+            comes from `data-upload-config` in _Layout.cshtml: the begin URL, the antiforgery
+            header and token, and the language. The token in particular has to come from there,
+            because it is per-response and an upload outlives many responses.
+
+            What this screen adds to the corner dock is room: the concurrency choice, the
+            checkboxes, and the sentence about what a reload costs.
         *@
-        <div data-island="upload-panel"
-             data-begin-url="@Url.Action("Begin", "Uploads")"
-             data-antiforgery-header="@Model.HeaderName"
-             data-antiforgery-token="@Model.Token">
+        <div data-island="upload-panel">
             <div class="empty">
                 <span>@UiText.Files.UploadNeedsScript</span>
                 <a class="btn" href="@Url.Action("Index", "Files")">@UiText.Files.BackToFiles</a>

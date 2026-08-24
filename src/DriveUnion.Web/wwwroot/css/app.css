@@ -1013,6 +1013,40 @@ a:hover {
   color: var(--text);
 }
 
+/* ---------------------------------------------------------------- upload dock */
+
+/*
+ * Where the upload dock sits, which is a decision about the shell rather than about the component.
+ *
+ * The island brings its own rows and its own type (Scripts/islands/UploadDock.vue); the corner, the
+ * width and the layering are here, beside the other fixed boxes they have to agree with.
+ *
+ * The mount point generates no box at all. It is a child of .app-shell, which is a flex container,
+ * so an ordinary empty <div> there would be a flex item — a column of nothing between the sidebar
+ * and the content on every page with no upload running.
+ */
+[data-island="upload-dock"] {
+  display: contents;
+}
+
+/*
+ * z-index 10 puts the dock over the sticky header (5) and under the phone drawers and their scrim
+ * (20 and 30). Both halves matter: a dock behind the header disappears the moment the page is
+ * scrolled to the top, and a dock over the scrim is a bright box floating on the dimmed page the
+ * scrim exists to push away.
+ */
+.upload-dock {
+  position: fixed;
+  inset-block-end: 16px;
+  inset-inline-end: 16px;
+  z-index: 10;
+  width: min(360px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
 /* ---------------------------------------------------------------- loading */
 
 .skeleton {

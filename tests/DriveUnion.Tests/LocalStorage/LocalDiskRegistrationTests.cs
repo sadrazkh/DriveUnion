@@ -146,7 +146,13 @@ public class LocalDiskRegistrationTests
         services.AddLocalDiskDrive(Configuration(enabled: true, harness.Root));
 
         using var provider = services.BuildServiceProvider();
-        await provider.GetServices<IHostedService>().Single().StartAsync(CancellationToken.None);
+        // Named rather than taken as the only one. This feature registers a second hosted service —
+        // the pool account, without which every upload is refused before the disk is reached — and a
+        // Single() here would fail on a change that is nothing to do with what this test asserts.
+        await provider.GetServices<IHostedService>()
+            .OfType<LocalDiskDriveAnnouncement>()
+            .Single()
+            .StartAsync(CancellationToken.None);
 
         // A warning, not information: the only place anybody finds out where the bytes went is the
         // log, and a line nobody notices is the same as no line.
