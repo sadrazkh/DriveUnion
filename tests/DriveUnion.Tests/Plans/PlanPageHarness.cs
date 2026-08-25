@@ -39,6 +39,21 @@ public sealed class PlanPageHarness : WebApplicationFactory<Program>
 
     public const string UserName = "reza@acme.example";
 
+    /// <summary>
+    /// Who the signed-in caller is, as a claim rather than only as a display name.
+    ///
+    /// <para>A cookie minted by ASP.NET Identity always carries <c>NameIdentifier</c>; this handler
+    /// minted <c>Name</c> and the tenant and stopped, so its principal was one a real sign-in could
+    /// never produce. Nothing noticed until a test pressed every link in the sidebar: /telegram/link
+    /// is a tenant route that starts <c>if (CurrentUserId() is not { } userId) return Forbid()</c>,
+    /// so it answered 403 to a customer the harness said was signed in — a refusal invented by the
+    /// harness, on a screen that works.</para>
+    ///
+    /// <para>Fixed, not exempted. A test that skips the routes a harness cannot reach is a test that
+    /// stops covering them the moment the harness is the thing that is wrong.</para>
+    /// </summary>
+    public static readonly Guid UserId = Guid.Parse("9f2a6c14-0d3b-4c8e-9a55-6b1f2c7d4e80");
+
     private readonly SqliteConnection connection;
 
     public PlanPageHarness()
@@ -214,7 +229,11 @@ public sealed class PlanPageHarness : WebApplicationFactory<Program>
 
             if (!hasTenant && !isOperator) return Task.FromResult(AuthenticateResult.NoResult());
 
-            var claims = new List<Claim> { new(ClaimTypes.Name, UserName) };
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.Name, UserName),
+                new(ClaimTypes.NameIdentifier, UserId.ToString()),
+            };
 
             if (hasTenant) claims.Add(new Claim(DriveUnionClaimTypes.TenantId, tenantId.ToString()));
 

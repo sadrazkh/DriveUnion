@@ -110,7 +110,9 @@ public static partial class UiText
 
         public static string Menu => Pick("منو", "Menu");
 
-        public static string SearchEveryAccount => Pick("جست‌وجو در همه‌ی اکانت‌ها", "Search every account");
+        // Removed: SearchEveryAccount, «جست‌وجو در همه‌ی اکانت‌ها». The comp's operator search reads
+        // the union of the pool and nothing in this product does that — the box is a GET to /files,
+        // which is one tenant's own library. It comes back when there is a search behind it.
 
         public static string SearchFiles => Pick("جست‌وجو در فایل‌ها", "Search files");
 

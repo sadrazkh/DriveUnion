@@ -258,10 +258,14 @@ public class PlanScreenTests
         history.Should().NotBeEmpty();
         history.Should().OnlyContain(c => c.Reason == "Upgraded after the call.");
 
-        // The operator who pressed the button. Null here because the test principal carries no
-        // identity id — and null rather than Guid.Empty, because an empty id in an audit trail is a
-        // person who does not exist.
-        history.Should().OnlyContain(c => c.ChangedByUserId == null);
+        // The operator who pressed the button, named.
+        //
+        // This asserted null and explained that the test principal carried no identity id — which
+        // documented a gap in the harness as though it were a property of the product. The handler
+        // reads NameIdentifier, a real cookie always carries one, and the harness now mints one too,
+        // so the audit trail says who moved this workspace between plans. That is the thing the
+        // column exists for, and until now nothing checked it was ever written.
+        history.Should().OnlyContain(c => c.ChangedByUserId == PlanPageHarness.UserId);
     }
 
     [Fact]

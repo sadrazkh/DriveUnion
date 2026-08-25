@@ -857,6 +857,22 @@ a:hover {
   font-size: 11.5px;
   color: var(--muted);
   font-weight: 600;
+
+  /*
+    …and it fills the band even when it has nothing in it.
+
+    .dtable centres its items, so a cell's box is as tall as its content. Three of these tables give
+    a column no heading — the files table's checkbox column, the trash's restore column — and an
+    empty cell's content is nothing, so its box was padding alone: measured on /trash, 23px against
+    the 42px its neighbours filled. The header's background is painted per cell, so those 19px were
+    a notch of card colour cut out of one end of the band, at the exact place a reader's eye goes to
+    check that a table starts and ends where its card does. Reported from a screenshot with a circle
+    drawn round it, from both ends — the files table's on the left, the trash's on the right.
+
+    Nothing else moves. The cells that do have a heading were already the full height of the band, so
+    stretching them changes their box by nothing and their text by nothing.
+  */
+  align-self: stretch;
 }
 
 /*
@@ -885,16 +901,44 @@ a:hover {
     contrast is the whole of what it is for.
   */
   color: var(--text);
+
+  /*
+    The separator and the highlight are the row's, not its cells'.
+
+    They were the cells' when a row was `display: contents` and had no box to paint. It has had one
+    since it became an anchor, and leaving them behind cost exactly what a per-cell paint costs in a
+    grid that centres: a cell is as tall as its content, and in any row holding a control it is not
+    as tall as the row. Measured on /trash — four cells 42px, the cell holding «Restore» 52px — so
+    the bottom border was drawn at two heights, four cells at 401px and one at 406px, and the row
+    ended in a step. Selecting a file on /files was worse, because the highlight is a colour: the
+    28px checkbox cell holds an 11px box, so the green stopped short of the row on both edges and
+    left a notch at the start of every selected row.
+
+    The row spans every track and is exactly as tall as the band, so one declaration on it is one
+    line and one rectangle.
+  */
+  border-bottom: 1px solid var(--line);
+  transition: background 120ms ease;
+}
+
+.dtable-row:last-child {
+  border-bottom: 0;
 }
 
 .dtable-row:hover {
   color: var(--text);
   text-decoration: none;
+  background: var(--surface2);
+}
+
+/* After :hover on purpose — a selected row keeps --soft while the pointer is over it. */
+.dtable-row.is-selected,
+.dtable-row.is-selected:hover {
+  background: var(--soft);
 }
 
 .dtable-row > * {
   padding: var(--row-pad);
-  border-bottom: 1px solid var(--line);
   font-size: 12.5px;
   min-width: 0;
   transition: background 120ms ease;
@@ -905,20 +949,6 @@ a:hover {
      an ellipsis, which overflow-wrap cannot touch; everything else here is a size, a slug or a
      status word and would rather break than overlap. */
   overflow-wrap: anywhere;
-}
-
-.dtable-row:last-child > * {
-  border-bottom: 0;
-}
-
-.dtable-row:hover > * {
-  background: var(--surface2);
-}
-
-/* After :hover on purpose — a selected row keeps --soft while the pointer is over it. */
-.dtable-row.is-selected > *,
-.dtable-row.is-selected:hover > * {
-  background: var(--soft);
 }
 
 .dtable-row.is-selected > .cell-name {
@@ -979,6 +1009,16 @@ a:hover {
 .cell-pin {
   position: sticky;
   inset-inline-end: 0;
+
+  /*
+    Full height, because this is the one cell whose background is doing a job rather than repeating
+    the row's. A pinned cell as tall as its own content leaves a sliver above and below it for the
+    columns it is holding back to be read through, which is a stripe of somebody else's data lying
+    across the control they are about to press. Flex so the button stays where centring put it.
+  */
+  align-self: stretch;
+  display: flex;
+  align-items: center;
 }
 
 /* Opaque, or the columns it is holding back are read through it. Each state repeats the background

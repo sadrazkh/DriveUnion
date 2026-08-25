@@ -24,9 +24,14 @@
     // the route allows cannot disagree.
     var hasWorkspace = User.GetTenantId() is not null;
 
-    // The comp's «جست‌وجو در همه‌ی اکانت‌ها…» is the operator reading the union of the pool. A
-    // customer has one library and must not be told it is spread across accounts.
-    var searchLabel = isOperator ? UiText.Shell.SearchEveryAccount : UiText.Shell.SearchFiles;
+    // One label, because there is one thing to search.
+    //
+    // The comp gives the operator «جست‌وجو در همه‌ی اکانت‌ها…» — the union of the pool — and this
+    // shell drew that wording for anyone with the operator claim. There is no such search: the box
+    // is a GET to /files, /files is behind DriveUnionPolicies.Tenant, and an operator without a
+    // workspace was being offered a search across accounts that answered 403. The box is now drawn
+    // only for somebody who has a library to search, and it says so.
+    var searchLabel = UiText.Shell.SearchFiles;
 
     // Where the language switch sends the visitor back to — this page, query string and all, so a
     // filtered file list or a search survives the switch. The controller only follows it if it is
@@ -130,9 +135,21 @@
             <a class="@NavClass("Home")" href="/">
                 <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Dashboard
             </a>
-            <a class="@NavClass("Files")" href="/Files">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Files
-            </a>
+            @*
+                The three tenant screens, and all three behind the same question the routes ask.
+
+                «فایل‌ها» and «لینک‌های اشتراک» were drawn for anybody signed in, and both controllers
+                carry [Authorize(Policy = Tenant)] — so an operator with no workspace had two primary
+                nav items that answered 403, next to a trash item correctly hidden by the same fact.
+                A dead nav item teaches a reader to distrust the whole menu, which is the reasoning
+                already written beside «صف انتقال» below; it applies here and was not applied.
+            *@
+            @if (hasWorkspace)
+            {
+                <a class="@NavClass("Files")" href="/Files">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Files
+                </a>
+            }
             @if (!isOperator && hasWorkspace)
             {
                 @* The other half of «فایل‌ها», and a primary nav item rather than a link inside that
@@ -151,9 +168,12 @@
             <span class="nav-item nav-item--split" aria-disabled="true" title="@UiText.Shell.NextRelease">
                 <span class="row"><span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TransferQueue</span>
             </span>
-            <a class="@NavClass("Links")" href="/Links">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.ShareLinks
-            </a>
+            @if (hasWorkspace)
+            {
+                <a class="@NavClass("Links")" href="/Links">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.ShareLinks
+                </a>
+            }
             @if (isOperator)
             {
                 @* AccountsController already answers a customer with 403; this keeps the words
@@ -355,7 +375,9 @@
                 <span class="visually-hidden">@UiText.Shell.Menu</span>
             </button>
 
-            @if (isSignedIn)
+            @* hasWorkspace and not isSignedIn: the box submits to /files, which is behind the tenant
+               policy. See searchLabel above. *@
+            @if (hasWorkspace)
             {
                 @*
                     The box comes back holding what was typed. Read from the query string rather

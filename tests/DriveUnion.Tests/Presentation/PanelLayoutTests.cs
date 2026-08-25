@@ -820,9 +820,22 @@ public class PanelLayoutTests
     /// which is what every assertion here wants, because none of them is about a breakpoint.
     /// </summary>
     private static List<CssRule> Rules(string css) => Regex
-        .Matches(StripComments(css), @"(?<sel>[^{}]+)\{(?<body>[^{}]*)\}", RegexOptions.None, TimeSpan.FromSeconds(5))
+        .Matches(StripComments(Newlines(css)), @"(?<sel>[^{}]+)\{(?<body>[^{}]*)\}", RegexOptions.None, TimeSpan.FromSeconds(5))
         .Select(m => new CssRule(m.Groups["sel"].Value.Trim(), m.Groups["body"].Value))
         .ToList();
+
+    /// <summary>
+    /// One newline, whatever the checkout uses.
+    ///
+    /// <para>A selector list is one selector per line, so a rule's prelude carries the file's own
+    /// line ending — and the assertions above name those preludes as C# literals, which carry
+    /// <c>\n</c>. This repository is <c>* text=auto</c> with <c>core.autocrlf=true</c>, so a Windows
+    /// working tree holds CRLF and every multi-line selector lookup missed. It passed for as long as
+    /// the file happened to be sitting in the tree with LF endings, and failed the first time git
+    /// normalised it — which is to say the suite was green because of how a file had been written
+    /// rather than because of what it said.</para>
+    /// </summary>
+    private static string Newlines(string css) => css.Replace("\r\n", "\n", StringComparison.Ordinal);
 
     /// <summary>The first block for a selector. Fails loudly rather than asserting against nothing.</summary>
     private static CssRule Rule(string css, string selector)
