@@ -7,7 +7,7 @@
     // from app.css rather than 0: the fixed tracks here are 396px and a 375px phone leaves 341px, so
     // minmax(0,…) would answer "there is no room" by drawing no file name at all — which is the one
     // column that tells two rows apart.
-    const string Cols = "--cols: minmax(var(--name-min),2.4fr) 92px 110px 110px 84px";
+    const string Cols = "--cols: minmax(var(--name-min),2.4fr) 92px 110px 118px 96px";
 }
 
 @*
@@ -46,8 +46,10 @@
                 <div>@UiText.Trash.ColumnDeleted</div>
                 <div>@UiText.Trash.ColumnPurge</div>
                 @* The restore column. Its header is empty for the same reason the files table's
-                   checkbox column's is: the buttons under it name themselves. *@
-                <div></div>
+                   checkbox column's is: the buttons under it name themselves. It is pinned even so,
+                   because a header cell that scrolls out from over a pinned body cell leaves the
+                   column looking like it belongs to whichever heading drifts above it. *@
+                <div class="cell-pin"></div>
             </div>
 
             @if (!Model.HasAnything)
@@ -72,7 +74,7 @@
                         <div class="cell-num" dir="ltr">@row.SizeText</div>
                         <div class="cell-muted">@row.DeletedText</div>
                         <div class="cell-muted">@row.PurgeText</div>
-                        <div>
+                        <div class="cell-pin">
                             <form method="post" action="@Url.Action("Restore", "Trash", new { id = row.Id })">
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="btn btn--sm" title="@row.RestoreLabel">

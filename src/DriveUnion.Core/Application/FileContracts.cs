@@ -30,7 +30,21 @@ public sealed record FileDetail(
 /// </summary>
 public interface IFileCatalog
 {
-    Task<IReadOnlyList<FileListItem>> ListAsync(Guid tenantId, CancellationToken cancellationToken);
+    /// <param name="nameQuery">
+    /// What the reader typed into the shell's search box, or null for the whole list.
+    ///
+    /// <para>A parameter rather than a separate <c>SearchAsync</c>, because a search is this list
+    /// with a <c>WHERE</c> on it: one method means the tenant predicate, the link count and the
+    /// ordering cannot drift between the list somebody browses and the list somebody searches.</para>
+    ///
+    /// <para>Required rather than defaulted. Every caller states whether it is searching, so a
+    /// screen that grows a search box and forgets to pass it does not silently list everything —
+    /// the same reasoning as <c>tenantId</c> above.</para>
+    /// </param>
+    Task<IReadOnlyList<FileListItem>> ListAsync(
+        Guid tenantId,
+        string? nameQuery,
+        CancellationToken cancellationToken);
 
     Task<FileDetail?> GetAsync(Guid tenantId, Guid fileId, CancellationToken cancellationToken);
 

@@ -115,95 +115,108 @@
             </span>
         </div>
 
-        <a class="@NavClass("Home")" href="/">
-            <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Dashboard
-        </a>
-        <a class="@NavClass("Files")" href="/Files">
-            <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Files
-        </a>
-        @if (!isOperator && hasWorkspace)
-        {
-            @* The other half of «فایل‌ها», and a primary nav item rather than a link inside that
-               screen: a customer looking for the space a delete did not give back is looking at the
-               menu, not at the table they just deleted from. It is a tenant item — the operator's
-               trash is every workspace's at once, which is a screen nobody has asked for. *@
-            <a class="@NavClass("Trash")" href="/trash">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Trash.Title
-            </a>
-        }
         @*
-            Queue and Settings are M3 and M6 (spec §12) and have no controller. Rendered so the
-            shell is the comp's, marked so a click is not a 404 — a dead primary nav item teaches
-            an operator to distrust the whole menu.
-        *@
-        <span class="nav-item nav-item--split" aria-disabled="true" title="@UiText.Shell.NextRelease">
-            <span class="row"><span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TransferQueue</span>
-        </span>
-        <a class="@NavClass("Links")" href="/Links">
-            <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.ShareLinks
-        </a>
-        @if (isOperator)
-        {
-            @* AccountsController already answers a customer with 403; this keeps the words
-               «اکانت‌های گوگل» out of their markup, which is the half a policy cannot do. *@
-            <a class="@NavClass("Accounts")" href="/Accounts">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.GoogleAccounts
-            </a>
-            @* The two screens that replaced "set four environment variables and redeploy": the
-               workspaces the operator sells to, and the tiers they are sold on. Both are behind the
-               Operator policy in their controllers; this only decides what is drawn. *@
-            <a class="@NavClass("Tenants")" href="/operator/tenants">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Tenants.Title
-            </a>
-            <a class="@NavClass("Plans")" href="/operator/plans">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Plans.OperatorTitle
-            </a>
-        }
-        else if (hasWorkspace)
-        {
-            @* The customer's own card — what they are allowed, and how much of it is spent. The
-               operator's catalogue is a different address and a different screen. *@
-            <a class="@NavClass("Plans")" href="/plans">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Plans.Title
-            </a>
-        }
-        @*
-            The comp's last slot is «تنظیمات», and it now exists — for the operator. It holds the
-            settings that belong to no workspace and apply to all of them, which is one so far: how
-            long the trash keeps a file. A customer has no such screen and must not be shown one,
-            because every setting on it is a decision about the operator's own storage.
+            Every one of these is behind a policy, so a signed-out reader following any of them is
+            challenged straight back to the page they are already on. Drawing them anyway was the
+            first thing anybody saw of this product: the sign-in page wore the whole panel — a file
+            search for somebody with no files, an «Upload file» button that could only bounce, and a
+            menu of five destinations that all led back here.
 
-            Beside it, the only other settings a signed-in caller has — Telegram (Telegram design
-            §9.1 for the operator's bot, §9.2 for the customer's own link, which lives at its own
-            address until a customer-facing settings screen exists to hold its card).
-
-            Two audiences, two addresses. Each controller authorises its own end, so this decides
-            what is drawn and not what is allowed: a customer who guesses /operator/settings gets a
-            403 rather than the retention form, and one who guesses /telegram gets a 403 rather than
-            the operator's bot token screen.
+            One item already had this reasoning attached to it, further down, for its own case. It
+            was true of the whole block.
         *@
-        @if (isOperator)
+        @if (isSignedIn)
         {
-            <a class="@NavClass("Telegram")" href="/telegram">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TelegramBot
+            <a class="@NavClass("Home")" href="/">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Dashboard
             </a>
-            <a class="@NavClass("Settings")" href="/operator/settings">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Settings
+            <a class="@NavClass("Files")" href="/Files">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Files
             </a>
-        }
-        else if (hasWorkspace)
-        {
-            <a class="@NavClass("Telegram")" href="/telegram/link">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Telegram
-            </a>
-        }
-        else
-        {
-            @* Nobody is signed in — the sign-in page wears this shell too, and a nav item that can
-               only challenge is a control that does nothing. *@
-            <span class="nav-item" aria-disabled="true" title="@UiText.Shell.NextRelease">
-                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Settings
+            @if (!isOperator && hasWorkspace)
+            {
+                @* The other half of «فایل‌ها», and a primary nav item rather than a link inside that
+                   screen: a customer looking for the space a delete did not give back is looking at the
+                   menu, not at the table they just deleted from. It is a tenant item — the operator's
+                   trash is every workspace's at once, which is a screen nobody has asked for. *@
+                <a class="@NavClass("Trash")" href="/trash">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Trash.Title
+                </a>
+            }
+            @*
+                Queue and Settings are M3 and M6 (spec §12) and have no controller. Rendered so the
+                shell is the comp's, marked so a click is not a 404 — a dead primary nav item teaches
+                an operator to distrust the whole menu.
+            *@
+            <span class="nav-item nav-item--split" aria-disabled="true" title="@UiText.Shell.NextRelease">
+                <span class="row"><span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TransferQueue</span>
             </span>
+            <a class="@NavClass("Links")" href="/Links">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.ShareLinks
+            </a>
+            @if (isOperator)
+            {
+                @* AccountsController already answers a customer with 403; this keeps the words
+                   «اکانت‌های گوگل» out of their markup, which is the half a policy cannot do. *@
+                <a class="@NavClass("Accounts")" href="/Accounts">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.GoogleAccounts
+                </a>
+                @* The two screens that replaced "set four environment variables and redeploy": the
+                   workspaces the operator sells to, and the tiers they are sold on. Both are behind the
+                   Operator policy in their controllers; this only decides what is drawn. *@
+                <a class="@NavClass("Tenants")" href="/operator/tenants">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Tenants.Title
+                </a>
+                <a class="@NavClass("Plans")" href="/operator/plans">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Plans.OperatorTitle
+                </a>
+            }
+            else if (hasWorkspace)
+            {
+                @* The customer's own card — what they are allowed, and how much of it is spent. The
+                   operator's catalogue is a different address and a different screen. *@
+                <a class="@NavClass("Plans")" href="/plans">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Plans.Title
+                </a>
+            }
+            @*
+                The comp's last slot is «تنظیمات», and it now exists — for the operator. It holds the
+                settings that belong to no workspace and apply to all of them, which is one so far: how
+                long the trash keeps a file. A customer has no such screen and must not be shown one,
+                because every setting on it is a decision about the operator's own storage.
+
+                Beside it, the only other settings a signed-in caller has — Telegram (Telegram design
+                §9.1 for the operator's bot, §9.2 for the customer's own link, which lives at its own
+                address until a customer-facing settings screen exists to hold its card).
+
+                Two audiences, two addresses. Each controller authorises its own end, so this decides
+                what is drawn and not what is allowed: a customer who guesses /operator/settings gets a
+                403 rather than the retention form, and one who guesses /telegram gets a 403 rather than
+                the operator's bot token screen.
+            *@
+            @if (isOperator)
+            {
+                <a class="@NavClass("Telegram")" href="/telegram">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.TelegramBot
+                </a>
+                <a class="@NavClass("Settings")" href="/operator/settings">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Settings
+                </a>
+            }
+            else if (hasWorkspace)
+            {
+                <a class="@NavClass("Telegram")" href="/telegram/link">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Telegram
+                </a>
+            }
+            else
+            {
+                @* Nobody is signed in — the sign-in page wears this shell too, and a nav item that can
+                   only challenge is a control that does nothing. *@
+                <span class="nav-item" aria-disabled="true" title="@UiText.Shell.NextRelease">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Settings
+                </span>
+            }
         }
 
         <div class="sidebar-foot">
@@ -292,6 +305,14 @@
             @* The name and role carry `title` as well as their own text: the row truncates them to
                fit a 232px sidebar (see .sidebar-identity in app.css), and a truncated address has to
                stay readable somewhere. *@
+            @*
+                Only for somebody who has one. Rendered unconditionally it drew a person who does not
+                exist — a «?» in the avatar and an em dash for both the name and the role — in the
+                corner of the sign-in page, which is a placeholder waiting for a session rather than
+                a session that has not loaded yet.
+            *@
+            @if (isSignedIn)
+            {
             <div class="row sidebar-identity">
                 <span class="avatar" aria-hidden="true">@(shell.UserName is { Length: > 0 } n ? n[..1] : UiText.Shell.UnknownInitial)</span>
                 <span class="sidebar-identity-text">
@@ -323,6 +344,7 @@
                     </form>
                 }
             </div>
+            }
         </div>
     </nav>
 
@@ -333,12 +355,28 @@
                 <span class="visually-hidden">@UiText.Shell.Menu</span>
             </button>
 
-            <form class="search" method="get" action="/Files" role="search">
-                <span class="muted" aria-hidden="true">⌕</span>
-                <label class="visually-hidden" for="shell-search">@searchLabel</label>
-                <input id="shell-search" name="q" placeholder="@(searchLabel + "…")" />
-                <span class="kbd" aria-hidden="true">⌘K</span>
-            </form>
+            @if (isSignedIn)
+            {
+                @*
+                    The box comes back holding what was typed. Read from the query string rather
+                    than from a view model, because this form is in the shell and the shell is drawn
+                    over every screen — /links and /trash have no idea a search happened, and a box
+                    that empties itself the moment the results arrive reads as a search that did not
+                    take.
+
+                    `dir="auto"` on the input itself: the term is the reader's own text and may be a
+                    Latin file name typed into a Persian panel. `auto` lets the first strong
+                    character decide, which is the only rule that is right for both.
+                *@
+                <form class="search" method="get" action="/Files" role="search">
+                    <span class="muted" aria-hidden="true">⌕</span>
+                    <label class="visually-hidden" for="shell-search">@searchLabel</label>
+                    <input id="shell-search" name="q" dir="auto"
+                           value="@Context.Request.Query["q"]"
+                           placeholder="@(searchLabel + "…")" />
+                    <span class="kbd" aria-hidden="true">⌘K</span>
+                </form>
+            }
 
             <div class="row push-end" style="gap: 8px;">
                 @*
@@ -368,7 +406,10 @@
                 <span data-island="theme-language" data-lang="@PanelCulture.Code">
                     <noscript>@UiText.Shell.ThemeNeedsScript</noscript>
                 </span>
-                <a class="btn btn--primary btn--lg" href="/Files/Upload">@UiText.Shell.Upload</a>
+                @if (isSignedIn)
+                {
+                    <a class="btn btn--primary btn--lg" href="/Files/Upload">@UiText.Shell.Upload</a>
+                }
             </div>
         </header>
 

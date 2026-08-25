@@ -183,7 +183,7 @@ public class DeleteToTrashTests
         waiting[0].PurgeAfter.Should().Be(
             ServiceTestHarness.Now.AddDays(OperatorSettings.DefaultTrashRetentionDays));
 
-        var live = await harness.FilesInTrash().ListAsync(tenant.Id, default);
+        var live = await harness.FilesInTrash().ListAsync(tenant.Id, nameQuery: null, default);
 
         live.Should().ContainSingle().Which.Id.Should().Be(kept.Id);
     }

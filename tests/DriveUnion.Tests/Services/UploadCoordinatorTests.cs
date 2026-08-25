@@ -134,7 +134,7 @@ public class UploadCoordinatorTests
         stored.GoogleAccountId.Should().Be(account.Id);
         stored.SizeBytes.Should().Be(total);
 
-        var listing = await harness.Files().ListAsync(tenant.Id, default);
+        var listing = await harness.Files().ListAsync(tenant.Id, nameQuery: null, default);
         listing.Should().ContainSingle();
         listing[0].Name.Should().Be("quarterly.mp4");
     }

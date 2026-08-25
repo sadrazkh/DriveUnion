@@ -47,11 +47,24 @@ public sealed record FileDetailViewModel(
     public ShareLinkViewModel? ActiveLink => Links.FirstOrDefault(link => link.IsActive);
 }
 
+/// <param name="Query">
+/// What the reader searched for, trimmed, or null when they are browsing.
+///
+/// <para>Carried on the page rather than left in the address bar: the header's box has to be
+/// re-filled with it or a search returns rows next to an empty box, the empty state has to say
+/// «nothing matched this» instead of «upload your first file», and every row and every form on the
+/// screen has to lead somewhere that still has it — otherwise opening a result is what ends the
+/// search.</para>
+/// </param>
 public sealed record FilesPageViewModel(
     IReadOnlyList<FileRowViewModel> Rows,
     FileDetailViewModel? Selected,
     AntiforgeryTokenViewModel Antiforgery,
-    string? Notice);
+    string? Notice,
+    string? Query)
+{
+    public bool IsSearching => Query is { Length: > 0 };
+}
 
 /// <summary>
 /// Handed to the islands so a <c>fetch</c> can carry the token the write APIs demand. The panel is

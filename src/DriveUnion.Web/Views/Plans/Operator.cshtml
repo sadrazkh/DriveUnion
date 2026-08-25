@@ -81,7 +81,10 @@
                 <div>@UiText.Plans.ColumnSeats</div>
                 <div>@UiText.Plans.ColumnStatus</div>
                 <div>@UiText.PlanAdmin.ColumnWorkspaces</div>
-                <div>@UiText.PlanAdmin.ColumnActions</div>
+                @* Pinned, with the cells under it: nine tracks is 850px and no operator's window makes
+                   that a certainty, and the track that would go off the edge is the only one that
+                   does anything. *@
+                <div class="cell-pin">@UiText.PlanAdmin.ColumnActions</div>
             </div>
 
             @foreach (var plan in Model.Plans)
@@ -112,7 +115,7 @@
                     @* How many workspaces carry this tier — the size of a re-apply, never the size of
                        an edit. Editing the row above moves none of them. *@
                     <div class="cell-num">@plan.WorkspacesText</div>
-                    <div class="row" style="gap: 4px; align-items: center;">
+                    <div class="row cell-pin" style="gap: 4px; align-items: center;">
                         @*
                             Named rather than left to the tier name being a link. Retire, delete and
                             re-apply live on the tier's own page instead of here, because each of

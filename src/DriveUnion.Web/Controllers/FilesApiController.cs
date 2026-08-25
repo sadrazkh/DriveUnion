@@ -26,7 +26,9 @@ public sealed class FilesApiController(
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
-        var files = await catalog.ListAsync(tenantId, cancellationToken);
+        // The whole list. Searching over the API is a query parameter this endpoint does not
+        // document yet, and inventing one here would be an API surface nothing has agreed.
+        var files = await catalog.ListAsync(tenantId, nameQuery: null, cancellationToken);
         return Ok(files.Select(FileResponse.From).ToList());
     }
 

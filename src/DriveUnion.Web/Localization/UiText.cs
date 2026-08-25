@@ -328,6 +328,33 @@ public static partial class UiText
 
         public static string EmptyStateAction => Pick("آپلود اولین فایل", "Upload the first file");
 
+        /// <summary>
+        /// The count beside the heading while a search is on, in place of <see cref="FileCount"/>.
+        ///
+        /// <para>The term is isolated because it is the reader's own text dropped into a Persian
+        /// sentence: a file name is Latin far more often than not, and without the isolate
+        /// «۲ نتیجه برای «Q3-Report»» lays the name out against the sentence around it.</para>
+        /// </summary>
+        public static string SearchCount(int files, string query) => Pick(
+            $"{Numerals.Count(files)} نتیجه برای «{Ltr(query)}»",
+            files == 1 ? $"1 result for “{query}”" : $"{Numerals.Count(files)} results for “{query}”");
+
+        /// <summary>
+        /// The empty state of a search, which is a different sentence from the empty state of an
+        /// account. «Upload the first file» under a search for a file somebody already uploaded
+        /// reads as «that file is gone», and the honest answer is that this term matched nothing.
+        /// </summary>
+        public static string NoMatchHeading(string query) => Pick(
+            $"هیچ فایلی با «{Ltr(query)}» نمی‌خواند.",
+            $"Nothing matches “{query}”.");
+
+        public static string NoMatchBody => Pick(
+            "جست‌وجو روی نام فایل است و بخشی از نام هم کافی است.",
+            "The search is on the file name, and part of a name is enough.");
+
+        /// <summary>The way back to the whole list, which is otherwise only the address bar.</summary>
+        public static string ClearSearch => Pick("دیدن همه‌ی فایل‌ها", "Show every file");
+
         /// <summary>The links cell: how many live links this file has.</summary>
         public static string LinkCount(int links) => Pick(
             $"{Numerals.Count(links)} لینک",

@@ -139,6 +139,85 @@ public class PanelLayoutTests
             "a zero minimum is how the name column came to be drawn 0px wide");
     }
 
+    /// <summary>
+    /// A row's controls stay against the visible edge when the tracks are wider than the card.
+    ///
+    /// .dtable scrolls sideways rather than spilling, and that is right — but it chooses what leaves
+    /// the screen by track order alone, and every one of these tables puts its buttons in the last
+    /// track. Measured on /trash at a 560px viewport: 576px of tracks in a 526px scrollport, so the
+    /// «Restore» button was cut 34px in and read «Res», directly above an «Empty the trash» button
+    /// standing whole 17px inside the same card. Nothing was unreachable — a swipe brought it back —
+    /// and that is the trap: the affordance is a hairline scrollbar under a row and the thing behind
+    /// it is the only way to act on that row.
+    ///
+    /// Sticky on a grid item is not obviously legal, because a grid item's containing block is its
+    /// own grid area and that would make the rule a no-op. Measured in Chrome rather than assumed:
+    /// the cell's right edge moved from 593px to 543px — the scrollport's edge — and stayed there at
+    /// every scroll offset, in both directions.
+    /// </summary>
+    [Fact]
+    public void A_pinned_column_keeps_the_edge_and_stays_opaque_in_every_row_state()
+    {
+        var css = AppCss();
+        var pin = Rule(css, ".cell-pin");
+
+        pin.Value("position").Should().Be("sticky");
+
+        // The logical form, and it has to be: the same panel lays out RTL, where the inline end is
+        // the left edge. Measured with the document flipped — the button pinned at 32px from the
+        // card's left edge and held it at both ends of the scroll.
+        pin.Value("inset-inline-end").Should().Be("0");
+
+        // Opaque, or the columns it is holding back are read through it — and opaque in each state
+        // the unpinned cells have, or the pinned column lights up differently from the row it is in.
+        Rule(css, ".dtable-head > .cell-pin").Value("background").Should().Be("var(--surface2)");
+        Rule(css, ".dtable-row > .cell-pin").Value("background").Should().Be("var(--surface)");
+        Rule(css, ".dtable-row:hover > .cell-pin").Value("background").Should().Be("var(--surface2)");
+
+        // Found by predicate rather than by name: the selected pair is written one selector per
+        // line like the unpinned rule above it, and Rule() compares the whole prelude.
+        Rules(css)
+            .Single(r => r.Selector.Contains(".is-selected", StringComparison.Ordinal)
+                && r.Selector.Contains(".cell-pin", StringComparison.Ordinal))
+            .Value("background").Should().Be("var(--soft)");
+    }
+
+    /// <summary>
+    /// A screen that pins a column pins it in the header too, and pins nothing but the last one.
+    ///
+    /// Two ways to hold the rule and get nothing: pin the body cells and leave the header cell to
+    /// scroll, and the column keeps its buttons but loses the heading that named them — worse, the
+    /// heading of whatever column slides under it takes its place. Pin something that is not the
+    /// last track and it is drawn over the columns after it rather than the ones before.
+    /// </summary>
+    [Fact]
+    public void A_screen_that_pins_a_column_pins_the_same_one_in_its_header()
+    {
+        var pinned = PanelViews()
+            .Select(view => (view, source: Read(view)))
+            .Where(v => v.source.Contains("cell-pin", StringComparison.Ordinal))
+            .ToList();
+
+        pinned.Should().NotBeEmpty("/trash and the tier table both pin their action column");
+
+        foreach (var (view, source) in pinned)
+        {
+            // Position rather than a parse of the header block: a .dtable draws its head before its
+            // rows, so the first pin in the file is the header's if there is one at all. The header
+            // cells carry Razor calls and comments between them, and a regex that walks them is a
+            // second thing to keep true.
+            var firstPin = source.IndexOf("cell-pin", StringComparison.Ordinal);
+            var firstRow = source.IndexOf(@"class=""dtable-row", StringComparison.Ordinal);
+
+            firstRow.Should().BeGreaterThan(-1, $"{view} pins a column in a table that draws no rows");
+
+            firstPin.Should().BeLessThan(
+                firstRow,
+                $"{view} pins body cells and lets its header scroll out from over them, so the "
+                + "column keeps its buttons and picks up whichever heading drifts above it");
+        }
+    }
+
     [Fact]
     public void A_table_row_is_a_box_because_on_two_screens_it_is_the_link()
     {
@@ -189,8 +268,12 @@ public class PanelLayoutTests
     public void Nothing_above_a_sticky_box_becomes_a_scroll_container()
     {
         // `overflow: hidden|auto|scroll` on an ancestor makes `position: sticky` resolve against
-        // that box instead of the viewport. The shell already uses `clip` for exactly this reason;
-        // the table's own `overflow-x: auto` is safe only because nothing inside a .dtable sticks.
+        // that box instead of the viewport. The shell already uses `clip` for exactly this reason.
+        //
+        // The table's own `overflow-x: auto` is a scroll container, and .cell-pin sticks against it
+        // on purpose — that is the whole of how a row's action column stays on screen. What this
+        // test is about is the three boxes that must resolve against the viewport instead, and none
+        // of them is inside a .dtable.
         Rule(AppCss(), ".app-shell").Value("overflow-x").Should().Be("clip");
 
         var sticky = new[] { ".app-header", ".app-sidebar", ".split-aside" };

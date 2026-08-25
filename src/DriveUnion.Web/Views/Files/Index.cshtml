@@ -24,7 +24,17 @@
 
     <div class="page-head">
         <h1 class="page-title">@UiText.Files.Title</h1>
-        <span class="page-sub">@UiText.Files.FileCount(Model.Rows.Count)</span>
+        @* While a search is on, the count beside the heading is the count of what matched — «۱ فایل»
+           over a filtered table is a sentence about the workspace that happens to be false. *@
+        <span class="page-sub">
+            @(Model.IsSearching
+                ? UiText.Files.SearchCount(Model.Rows.Count, Model.Query!)
+                : UiText.Files.FileCount(Model.Rows.Count))
+        </span>
+        @if (Model.IsSearching)
+        {
+            <a class="btn btn--sm" href="@Url.Action("Index", "Files")">@UiText.Files.ClearSearch</a>
+        }
     </div>
 
     @if (!string.IsNullOrEmpty(Model.Notice))
@@ -43,7 +53,19 @@
                     <div>@UiText.Files.ColumnLinks</div>
                 </div>
 
-                @if (Model.Rows.Count == 0)
+                @if (Model.Rows.Count == 0 && Model.IsSearching)
+                {
+                    @* Two different emptinesses, and telling them apart is most of what makes a
+                       search trustworthy: an account with nothing in it, and a term that matched
+                       nothing in an account that is full. The action is the way back to the list,
+                       not «upload the first file» — the reader has files, just not this one. *@
+                    <div class="empty empty--incell">
+                        <span>@UiText.Files.NoMatchHeading(Model.Query!)</span>
+                        <span>@UiText.Files.NoMatchBody</span>
+                        <a class="btn btn--primary" href="@Url.Action("Index", "Files")">@UiText.Files.ClearSearch</a>
+                    </div>
+                }
+                else if (Model.Rows.Count == 0)
                 {
                     <div class="empty empty--incell">
                         <span>@UiText.Files.EmptyStateHeading</span>
@@ -57,8 +79,9 @@
                        detail panel survives a refresh and can be linked to. *@
                     foreach (var row in Model.Rows)
                     {
+                        @* The term rides along, or opening a result is what ends the search. *@
                         <a class="dtable-row @(row.IsSelected ? "is-selected" : null)"
-                           href="@Url.Action("Index", "Files", new { selected = row.Id })">
+                           href="@Url.Action("Index", "Files", new { q = Model.Query, selected = row.Id })">
                             <div><span class="rowbox @(row.IsSelected ? "is-checked" : null)"></span></div>
                             <div class="cell-name" title="@row.Name">@row.Name</div>
                             <div class="cell-num" dir="ltr">@row.SizeText</div>
@@ -74,7 +97,7 @@
                 <div class="dtable-foot">
                     <span>@Model.Selected.Name</span>
                     <span class="row" style="gap: 8px;">
-                        <form method="post" action="@Url.Action("Delete", "Files", new { id = Model.Selected.Id })">
+                        <form method="post" action="@Url.Action("Delete", "Files", new { id = Model.Selected.Id, q = Model.Query })">
                             @Html.AntiForgeryToken()
                             <button type="submit" class="btn btn--danger btn--sm">@UiText.Files.Delete</button>
                         </form>
@@ -133,7 +156,7 @@
                             <div class="row" style="gap: 8px;">
                                 <form method="post"
                                       style="flex: 1;"
-                                      action="@Url.Action("RevokeLink", "Files", new { fileId = Model.Selected.Id, linkId = link.Id })">
+                                      action="@Url.Action("RevokeLink", "Files", new { fileId = Model.Selected.Id, linkId = link.Id, q = Model.Query })">
                                     @Html.AntiForgeryToken()
                                     <button type="submit" class="btn btn--block">@UiText.Files.RevokeLink</button>
                                 </form>
@@ -145,7 +168,7 @@
                         else
                         {
                             <p class="muted" style="font-size: 12.5px; margin: 0 0 12px;">@UiText.Files.NoPublicLink</p>
-                            <form method="post" action="@Url.Action("CreateLink", "Files", new { id = Model.Selected.Id })">
+                            <form method="post" action="@Url.Action("CreateLink", "Files", new { id = Model.Selected.Id, q = Model.Query })">
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="btn btn--primary btn--block">@UiText.Files.CreateLink</button>
                             </form>

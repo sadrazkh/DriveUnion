@@ -25,11 +25,38 @@ public sealed class FileCatalog(
 {
     public async Task<IReadOnlyList<FileListItem>> ListAsync(
         Guid tenantId,
+        string? nameQuery,
         CancellationToken cancellationToken)
     {
-        var files = await db.StoredFiles
+        var rows = db.StoredFiles
             .AsNoTracking()
-            .Where(f => f.TenantId == tenantId && f.DeletedAt == null)
+            .Where(f => f.TenantId == tenantId && f.DeletedAt == null);
+
+        if (nameQuery?.Trim() is { Length: > 0 } term)
+        {
+            // Folded on both sides rather than compared with the database's own idea of case.
+            //
+            // `Name.Contains(term)` is what reads naturally and it is the trap: EF turns it into a
+            // LIKE, and LIKE is case-sensitive on Postgres and case-insensitive on SQLite. The suite
+            // runs on SQLite and production runs on Postgres, so searching «report» for
+            // «Report-Q3.pdf» would pass every test and find nothing for a customer.
+            //
+            // `ToLower()` is `lower()` on both providers, which is the one form that means the same
+            // thing in both. Its limit, stated because it is real: SQLite's `lower()` folds ASCII
+            // only, so on the test provider an accented capital does not match its lowercase. Both
+            // of this product's languages are unaffected — Persian has no case, and a file name in
+            // English is ASCII — and Postgres folds properly, so the limit lives in the tests rather
+            // than in what a customer gets.
+            //
+            // Still `Contains` rather than a hand-built pattern: EF parameterises it and escapes the
+            // wildcards, so a file called «100% done» is searchable and «%» finds it rather than
+            // everything.
+            var folded = term.ToLowerInvariant();
+
+            rows = rows.Where(f => f.Name.ToLower().Contains(folded));
+        }
+
+        var files = await rows
             .Select(f => new FileListItem(
                 f.Id,
                 f.Name,

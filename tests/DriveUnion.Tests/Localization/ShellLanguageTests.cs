@@ -152,9 +152,17 @@ public class ShellLanguageTests
 
         var html = await harness.ShellAsync();
 
-        // The sign-in page wears this shell, and a nav item that can only challenge is a control
-        // that does nothing.
+        // The sign-in page wears this shell, and a nav item that can only challenge is a control that
+        // does nothing. That reasoning used to be applied to one item, which left the other five —
+        // and a file search, and an «Upload file» button — drawn for somebody with no session. It is
+        // applied to the whole menu now, so the assertion is the stronger one: nothing to press.
         html.Should().NotContain("href=\"/telegram");
-        html.Should().Contain("تنظیمات");
+        html.Should().NotContain("href=\"/Files");
+        html.Should().NotContain("href=\"/trash");
+        html.Should().NotContain("تنظیمات");
+
+        // What is left is the brand, the theme and the language — the three things a signed-out
+        // reader can actually use.
+        html.Should().Contain("data-island=\"theme-language\"");
     }
 }

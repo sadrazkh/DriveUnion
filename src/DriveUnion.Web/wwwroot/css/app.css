@@ -629,6 +629,16 @@ a:hover {
   font: inherit;
   font-size: 12.5px;
   line-height: 1.4;
+
+  /*
+   * A button's label is one thing to press, so it is one line.
+   *
+   * Without this, a narrow column breaks the word: the trash's action column is 84px, which leaves
+   * 56px inside the padding, and «Restore» needs about 62 — so it shipped as «Rest» over «ore», in a
+   * button 47px tall pretending to be two. Every button in the panel sits in a grid cell somebody
+   * may narrow later, so the rule belongs here rather than on the one that was caught.
+   */
+  white-space: nowrap;
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
@@ -936,6 +946,58 @@ a:hover {
 
 .cell-muted {
   color: var(--muted);
+}
+
+/*
+ * The column a row's controls live in, kept against the visible edge when the tracks are wider
+ * than the card.
+ *
+ * .dtable scrolls sideways rather than spilling, and that decision is right — but it decides *what*
+ * goes off-screen by track order alone, and the last track is where every one of these tables puts
+ * its buttons. Measured on /trash at a 560px viewport: 576px of tracks in a 526px scrollport, so the
+ * «Restore» button was cut 34px in, leaving a control reading «Res» directly above an «Empty the
+ * trash» button that sat whole and 17px inside the same card. Two buttons on one card, one of them
+ * sliced — which is what a reader reports, and they are right to.
+ *
+ * Nothing was hidden that a swipe could not bring back, and that is the trap: the affordance is a
+ * thin scrollbar under a row, the thing behind it is the only way to act on that row, and a reader
+ * who does not find it concludes the row cannot be acted on at all.
+ *
+ * Pinned rather than dropped-at-a-breakpoint because --cols is written per view: a media query here
+ * cannot know which of a view's tracks is expendable, and thirteen views would each have to grow a
+ * second set of tracks. This is one rule that reads the same on all of them.
+ *
+ * Sticky on a grid item is worth a word, because the containing block of a grid item is its grid
+ * area and that would make this a no-op. Measured in Chrome instead of assumed: the cell's right
+ * edge moved from 593px to 543px — the scrollport's edge — and the header cell above it moved with
+ * it, so the two stay in one column at every scroll offset.
+ *
+ * No edge shadow. The panel renders in both directions and box-shadow has no logical form, so a
+ * shadow correct in Persian is drawn on the wrong side in English. The opaque background is what
+ * does the work; the shadow would only have said so.
+ */
+.cell-pin {
+  position: sticky;
+  inset-inline-end: 0;
+}
+
+/* Opaque, or the columns it is holding back are read through it. Each state repeats the background
+   the unpinned cells get from the rules above, so a pinned column is invisible until it is needed. */
+.dtable-head > .cell-pin {
+  background: var(--surface2);
+}
+
+.dtable-row > .cell-pin {
+  background: var(--surface);
+}
+
+.dtable-row:hover > .cell-pin {
+  background: var(--surface2);
+}
+
+.dtable-row.is-selected > .cell-pin,
+.dtable-row.is-selected:hover > .cell-pin {
+  background: var(--soft);
 }
 
 .dtable-foot {
@@ -1532,6 +1594,62 @@ a:hover {
   color: var(--muted);
   margin-top: 26px;
   line-height: 1.9;
+}
+
+/* ---------------------------------------------------------------- navigating */
+
+/*
+ * What a click looks like while the answer is still coming.
+ *
+ * navigate.ts sets aria-busy on the content region and deliberately ships no CSS with it, so until
+ * this existed a navigation was silent: on a fast machine that is fine, and on a real connection to
+ * a server in another country the page sat looking identical for half a second with nothing
+ * acknowledging the press. That reads as a dead panel, and it was the complaint — «خیلی کنده... و
+ * خیلی راکده».
+ *
+ * Both cues are delayed by 150ms and that is the whole trick. A swap on localhost finishes in about
+ * 24ms; showing a bar for 24ms is a flicker that looks like a fault. Nothing appears until the wait
+ * is long enough for the reader to have started wondering.
+ */
+.app-content[aria-busy='true'] {
+  animation: navigating-dim 1ms linear 150ms forwards;
+}
+
+@keyframes navigating-dim {
+  to {
+    opacity: 0.55;
+  }
+}
+
+/*
+ * The bar every browser and every site has taught people to read.
+ *
+ * inline-size rather than a scaleX transform: a transform needs an origin, and the origin that is
+ * correct in this RTL panel is the wrong one on the LTR public page. A logical size is right in both
+ * without a second rule.
+ *
+ * It eases towards 92% and stops. A progress bar that reaches the end and waits is claiming the page
+ * has arrived, and the one thing this cue must never do is lie about that — the swap removes the
+ * attribute when the content is actually in.
+ */
+.app-content[aria-busy='true']::before {
+  content: '';
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  block-size: 2px;
+  inline-size: 0;
+  background: var(--accent);
+  animation: navigating-bar 6s cubic-bezier(0.1, 0.7, 0.1, 1) 150ms forwards;
+
+  /* Above the sticky header and the drawer scrim; it is the one thing that outranks the page. */
+  z-index: 40;
+}
+
+@keyframes navigating-bar {
+  to {
+    inline-size: 92%;
+  }
 }
 
 /* ---------------------------------------------------------------- dark-mode ink on accent */

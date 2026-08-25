@@ -27,15 +27,28 @@ public sealed class FilesController(
     IAntiforgery antiforgery,
     IOptions<DriveUnionWebOptions> options) : Controller
 {
+    /// <summary>
+    /// The list, and the shell's search box lands here.
+    ///
+    /// <para><c>q</c> is the name the header's form has always submitted. It was submitted to an
+    /// action that did not take it, so every search returned the whole list and the box read as a
+    /// control that worked — the worst of the three possible states, because a reader who searches
+    /// for a file they own, sees everything come back, and concludes the file is not there.</para>
+    ///
+    /// <para>Trimmed to null so that <c>?q=</c> and a box full of spaces are the unfiltered list
+    /// rather than a search for nothing, and so the view has one thing to test rather than two.</para>
+    /// </summary>
     [HttpGet("")]
-    public async Task<IActionResult> Index(Guid? selected, CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(string? q, Guid? selected, CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
         SetShell();
 
+        var query = q?.Trim() is { Length: > 0 } typed ? typed : null;
+
         var now = DateTimeOffset.UtcNow;
-        var files = await catalog.ListAsync(tenantId, cancellationToken);
+        var files = await catalog.ListAsync(tenantId, query, cancellationToken);
 
         var rows = files
             .Select(file => new FileRowViewModel(
@@ -47,6 +60,9 @@ public sealed class FilesController(
                 file.Id == selected))
             .ToList();
 
+        // Read by id and not from the list above, which is what lets a selected file keep its panel
+        // open while a search that does not match it narrows the table. The row loses its highlight
+        // because it is no longer drawn; the file is still this tenant's and still theirs to act on.
         FileDetailViewModel? detail = null;
         if (selected is { } selectedId)
         {
@@ -54,7 +70,7 @@ public sealed class FilesController(
             if (file is not null) detail = ToDetail(file, now);
         }
 
-        return View(new FilesPageViewModel(rows, detail, Tokens(), TempData["Notice"] as string));
+        return View(new FilesPageViewModel(rows, detail, Tokens(), TempData["Notice"] as string, query));
     }
 
     /// <summary>
@@ -69,16 +85,25 @@ public sealed class FilesController(
         return View(Tokens());
     }
 
+    /// <param name="q">
+    /// The search the reader was looking at, handed back so the redirect returns them to it.
+    ///
+    /// <para>On the three writes below rather than only on <see cref="Index"/>, because a redirect
+    /// that drops it is the same defect from the other side: search, delete the file you found, and
+    /// the screen answers by showing you everything else you own.</para>
+    /// </param>
     [HttpPost("{id:guid}/delete")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Delete(Guid id, string? q, CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
         var deleted = await catalog.DeleteAsync(tenantId, id, cancellationToken);
         TempData["Notice"] = deleted ? UiText.Files.Deleted : UiText.Files.NotFound;
 
-        return RedirectToAction(nameof(Index));
+        // No `selected`: the file it named is gone, and a detail panel for it would be an empty box
+        // beside a table that no longer lists it.
+        return RedirectToAction(nameof(Index), new { q });
     }
 
     /// <summary>
@@ -87,7 +112,7 @@ public sealed class FilesController(
     /// </summary>
     [HttpPost("{id:guid}/links")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateLink(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateLink(Guid id, string? q, CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
@@ -98,19 +123,19 @@ public sealed class FilesController(
 
         TempData["Notice"] = UiText.Files.LinkCreated(PublicLinkFormatter.Display(PublicBaseUrl(), link.Slug));
 
-        return RedirectToAction(nameof(Index), new { selected = id });
+        return RedirectToAction(nameof(Index), new { q, selected = id });
     }
 
     [HttpPost("{fileId:guid}/links/{linkId:guid}/revoke")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RevokeLink(Guid fileId, Guid linkId, CancellationToken cancellationToken)
+    public async Task<IActionResult> RevokeLink(Guid fileId, Guid linkId, string? q, CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
         var revoked = await shareLinks.RevokeAsync(tenantId, linkId, cancellationToken);
         TempData["Notice"] = revoked ? UiText.Files.LinkRevoked : UiText.Files.LinkNotFound;
 
-        return RedirectToAction(nameof(Index), new { selected = fileId });
+        return RedirectToAction(nameof(Index), new { q, selected = fileId });
     }
 
     private AntiforgeryTokenViewModel Tokens()

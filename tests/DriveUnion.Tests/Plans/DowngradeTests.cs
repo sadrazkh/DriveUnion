@@ -68,7 +68,7 @@ public class DowngradeTests
         stored.DeletedAt.Should().BeNull();
         stored.SizeBytes.Should().Be(8 * Multiple);
 
-        var listing = await harness.Files(harness.NewContext()).ListAsync(tenant.Id, default);
+        var listing = await harness.Files(harness.NewContext()).ListAsync(tenant.Id, nameQuery: null, default);
         listing.Should().ContainSingle();
     }
 
