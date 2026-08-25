@@ -14,6 +14,7 @@ using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
 using DriveUnion.Web.Security;
 using System.Net;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -63,6 +64,18 @@ builder.Services
 // Projects TenantId and IsOperator onto the signed-in principal, and registers the first-operator
 // seeder. Without it every panel policy fails closed — correctly, and for everybody.
 builder.Services.AddDriveUnionIdentity(builder.Configuration);
+
+// The API's bearer scheme, added beside Identity's cookie rather than replacing anything.
+//
+// It is not the default scheme and must not become one: the default is what an unauthenticated
+// request is challenged with, and the cookie's challenge is a redirect to the sign-in page. Every
+// /api/v1 policy names this scheme explicitly, so a browser session cannot reach those routes and
+// a key cannot reach the panel's.
+builder.Services
+    .AddAuthentication()
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationHandler.SchemeName,
+        _ => { });
 
 builder.Services.ConfigureApplicationCookie(options =>
 {

@@ -1,3 +1,4 @@
+using DriveUnion.Core.Api;
 using DriveUnion.Core.Metering;
 using DriveUnion.Core.Plans;
 using DriveUnion.Core.Settings;
@@ -36,6 +37,9 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     public DbSet<Folder> Folders => Set<Folder>();
 
     public DbSet<TenantUsageDay> TenantUsageDays => Set<TenantUsageDay>();
+
+    /// <summary>The customer's API keys. Hashes, never secrets — see <see cref="ApiToken"/>.</summary>
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
     public DbSet<Tag> Tags => Set<Tag>();
 
@@ -274,6 +278,24 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
                 .WithMany()
                 .HasForeignKey(f => f.ParentFolderId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<ApiToken>(e =>
+        {
+            e.Property(t => t.Name).HasMaxLength(ApiToken.MaxNameLength);
+            e.Property(t => t.Prefix).HasMaxLength(ApiToken.PrefixLength);
+
+            // Base64 of a SHA-256 is 44 characters. Fixed rather than generous, so a row holding
+            // anything other than a hash of that algorithm does not fit.
+            e.Property(t => t.SecretHash).HasMaxLength(64);
+
+            // The lookup every authenticated request makes. Not unique: eight base64url characters
+            // across a whole deployment will collide eventually, and the hash is what decides —
+            // a unique index here would turn that collision into a refusal to mint.
+            e.HasIndex(t => t.Prefix);
+
+            // …and the panel's list.
+            e.HasIndex(t => t.TenantId);
         });
 
         builder.Entity<TenantUsageDay>(e =>

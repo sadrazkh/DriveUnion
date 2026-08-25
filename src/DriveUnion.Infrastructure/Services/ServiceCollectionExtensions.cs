@@ -45,6 +45,11 @@ public static class ServiceCollectionExtensions
         // The egress counter. Written on the public download path and read by the capacity card and
         // both dashboards — the three places that said «— / ۵۰۰ GB» because nothing counted.
         services.TryAddScoped<ITrafficMeter, TrafficMeter>();
+
+        // The API's keys, and the server-only lookup that turns a file id into somewhere to stream
+        // from — see IStoredFileBytes for why that is not a method on IFileCatalog.
+        services.TryAddScoped<IApiTokens, ApiTokenStore>();
+        services.TryAddScoped<IStoredFileBytes, StoredFileBytesReader>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();

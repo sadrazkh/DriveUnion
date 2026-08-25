@@ -32,6 +32,28 @@ public static class DriveUnionWebServiceCollectionExtensions
                 policy => policy
                     .RequireAuthenticatedUser()
                     .RequireClaim(DriveUnionClaimTypes.Operator, DriveUnionClaimTypes.OperatorValue));
+
+            // The API's two, and both name their scheme.
+            //
+            // Without AuthenticationSchemes the policy would accept the application's default —
+            // the cookie — and every /api/v1 route would quietly become reachable from a browser
+            // session. That is not a hole a customer could walk through by accident, but it is a
+            // second way in that nothing documents and no test covers, which is how a route ends up
+            // being defended by a rule its author did not know applied to it.
+            options.AddPolicy(
+                ApiPolicies.Read,
+                policy => policy
+                    .AddAuthenticationSchemes(ApiKeyAuthenticationHandler.SchemeName)
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context => context.User.GetTenantId() is not null));
+
+            options.AddPolicy(
+                ApiPolicies.Write,
+                policy => policy
+                    .AddAuthenticationSchemes(ApiKeyAuthenticationHandler.SchemeName)
+                    .RequireAuthenticatedUser()
+                    .RequireAssertion(context =>
+                        context.User.GetTenantId() is not null && ApiPolicies.HasWrite(context.User)));
         });
 
         services.AddRateLimiter(options =>
@@ -62,6 +84,26 @@ public static class DriveUnionWebServiceCollectionExtensions
                     {
                         TokenLimit = 120,
                         TokensPerPeriod = 60,
+                        ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true,
+                    }));
+
+            // The API, partitioned on the key rather than on the address — see DriveUnionRateLimits.
+            //
+            // A token bucket and not a window, for the reason the public download uses one: a script
+            // listing a folder and then fetching forty files is a legitimate burst, and a fixed
+            // window would refuse the fortieth for being in the wrong second. 600 an hour sustained
+            // with 120 in hand covers everything a customer's own automation does and bounds a
+            // runaway loop long before it reaches Google.
+            options.AddPolicy(
+                DriveUnionRateLimits.Api,
+                context => RateLimitPartition.GetTokenBucketLimiter(
+                    ApiPartitionKey(context),
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = 120,
+                        TokensPerPeriod = 10,
                         ReplenishmentPeriod = TimeSpan.FromMinutes(1),
                         QueueLimit = 0,
                         AutoReplenishment = true,
@@ -104,4 +146,34 @@ public static class DriveUnionWebServiceCollectionExtensions
     /// </summary>
     private static string ClientPartitionKey(HttpContext context) =>
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    /// <summary>
+    /// The presented key, hashed, or the address when there is none.
+    ///
+    /// <para>Hashed because a partition key is a dictionary key held in memory for the life of the
+    /// window, and a bearer secret sitting in one is a secret in one more place than it has to be.
+    /// Not a security boundary — it is a bucket name — but there is no reason for it to be the token
+    /// itself.</para>
+    ///
+    /// <para>The limiter runs before authentication, so this reads the header rather than the
+    /// principal: by the time <c>User</c> is populated the request has already been admitted or
+    /// refused. A malformed or dead key therefore shares the address's bucket, which is the right
+    /// answer — that is exactly the traffic a limit is for.</para>
+    /// </summary>
+    private static string ApiPartitionKey(HttpContext context)
+    {
+        var header = context.Request.Headers.Authorization.ToString();
+
+        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return ClientPartitionKey(context);
+        }
+
+        var presented = header["Bearer ".Length..].Trim();
+
+        return presented.Length == 0
+            ? ClientPartitionKey(context)
+            : Convert.ToBase64String(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(presented)));
+    }
 }

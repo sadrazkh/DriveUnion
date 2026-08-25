@@ -173,6 +173,13 @@
                 <a class="@NavClass("Links")" href="/Links">
                     <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.ShareLinks
                 </a>
+
+                @* A tenant item and not an operator one: the keys are the customer's own, they mint
+                   them, and what they unlock is their workspace. ApiKeysController is behind the
+                   same policy this gate reads. *@
+                <a class="@NavClass("ApiKeys")" href="/keys">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.ApiKeys.Title
+                </a>
             }
             @if (isOperator)
             {

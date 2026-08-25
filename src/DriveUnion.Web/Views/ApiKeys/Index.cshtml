@@ -1,0 +1,142 @@
+@using DriveUnion.Core.Api
+@using DriveUnion.Web.Models
+@model ApiKeysPageViewModel
+@{
+    ViewData["Title"] = UiText.ApiKeys.Title;
+
+    // Name · key · access · last used · state · the revoke control. The name's floor is --name-min
+    // for the reason every table here has one: minmax(0,…) answers «no room» by drawing nothing.
+    const string Cols = "--cols: minmax(var(--name-min),1.6fr) 130px 118px 110px 130px 96px";
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="page-head">
+        <h1 class="page-title">@UiText.ApiKeys.Title</h1>
+        <span class="page-sub">@UiText.ApiKeys.Count(Model.Keys.Count)</span>
+    </div>
+
+    <p class="hint" style="margin: 0;">@UiText.ApiKeys.Subtitle</p>
+
+    @if (!string.IsNullOrEmpty(Model.Notice))
+    {
+        <p class="page-sub" role="status">@Model.Notice</p>
+    }
+
+    @*
+        The secret, drawn once and only on the render that follows a mint.
+
+        It is the loudest thing on the screen on purpose: this is the only moment it exists outside
+        the customer's hands, the row holds a SHA-256 of it and nothing else, and somebody who
+        scrolls past it has a key they can only revoke.
+    *@
+    @if (Model.Secret is { Length: > 0 } secret)
+    {
+        <div class="card card--pad" role="status">
+            <div class="stack" style="gap: 10px;">
+                <div class="card-title warn">@UiText.ApiKeys.CopyItNow</div>
+                <p class="hint" style="margin: 0;">@UiText.ApiKeys.CopyItNowBody</p>
+
+                @* The same copy control the share links use, so «copied» behaves the same way
+                   everywhere in the panel. It works without script — the value is selectable text. *@
+                <div class="field" data-island="copy-link" data-copy-value="@secret">
+                    <input class="control mono" dir="ltr" readonly value="@secret"
+                           aria-label="@UiText.ApiKeys.ColumnKey" data-copy-source />
+                    <button type="button" class="btn btn--sm" data-copy-button>@UiText.ApiKeys.Copy</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="card card--pad">
+        <div class="stack" style="gap: 12px;">
+            <div class="card-title">@UiText.ApiKeys.NewKey</div>
+
+            <form method="post" class="row" style="gap: 10px; flex-wrap: wrap; align-items: flex-end;"
+                  action="@Url.Action("Mint", "ApiKeys")">
+                @Html.AntiForgeryToken()
+
+                <span class="stack" style="gap: 4px; flex: 1 1 220px;">
+                    <label class="hint" for="key-name">@UiText.ApiKeys.KeyName</label>
+                    <input id="key-name" name="name" class="control" required dir="auto"
+                           maxlength="@ApiToken.MaxNameLength" autocomplete="off"
+                           placeholder="@UiText.ApiKeys.KeyNameHint" />
+                </span>
+
+                <span class="stack" style="gap: 4px; flex: 0 1 180px;">
+                    <label class="hint" for="key-scope">@UiText.ApiKeys.Scope</label>
+                    <select id="key-scope" name="scope" class="control">
+                        <option value="@nameof(ApiScope.Read)">@UiText.ApiKeys.ScopeRead</option>
+                        <option value="@nameof(ApiScope.Write)">@UiText.ApiKeys.ScopeWrite</option>
+                    </select>
+                </span>
+
+                <span class="stack" style="gap: 4px; flex: 0 1 140px;">
+                    <label class="hint" for="key-expiry">@UiText.ApiKeys.ExpiresIn</label>
+                    <input id="key-expiry" name="expiresInDays" class="control" type="number"
+                           min="1" max="3650" dir="ltr" inputmode="numeric" />
+                </span>
+
+                <button type="submit" class="btn btn--primary">@UiText.ApiKeys.NewKey</button>
+            </form>
+
+            <p class="hint" style="margin: 0;">@UiText.ApiKeys.ScopeHint</p>
+            <p class="hint" style="margin: 0;">@UiText.ApiKeys.ExpiresHint</p>
+        </div>
+    </div>
+
+    <div class="card card--flush">
+        <div class="dtable" style="@Cols">
+            <div class="dtable-head">
+                <div>@UiText.ApiKeys.ColumnName</div>
+                <div>@UiText.ApiKeys.ColumnKey</div>
+                <div>@UiText.ApiKeys.ColumnScope</div>
+                <div>@UiText.ApiKeys.ColumnLastUsed</div>
+                <div>@UiText.ApiKeys.ColumnState</div>
+                @* Pinned, like every action column in the panel: at a narrow width the table scrolls
+                   and this is the only cell that does anything. *@
+                <div class="cell-pin"></div>
+            </div>
+
+            @if (Model.IsEmpty)
+            {
+                <div class="empty empty--incell">
+                    <span>@UiText.ApiKeys.EmptyHeading</span>
+                </div>
+            }
+            else
+            {
+                foreach (var key in Model.Keys)
+                {
+                    <div class="dtable-row">
+                        <div class="cell-name" title="@key.Name">@key.Name</div>
+                        <div class="cell-slug" dir="ltr">@key.PrefixText</div>
+                        <div class="cell-muted">@key.ScopeText</div>
+                        <div class="cell-muted">@key.LastUsedText</div>
+                        <div class="@(key.IsLive ? "cell-muted" : "danger")">@key.StateText</div>
+                        <div class="cell-pin">
+                            @if (key.IsLive)
+                            {
+                                @* No confirmation step. Revoking is the safe direction — the damage
+                                   a wrong press does is a program stopping, and minting another is
+                                   one form above. Not revoking a leaked key is the expensive
+                                   mistake, so nothing stands between the reader and this. *@
+                                <form method="post" action="@Url.Action("Revoke", "ApiKeys", new { id = key.Id })">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn--sm btn--danger">@UiText.ApiKeys.Revoke</button>
+                                </form>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="card card--pad">
+        <div class="stack" style="gap: 8px;">
+            <div class="card-title">@UiText.ApiKeys.HowToHeading</div>
+            <p class="hint" style="margin: 0;">@UiText.ApiKeys.HowToBody</p>
+            <code class="mono" dir="ltr" style="font-size: 12px;">@UiText.ApiKeys.HowToExample(Model.ExampleUrl)</code>
+        </div>
+    </div>
+</div>
