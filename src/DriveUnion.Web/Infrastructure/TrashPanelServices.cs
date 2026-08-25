@@ -36,7 +36,11 @@ public interface IShellCapacity
 /// colour of the bar from <see cref="PlanMeter"/> — so the sidebar and the plan card cannot come to
 /// disagree about how full a workspace is, or about the percentage at which the bar turns amber.</para>
 /// </summary>
-public sealed class ShellCapacityReader(ITenantPlanService plans, ITrash trash) : IShellCapacity
+public sealed class ShellCapacityReader(
+    ITenantPlanService plans,
+    ITrash trash,
+    ITrafficMeter traffic,
+    TimeProvider clock) : IShellCapacity
 {
     public async Task<ShellCapacity?> ReadAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -47,13 +51,23 @@ public sealed class ShellCapacityReader(ITenantPlanService plans, ITrash trash) 
         var trashBytes = await trash.SizeAsync(tenantId, cancellationToken);
         var percent = PlanMeter.Percent(plan.StorageUsedBytes, plan.Limits.StorageBytes);
 
+        // The month this card is about, from the same clock everything else in the product is
+        // stamped by — UTC, so a workspace's month starts where its rows say it does rather than
+        // where the server happens to be standing.
+        var spent = await traffic.MonthAsync(
+            tenantId,
+            DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime),
+            cancellationToken);
+
         return new ShellCapacity(
             UiText.Plans.OfCap(
                 DisplayFormats.Bytes(plan.StorageUsedBytes),
                 DisplayFormats.Bytes(plan.Limits.StorageBytes)),
             percent,
             PlanMeter.FillClass(percent),
-            UiText.Capacity.TrafficOfCap(DisplayFormats.Bytes(plan.Limits.MonthlyEgressBytes)),
+            UiText.Capacity.TrafficOfCap(
+                DisplayFormats.Bytes(spent.EgressBytes),
+                DisplayFormats.Bytes(plan.Limits.MonthlyEgressBytes)),
             DisplayFormats.Bytes(trashBytes));
     }
 }

@@ -1,5 +1,6 @@
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Uploads;
+using DriveUnion.Infrastructure.Persistence.Repositories;
 using DriveUnion.Infrastructure.Dashboard;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Trash;
@@ -38,6 +39,7 @@ internal static class DashboardReaderSupport
             db,
             harness.PlanService(context: db),
             new TrashService(db, harness.Drive, NullLogger<TrashService>.Instance),
+            new TrafficMeter(db, harness.Clock, NullLogger<TrafficMeter>.Instance),
             harness.Clock);
     }
 

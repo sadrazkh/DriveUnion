@@ -25,6 +25,7 @@ public sealed class TelegramOutboxWriter(
 
     public async Task<TelegramEnqueueResult> EnqueueAsync(
         Guid tenantId,
+        Guid? senderUserId,
         long chatId,
         TelegramOutboxKind kind,
         Guid? storedFileId,
@@ -56,6 +57,7 @@ public sealed class TelegramOutboxWriter(
         {
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
+            SenderUserId = senderUserId,
             ChatId = chatId,
             Kind = kind,
             StoredFileId = storedFileId,

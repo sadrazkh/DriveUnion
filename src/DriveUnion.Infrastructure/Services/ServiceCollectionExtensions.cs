@@ -41,6 +41,10 @@ public static class ServiceCollectionExtensions
         // Labels, which cut across the tree rather than nesting inside it. Beside it for the same
         // reason: same rows, same DbContext, same screen.
         services.TryAddScoped<ITags, TagStore>();
+
+        // The egress counter. Written on the public download path and read by the capacity card and
+        // both dashboards — the three places that said «— / ۵۰۰ GB» because nothing counted.
+        services.TryAddScoped<ITrafficMeter, TrafficMeter>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();

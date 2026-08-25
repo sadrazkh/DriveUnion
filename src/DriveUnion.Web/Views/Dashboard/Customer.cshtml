@@ -181,18 +181,26 @@
                     }
 
                     @*
-                        Traffic. The allowance is real and sold; what has been spent against it is
-                        not measured yet, so the first half is a dash rather than a zero — a zero
-                        would tell a customer who has been serving downloads all month that they
-                        have used none. Same entry as the capacity card, so the two say one thing.
+                        Traffic. Both halves are real now: the allowance is what the plan sells and
+                        the spend is what ITrafficMeter counted off the response body. The first half
+                        was a dash rather than a zero for as long as nothing counted, because a zero
+                        would have told a customer who had been serving downloads all month that they
+                        had used none. Same entry as the capacity card, so the two say one thing.
+
+                        …and a bar, which the card could not have while the spend was a dash: one
+                        drawn from an allowance alone is a bar that is always empty.
                     *@
                     <div class="row"
                          style="justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 4px;"
-                         title="@UiText.Capacity.TrafficNotMeteredYet">
+                         title="@UiText.Capacity.TrafficCounts">
                         <span style="font-size: 12.5px; font-weight: 700;">@UiText.Capacity.TrafficLabel</span>
                         <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.TrafficText</span>
                     </div>
-                    <p class="hint" style="margin: 0;">@UiText.Capacity.TrafficNotMeteredYet</p>
+                    <div class="bar">
+                        <span class="@Model.TrafficFillClass"
+                              style="width: @Model.TrafficPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                    </div>
+                    <p class="hint" style="margin: 0;">@UiText.Capacity.TrafficCounts</p>
                 </div>
             </div>
 

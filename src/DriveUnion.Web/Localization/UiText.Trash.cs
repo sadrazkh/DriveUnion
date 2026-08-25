@@ -153,22 +153,29 @@ public static partial class UiText
         public static string TrafficLabel => Pick("ترافیک این ماه", "Traffic this month");
 
         /// <summary>
-        /// The allowance, with a dash where the spent figure will go.
+        /// What has been spent this month, against the allowance.
         ///
-        /// <para>The meter, its window and its counting stream are P2's, so there is no honest number
-        /// for the first half yet. A zero would read as «you have used none» to a customer who has
-        /// been serving downloads all month, which is the one thing this card must not do — the same
-        /// rule the shell already follows when it draws a skeleton rather than a plausible figure.
-        /// The dash is the missing half made visible, and <see cref="TrafficNotMeteredYet"/> is on
-        /// the row to say why.</para>
+        /// <para>The first half used to be a dash, and the dash was the honest thing at the time:
+        /// nothing counted what a workspace served, and a zero would have read as «you have used
+        /// none» to a customer who had been serving downloads all month. It is a number now because
+        /// there is a number — <c>ITrafficMeter</c> counts the bytes as the response body is copied,
+        /// so it is what reached visitors rather than what was promised to them.</para>
         /// </summary>
-        /// <param name="cap">Already a byte quantity, which is Latin in either language.</param>
-        [VerbatimText("a dash, a slash and an already-formatted byte quantity contain no words to translate")]
-        public static string TrafficOfCap(string cap) => Pick($"— / {cap}", $"— / {cap}");
+        /// <param name="spent">Already a byte quantity, which is Latin in either language.</param>
+        /// <param name="cap">The same.</param>
+        [VerbatimText("a slash and two already-formatted byte quantities contain no words to translate")]
+        public static string TrafficOfCap(string spent, string cap) => Pick($"{spent} / {cap}", $"{spent} / {cap}");
 
-        public static string TrafficNotMeteredYet => Pick(
-            "ترافیک مصرفی هنوز اندازه‌گیری نمی‌شود؛ عدد نشان‌داده‌شده سقف ماهانه‌ی پلن شماست.",
-            "Traffic is not metered yet; the figure shown is the monthly allowance your plan includes.");
+        /// <summary>
+        /// What the figure is and what it is not.
+        ///
+        /// <para>Downloads through public links, which is every byte this product puts on the wire
+        /// for a visitor. It says so rather than leaving «ترافیک» to be guessed at, because a
+        /// customer looking at a number next to a cap wants to know what would make it go up.</para>
+        /// </summary>
+        public static string TrafficCounts => Pick(
+            "بایت‌هایی که از طریق لینک‌های عمومی این ماه تحویل داده شده. آپلود حساب نمی‌شود.",
+            "Bytes delivered through your public links this month. Uploads do not count.");
 
         public static string TrashLabel => Pick("در سطل زباله", "In the trash");
 

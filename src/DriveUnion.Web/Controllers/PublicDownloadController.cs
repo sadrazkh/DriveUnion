@@ -25,11 +25,20 @@ public sealed class PublicDownloadController(
     IPublicLinkReader links,
     IDriveClient drive,
     IDownloadIpHasher ipHasher,
+    ITrafficMeter traffic,
     IOptions<DriveUnionWebOptions> options,
     ILogger<PublicDownloadController> logger) : Controller
 {
     /// <summary>DownloadEvent.UserAgent is varchar(512); a longer header would fail the insert.</summary>
     private const int UserAgentLimit = 512;
+
+    /// <summary>
+    /// The copy buffer, and the granularity the byte count is kept to.
+    ///
+    /// <para>80 KB is what <c>Stream.CopyToAsync</c> uses by default, so this is the same copy it
+    /// was doing with a running total added — not a slower one chosen to make counting easier.</para>
+    /// </summary>
+    private const int CopyBuffer = 81920;
 
     [HttpGet("/d/{slug}")]
     [EnableRateLimiting(DriveUnionRateLimits.PublicPage)]
@@ -138,6 +147,12 @@ public sealed class PublicDownloadController(
 
         var delivered = false;
 
+        // What actually reached the visitor, which is not what was promised: a tab closed at 90% of
+        // a 200 MB file cost the operator 180 MB of Google's egress and a player seeking through a
+        // video pays for the ranges it asked for. Counted as the body is copied, so an abort leaves
+        // the true figure behind rather than nothing or the whole file.
+        var sent = 0L;
+
         try
         {
             DriveDownload download;
@@ -169,7 +184,12 @@ public sealed class PublicDownloadController(
 
                 try
                 {
-                    await download.Content.CopyToAsync(Response.Body, cancellationToken);
+                    await CopyCountingAsync(
+                        download.Content,
+                        Response.Body,
+                        bytes => sent = bytes,
+                        cancellationToken);
+
                     delivered = true;
                 }
                 catch (OperationCanceledException)
@@ -209,6 +229,53 @@ public sealed class PublicDownloadController(
                 if (delivered) await RecordAsync(ticket.ShareLinkId, CancellationToken.None);
                 else await links.ReleaseDownloadAsync(ticket.ShareLinkId, CancellationToken.None);
             }
+
+            // Outside the reservation, and that is the point: a seek and a resume carry a Range, do
+            // not count as a download and reserve no slot — and they are still the operator's
+            // egress. A meter that only counted what the cap counted would under-report every video
+            // on the product by however many times it was scrubbed.
+            //
+            // Not the request's token, for the same reason the two lines above are not: when the
+            // visitor is the one who cancelled it is already cancelled, and the bytes they took
+            // would go uncounted for the one reason that is not a failure at all.
+            if (sent > 0) await traffic.RecordAsync(ticket.TenantId, sent, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// <c>Stream.CopyToAsync</c>, reporting the running total as it goes.
+    ///
+    /// <para><b>Why a callback and not a return value.</b> The transfers worth counting are the ones
+    /// that do not finish — a tab closed halfway is the case this meter exists for — and a returned
+    /// total never arrives when the copy throws. Reported after each write, the caller's own
+    /// variable already holds what reached the visitor by the time the exception unwinds.</para>
+    ///
+    /// <para>80 KB and an <c>ArrayPool</c> buffer, which is what <c>CopyToAsync</c> does: this is
+    /// that copy with one addition, not a slower one chosen to make counting possible.</para>
+    /// </summary>
+    private static async Task CopyCountingAsync(
+        Stream source,
+        Stream destination,
+        Action<long> sent,
+        CancellationToken cancellationToken)
+    {
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(CopyBuffer);
+        var total = 0L;
+
+        try
+        {
+            int read;
+            while ((read = await source.ReadAsync(buffer.AsMemory(0, CopyBuffer), cancellationToken)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+
+                total += read;
+                sent(total);
+            }
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

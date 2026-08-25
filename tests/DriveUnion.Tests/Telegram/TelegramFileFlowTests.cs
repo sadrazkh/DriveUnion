@@ -255,6 +255,7 @@ public class TelegramFileFlowTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendDocument,
             file.Id,
@@ -296,7 +297,7 @@ public class TelegramFileFlowTests
             new DriveApiException("the storage service answered 503"));
 
         await harness.Outbox().EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
 
         harness.Telegram.Forbid(FakeTelegramOperation.SendDocument);
 
@@ -316,6 +317,55 @@ public class TelegramFileFlowTests
         failure.ButtonLabels.Should().Contain(TelegramMessages.ButtonCreateLink);
     }
 
+    /// <summary>
+    /// A file that arrives by bot lands in the sender's folder, not loose in the workspace's.
+    ///
+    /// <para>The drainer runs with no request, no cookie and no principal, so the tenant on the
+    /// outbox row was for a long time the only identity it had — and an inbound upload was begun
+    /// with <c>ownerUserId: null</c>. The same person's panel uploads went to their own folder and
+    /// their Telegram ones did not, which is half of the per-user separation P2 was asked for,
+    /// missing on the one path that could not see who it was serving.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_file_sent_by_bot_is_owned_by_the_person_who_sent_it()
+    {
+        await using var harness = TelegramTestHarness.Create();
+        await harness.SeedBotAsync();
+        harness.SeedAccount();
+
+        var tenant = harness.SeedTenant();
+        var sender = Guid.NewGuid();
+        var content = new byte[2048];
+        var fileId = harness.Telegram.SeedIncomingFile(content);
+
+        await harness.Outbox().EnqueueAsync(
+            tenant.Id,
+            sender,
+            5001,
+            TelegramOutboxKind.ReceiveDocument,
+            null,
+            JsonSerializer.Serialize(new TelegramOutboxPayload
+            {
+                TelegramFileId = fileId,
+                FileName = "notes.pdf",
+                MimeType = "application/pdf",
+            }),
+            content.LongLength,
+            null,
+            CancellationToken.None);
+
+        var processor = harness.Processor();
+        await processor.ExecuteAsync(
+            (await processor.ClaimNextAsync(true, CancellationToken.None))!,
+            CancellationToken.None);
+
+        var stored = await harness.Db.StoredFiles.AsNoTracking().SingleAsync(f => f.TenantId == tenant.Id);
+
+        // The whole of it: the row the upload wrote names the person, which is what IDriveFolders
+        // resolves into their own folder under the workspace's.
+        stored.OwnerUserId.Should().Be(sender);
+    }
+
     private static async Task QueueInboundAsync(
         TelegramTestHarness harness,
         Guid tenantId,
@@ -324,6 +374,10 @@ public class TelegramFileFlowTests
     {
         await harness.Outbox().EnqueueAsync(
             tenantId,
+
+            // Null here, because these are the tests about queueing and refusals rather than about
+            // ownership — and null is what a row queued before the column existed carries.
+            senderUserId: null,
             5001,
             TelegramOutboxKind.ReceiveDocument,
             null,

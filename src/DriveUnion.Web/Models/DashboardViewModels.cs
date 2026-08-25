@@ -59,11 +59,15 @@ public sealed class CustomerDashboardPageViewModel
 
         FilesText = UiText.Dashboard.FilesStored(plan.FileCount);
 
-        // The traffic allowance with a dash where the spent figure will go, which is the same
-        // decision the sidebar's capacity card already made and for the same reason: the meter is
-        // P2's, and a zero would read as «you have used none» to a customer who has been serving
-        // downloads all month. Reusing the entry keeps the two from drifting into two answers.
-        TrafficText = UiText.Capacity.TrafficOfCap(DisplayFormats.Bytes(plan.Limits.MonthlyEgressBytes));
+        // Spent against the allowance, through the same entry the sidebar's capacity card uses —
+        // which is what keeps the two from drifting into two answers about one month. It was a dash
+        // on both until ITrafficMeter existed to fill it.
+        TrafficText = UiText.Capacity.TrafficOfCap(
+            DisplayFormats.Bytes(dashboard.TrafficThisMonth.EgressBytes),
+            DisplayFormats.Bytes(plan.Limits.MonthlyEgressBytes));
+
+        TrafficPercent = PlanMeter.Percent(dashboard.TrafficThisMonth.EgressBytes, plan.Limits.MonthlyEgressBytes);
+        TrafficFillClass = PlanMeter.FillClass(TrafficPercent);
 
         HasLinks = dashboard.LinkCount > 0;
         LiveLinksText = UiText.Dashboard.LiveOfTotal(dashboard.LiveLinkCount, dashboard.LinkCount);
@@ -113,6 +117,17 @@ public sealed class CustomerDashboardPageViewModel
     public string FilesText { get; }
 
     public string TrafficText { get; }
+
+    /// <summary>
+    /// The traffic bar, which the card could not have until the figure was real.
+    ///
+    /// <para>Drawn from an allowance alone it would have been a bar that is always empty — the
+    /// reason the sidebar's card deliberately had none — and it turns amber at the same percentage
+    /// the storage bar does, because it is the same <c>PlanMeter</c>.</para>
+    /// </summary>
+    public double TrafficPercent { get; }
+
+    public string TrafficFillClass { get; }
 
     public bool HasLinks { get; }
 

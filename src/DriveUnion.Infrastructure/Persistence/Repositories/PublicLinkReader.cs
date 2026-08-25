@@ -59,6 +59,7 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
 
         return new PublicDownloadTicket(
             link.Id,
+            file.TenantId,
             file.GoogleAccountId,
             file.DriveFileId,
             file.Name,

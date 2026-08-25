@@ -62,8 +62,18 @@ public sealed record PublicFileView(
 /// Everything the streaming route needs. <see cref="GoogleAccountId"/> and
 /// <see cref="DriveFileId"/> stay server-side — they must never reach a response body, header or URL.
 /// </summary>
+/// <param name="TenantId">
+/// Whose egress this transfer is, and the only reason a tenant appears on an anonymous path.
+///
+/// <para>The interface's own summary says this reader has no tenant and must not acquire one, and
+/// that is still true of the <i>lookup</i>: nothing about resolving a slug is scoped by workspace,
+/// because the visitor has none. This is the answer, not the question — the file that was found
+/// belongs to somebody, and the bytes about to be sent are billed to them. It stays server-side
+/// like the two below.</para>
+/// </param>
 public sealed record PublicDownloadTicket(
     Guid ShareLinkId,
+    Guid TenantId,
     Guid GoogleAccountId,
     string DriveFileId,
     string FileName,

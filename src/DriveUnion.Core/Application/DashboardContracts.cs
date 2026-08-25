@@ -60,6 +60,9 @@ public sealed record BusyLink(
 /// </param>
 public sealed record CustomerDashboard(
     TenantPlanView Plan,
+
+    /// <summary>Egress spent this calendar month, from ITrafficMeter. See UiText.Capacity.TrafficCounts.</summary>
+    UsageTotal TrafficThisMonth,
     long TrashBytes,
     int TrashFileCount,
     int LiveLinkCount,

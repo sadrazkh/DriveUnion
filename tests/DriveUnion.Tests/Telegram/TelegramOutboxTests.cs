@@ -26,6 +26,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendMessage,
             null,
@@ -64,6 +65,7 @@ public class TelegramOutboxTests
         {
             await outbox.EnqueueAsync(
                 noisy.Id,
+                senderUserId: null,
                 1000,
                 TelegramOutboxKind.SendMessage,
                 null,
@@ -75,6 +77,7 @@ public class TelegramOutboxTests
 
         await outbox.EnqueueAsync(
             quiet.Id,
+            senderUserId: null,
             2000,
             TelegramOutboxKind.SendMessage,
             null,
@@ -119,6 +122,7 @@ public class TelegramOutboxTests
         {
             await outbox.EnqueueAsync(
                 tenant.Id,
+                senderUserId: null,
                 1000,
                 TelegramOutboxKind.SendDocument,
                 file.Id,
@@ -130,6 +134,7 @@ public class TelegramOutboxTests
 
         await outbox.EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             1000,
             TelegramOutboxKind.SendMessage,
             null,
@@ -159,6 +164,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendMessage,
             null,
@@ -193,6 +199,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendMessage,
             null,
@@ -228,6 +235,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendDocument,
             file.Id,
@@ -285,6 +293,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendDocument,
             file.Id,
@@ -328,6 +337,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendDocument,
             file.Id,
@@ -358,7 +368,7 @@ public class TelegramOutboxTests
         var processor = harness.Processor();
 
         await outbox.EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
 
         await processor.ExecuteAsync(
             (await processor.ClaimNextAsync(true, CancellationToken.None))!,
@@ -372,7 +382,7 @@ public class TelegramOutboxTests
         var readsAfterFirst = harness.Drive.Calls.Count;
 
         await outbox.EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
 
         await processor.ExecuteAsync(
             (await processor.ClaimNextAsync(true, CancellationToken.None))!,
@@ -422,7 +432,7 @@ public class TelegramOutboxTests
         await harness.Db.SaveChangesAsync();
 
         await harness.Outbox().EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
 
         var processor = harness.Processor();
         await processor.ExecuteAsync(
@@ -446,7 +456,7 @@ public class TelegramOutboxTests
         var file = harness.SeedFile(tenant.Id, account.Id, sizeBytes: 4096);
 
         await harness.Outbox().EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
 
         // The customer deleted it between the press and the drain. The queue holds no foreign key on
         // purpose: the delete must not be refused, and the row must not vanish under the drainer.
@@ -484,7 +494,7 @@ public class TelegramOutboxTests
             content: FakeTelegramBotGateway.TestBytes(4096));
 
         await harness.Outbox().EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
 
         var processor = harness.Processor();
         await processor.ExecuteAsync(
@@ -533,6 +543,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendDocument,
             file.Id,
@@ -570,7 +581,7 @@ public class TelegramOutboxTests
             content: FakeTelegramBotGateway.TestBytes(4096));
 
         await harness.Outbox().EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendDocument, file.Id, null, 4096, null, CancellationToken.None);
 
         var processor = harness.Processor();
         await processor.ExecuteAsync(
@@ -598,12 +609,12 @@ public class TelegramOutboxTests
         for (var i = 0; i < 3; i++)
         {
             (await outbox.EnqueueAsync(
-                    tenant.Id, 1, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None))
+                    tenant.Id, senderUserId: null, 1, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None))
                 .Status.Should().Be(TelegramEnqueueStatus.Queued);
         }
 
         (await outbox.EnqueueAsync(
-                tenant.Id, 1, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None))
+                tenant.Id, senderUserId: null, 1, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None))
             .Status.Should().Be(TelegramEnqueueStatus.QueueFull);
     }
 
@@ -625,6 +636,7 @@ public class TelegramOutboxTests
         {
             (await outbox.EnqueueAsync(
                     tenant.Id,
+                    senderUserId: null,
                     1,
                     TelegramOutboxKind.SendDocument,
                     Guid.NewGuid(),
@@ -637,6 +649,7 @@ public class TelegramOutboxTests
 
         (await outbox.EnqueueAsync(
                 tenant.Id,
+                senderUserId: null,
                 1,
                 TelegramOutboxKind.SendDocument,
                 Guid.NewGuid(),
@@ -659,12 +672,13 @@ public class TelegramOutboxTests
         var outbox = harness.Outbox();
 
         await outbox.EnqueueAsync(
-            tenant.Id, 1, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 1, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None);
 
         // It is the item that makes the chat smaller, it moves no bytes, and refusing it would leave
         // a document sitting in a chat the customer asked to have cleaned up.
         (await outbox.EnqueueAsync(
                 tenant.Id,
+                senderUserId: null,
                 1,
                 TelegramOutboxKind.DeleteMessage,
                 null,
@@ -687,6 +701,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendMessage,
             null,
@@ -724,6 +739,7 @@ public class TelegramOutboxTests
 
         await harness.Outbox().EnqueueAsync(
             tenant.Id,
+            senderUserId: null,
             5001,
             TelegramOutboxKind.SendMessage,
             null,
@@ -759,7 +775,7 @@ public class TelegramOutboxTests
         var tenant = harness.SeedTenant();
 
         await harness.Outbox().EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None);
 
         var claimed = await harness.Processor().ClaimNextAsync(false, CancellationToken.None);
         claimed.Should().NotBeNull();
@@ -791,7 +807,7 @@ public class TelegramOutboxTests
         var tenant = harness.SeedTenant();
 
         await harness.Outbox().EnqueueAsync(
-            tenant.Id, 5001, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None);
+            tenant.Id, senderUserId: null, 5001, TelegramOutboxKind.SendMessage, null, null, 0, null, CancellationToken.None);
 
         var first = await harness.Processor().ClaimNextAsync(false, CancellationToken.None);
         var second = await harness.Processor(harness.NewContext()).ClaimNextAsync(false, CancellationToken.None);

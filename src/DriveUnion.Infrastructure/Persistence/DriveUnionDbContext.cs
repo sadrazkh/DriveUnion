@@ -1,3 +1,4 @@
+using DriveUnion.Core.Metering;
 using DriveUnion.Core.Plans;
 using DriveUnion.Core.Settings;
 using DriveUnion.Core.Sharing;
@@ -33,6 +34,8 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
 
     public DbSet<Folder> Folders => Set<Folder>();
+
+    public DbSet<TenantUsageDay> TenantUsageDays => Set<TenantUsageDay>();
 
     public DbSet<Tag> Tags => Set<Tag>();
 
@@ -271,6 +274,17 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
                 .WithMany()
                 .HasForeignKey(f => f.ParentFolderId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<TenantUsageDay>(e =>
+        {
+            // The pair is the identity, and there is no surrogate key: one row per workspace per
+            // day is the whole shape, and a Guid id would be a column nothing ever reads.
+            e.HasKey(u => new { u.TenantId, u.Day });
+
+            // Every read is «this workspace, this range of days», which the key already serves. The
+            // one that is not is the operator's «every workspace this month», and that is this.
+            e.HasIndex(u => u.Day);
         });
 
         builder.Entity<Tag>(e =>

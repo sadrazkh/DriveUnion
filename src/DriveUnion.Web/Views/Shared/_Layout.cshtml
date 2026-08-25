@@ -297,9 +297,11 @@
                               style="width: @capacity.StoragePercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
                     </div>
 
-                    @* No bar. The spent half of this one is P2's meter, and a bar drawn from an
-                       allowance alone would be a bar that is always empty. *@
-                    <div class="capacity-row" title="@UiText.Capacity.TrafficNotMeteredYet">
+                    @* Still no bar here, and now for a different reason than «there is no number».
+                       There is one — the dashboard draws the bar. The sidebar is a glance and two
+                       bars in a 232px column is two things competing to be the one that is
+                       alarming. *@
+                    <div class="capacity-row" title="@UiText.Capacity.TrafficCounts">
                         <span>@UiText.Capacity.TrafficLabel</span>
                         <span class="mono" dir="ltr">@capacity.TrafficText</span>
                     </div>

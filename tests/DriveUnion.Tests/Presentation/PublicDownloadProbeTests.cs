@@ -1,6 +1,7 @@
 using System.Net;
 using System.Reflection;
 using System.Text;
+using DriveUnion.Tests.Fakes;
 using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
 using DriveUnion.Web.Controllers;
@@ -159,6 +160,7 @@ public class PublicDownloadProbeTests
 
     private static PublicDownloadTicket Ticket() => new(
         ShareLinkId: Guid.Parse("3f4a0f2a-7f47-4d05-9a1c-2a2f31d3f0b1"),
+        TenantId: Guid.Parse("b6e0f3c1-5a2d-4e77-9c31-0f8a4d2b6e91"),
         GoogleAccountId: Guid.Parse("6c1d1a44-9f0e-4b6a-8f2b-05e0b5a8c3d2"),
         DriveFileId: "1aB9Zk",
         FileName: "Q3-Report-Final.pdf",
@@ -200,6 +202,7 @@ public class PublicDownloadProbeTests
             reader,
             drive ?? new StubDriveClient(),
             new FixedIpHasher(),
+            new RecordingTrafficMeter(),
             Options.Create(new DriveUnionWebOptions()),
             NullLogger<PublicDownloadController>.Instance)
         {

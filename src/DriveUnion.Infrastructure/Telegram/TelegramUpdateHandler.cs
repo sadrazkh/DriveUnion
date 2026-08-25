@@ -472,6 +472,10 @@ public sealed class TelegramUpdateHandler(
 
         var queued = await outbox.EnqueueAsync(
             identity.TenantId,
+
+            // Null: this is the bot handing a file back to a chat, not a person putting one in. The
+            // sender matters where bytes are stored, and a delivery stores none.
+            senderUserId: null,
             chatId,
             TelegramOutboxKind.SendDocument,
             file.Id,
@@ -556,6 +560,7 @@ public sealed class TelegramUpdateHandler(
         // everything else and survives the restart a deploy makes routine.
         await outbox.EnqueueAsync(
             identity.TenantId,
+            senderUserId: null,
             chatId,
             TelegramOutboxKind.DeleteMessage,
             null,
@@ -645,6 +650,11 @@ public sealed class TelegramUpdateHandler(
 
         var queued = await outbox.EnqueueAsync(
             identity.TenantId,
+
+            // The half of P2 the bot could not do. This is the one queue item raised by a person
+            // putting bytes in, and identity.AppUserId is who — so the drainer can upload it into
+            // their folder instead of loose in the workspace's.
+            identity.AppUserId,
             sender.Id,
             TelegramOutboxKind.ReceiveDocument,
             null,

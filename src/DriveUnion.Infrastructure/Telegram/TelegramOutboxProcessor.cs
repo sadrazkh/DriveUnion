@@ -463,18 +463,19 @@ public sealed class TelegramOutboxProcessor(
         BeginUploadResult session;
         try
         {
-            // No owner, so this lands in the tenant folder rather than the sender's.
+            // The sender, so this lands in their folder and not loose in the workspace's.
             //
-            // Not a decision so much as a column that does not exist yet: TelegramOutbox carries a
-            // TenantId and nothing about the person, because the tenant is all the drainer ever
-            // needed. The sender *is* known at enqueue — TelegramAccount.AppUserId is what the tenant
-            // was read through — so finishing this is a column on the outbox row, set by
-            // TelegramOutboxWriter, and passed here. Until then a file that arrives by bot mixes into
-            // the tenant folder while the same person's panel uploads go to their own, which is half
-            // of the separation this phase was asked for.
+            // The comment that used to be here said this was a column that did not exist: the row
+            // carried a TenantId and nothing about the person, because the tenant was all the
+            // drainer ever needed. It exists now — TelegramOutbox.SenderUserId, written at enqueue
+            // from TelegramIdentity.AppUserId, which is the same fact the tenant was read through.
+            //
+            // Still nullable, and the null is not a fallback for «we could not tell»: a row queued
+            // before this column existed has none, and IDriveFolders answers a null owner with the
+            // workspace folder — which is exactly where those files already are.
             session = await uploads.BeginAsync(
                 item.TenantId,
-                ownerUserId: null,
+                item.SenderUserId,
                 new BeginUploadRequest(name, mimeType, sizeBytes),
                 cancellationToken);
         }

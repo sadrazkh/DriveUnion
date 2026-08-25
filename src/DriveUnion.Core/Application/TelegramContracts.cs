@@ -225,8 +225,14 @@ public sealed record TelegramEnqueueResult(TelegramEnqueueStatus Status, Guid? I
 /// <summary>The queue's writing end, which is all a chat handler ever needs.</summary>
 public interface ITelegramOutboxWriter
 {
+    /// <param name="senderUserId">
+    /// Who sent it, for an item that came from a person, and null for anything the bot raises of its
+    /// own accord. It is what puts an inbound file in the sender's Drive folder rather than the
+    /// workspace's — see TelegramOutbox.SenderUserId.
+    /// </param>
     Task<TelegramEnqueueResult> EnqueueAsync(
         Guid tenantId,
+        Guid? senderUserId,
         long chatId,
         TelegramOutboxKind kind,
         Guid? storedFileId,

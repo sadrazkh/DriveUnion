@@ -90,6 +90,23 @@ public sealed class TelegramOutbox
 
     public Guid TenantId { get; set; }
 
+    /// <summary>
+    /// Who sent it, when a person did.
+    ///
+    /// <para>The drainer runs with no request, no cookie and no principal, so the tenant on this row
+    /// was for a long time the only identity it had — and an inbound file was uploaded with
+    /// <c>ownerUserId: null</c>, landing in the workspace folder while the same person's panel
+    /// uploads went to their own. Half of the per-user separation P2 was asked for, missing for the
+    /// one path that could not see who it was serving.</para>
+    ///
+    /// <para>The sender is known at enqueue — <c>TelegramAccount.AppUserId</c> is what the tenant
+    /// was read through — so it is written here and read by the processor.</para>
+    ///
+    /// <para>Null for everything the bot sends of its own accord: a delivery, a card, a deletion. It
+    /// is «which person is this for», and a queue item addressed to a chat has no answer.</para>
+    /// </summary>
+    public Guid? SenderUserId { get; set; }
+
     /// <summary>Where it is going. In a private chat this equals the customer's Telegram user id.</summary>
     public long ChatId { get; set; }
 

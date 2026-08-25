@@ -25,6 +25,7 @@ public sealed class CustomerDashboardReader(
     DriveUnionDbContext db,
     ITenantPlanService plans,
     ITrash trash,
+    ITrafficMeter traffic,
     TimeProvider clock) : ICustomerDashboard
 {
     /// <summary>Rows on «آخرین آپلودها». Enough to recognise this week's work, not a second file table.</summary>
@@ -101,8 +102,13 @@ public sealed class CustomerDashboardReader(
             .Select(f => new RecentUpload(f.Id, f.Name, f.SizeBytes, f.CreatedAt))
             .ToListAsync(cancellationToken);
 
+        // The month this screen is about, from the same UTC clock every row in the product is stamped
+        // by — so «this month» starts where the rows say it does rather than where the server stands.
+        var spent = await traffic.MonthAsync(tenantId, DateOnly.FromDateTime(now.UtcDateTime), cancellationToken);
+
         return new CustomerDashboard(
             plan,
+            spent,
             trashBytes,
             trashFiles,
             links.Count(l => l.Evaluate(now) == ShareLinkAvailability.Available),

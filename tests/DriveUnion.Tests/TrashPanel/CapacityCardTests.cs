@@ -47,8 +47,11 @@ public class CapacityCardTests
 
         sidebar.Should().Contain(UiText.Capacity.TrafficLabel);
         sidebar.Should().Contain(
-            UiText.Capacity.TrafficOfCap(DisplayFormats.Bytes(TrashPanelHarness.MonthlyEgressBytes)),
-            "the allowance this workspace bought, with a dash where the spent figure will go");
+            UiText.Capacity.TrafficOfCap(
+                DisplayFormats.Bytes(0),
+                DisplayFormats.Bytes(TrashPanelHarness.MonthlyEgressBytes)),
+            "spent against the allowance this workspace bought — nothing served yet, so zero, which "
+            + "is a figure the meter stands behind rather than a placeholder");
 
         sidebar.Should().Contain(UiText.Capacity.TrashLabel);
         sidebar.Should().Contain(

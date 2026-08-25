@@ -96,14 +96,52 @@ public class DashboardScreenTests
     }
 
     /// <summary>
-    /// The traffic figure nobody meters, drawn as a dash rather than as a zero.
+    /// The traffic figure, which is now counted rather than drawn as a dash.
     ///
-    /// <para>A zero would tell a customer who has been serving downloads all month that they have
-    /// used none of the allowance they paid for. It is the same decision the sidebar's capacity card
-    /// already made, and it is asserted here so the dashboard cannot quietly make the other one.</para>
+    /// <para>This test used to assert the opposite, and the reason it did is worth keeping: a zero
+    /// beside an allowance would have told a customer who had been serving downloads all month that
+    /// they had used none of what they paid for. The dash was the honest answer while nothing
+    /// counted. What makes a zero honest now is that something does — so what is asserted is a
+    /// figure that <i>moves</i>, because a screen that always prints zero is the placeholder the
+    /// dash was there to refuse, wearing a number.</para>
     /// </summary>
     [Fact]
-    public async Task A_customers_dashboard_draws_a_dash_where_traffic_is_not_metered()
+    public async Task A_customers_dashboard_draws_the_traffic_it_counted()
+    {
+        using var harness = new DashboardHarness();
+        var tenant = harness.SeedWorkspace("Acme");
+
+        const long served = 7L * 1024 * 1024 * 1024;
+        harness.SeedTrafficThisMonth(tenant.Id, served);
+
+        using var client = harness.NewClient(tenant.Id);
+        var main = PanelMarkup.MainContent(await client.GetStringAsync(new Uri("/", UriKind.Relative)));
+
+        main.Should().Contain(
+            UiText.Capacity.TrafficOfCap(
+                DisplayFormats.Bytes(served),
+                DisplayFormats.Bytes(DashboardHarness.MonthlyEgressBytes)),
+            "what ITrafficMeter counted off the response body, against the allowance the plan sells");
+
+        main.Should().Contain(
+            UiText.Capacity.TrafficCounts,
+            "and the screen says what would make that number go up");
+
+        main.Should().NotContain(
+            UiText.Capacity.TrafficOfCap(
+                DisplayFormats.Bytes(0),
+                DisplayFormats.Bytes(DashboardHarness.MonthlyEgressBytes)),
+            "a workspace that has served seven gigabytes must not be shown a zero");
+    }
+
+    /// <summary>
+    /// …and a workspace that has served nothing is shown a zero rather than the old dash.
+    ///
+    /// <para>The pair of the test above, and the half that says the number is real in both
+    /// directions: a meter that only ever reported what it was seeded with would pass that one.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_workspace_that_has_served_nothing_is_shown_a_zero()
     {
         using var harness = new DashboardHarness();
         var tenant = harness.SeedWorkspace("Acme");
@@ -112,16 +150,9 @@ public class DashboardScreenTests
         var main = PanelMarkup.MainContent(await client.GetStringAsync(new Uri("/", UriKind.Relative)));
 
         main.Should().Contain(
-            UiText.Capacity.TrafficOfCap(DisplayFormats.Bytes(DashboardHarness.MonthlyEgressBytes)),
-            "the allowance is real and sold; the spend is not measured, so its half is a dash");
-
-        main.Should().Contain(UiText.Capacity.TrafficNotMeteredYet, "and the screen says why");
-
-        main.Should().NotContain(
-            UiText.Plans.OfCap(
+            UiText.Capacity.TrafficOfCap(
                 DisplayFormats.Bytes(0),
-                DisplayFormats.Bytes(DashboardHarness.MonthlyEgressBytes)),
-            "«0 B / 500 GB» is the plausible zero this rule exists to refuse");
+                DisplayFormats.Bytes(DashboardHarness.MonthlyEgressBytes)));
     }
 
     /// <summary>

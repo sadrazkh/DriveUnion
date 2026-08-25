@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using DriveUnion.Core.Metering;
 using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
@@ -106,6 +107,32 @@ public sealed class DashboardHarness : WebApplicationFactory<Program>
         client.DefaultRequestHeaders.Add(TenantHeader, "none");
 
         return client;
+    }
+
+    /// <summary>
+    /// Egress already spent this month, as the roll-up row the meter would have written.
+    ///
+    /// <para>Written as a row rather than by calling <c>ITrafficMeter.RecordAsync</c>: what these
+    /// screens are tested on is what they draw from the table, and going through the writer would
+    /// mean a test of the dashboard that fails when the counter's arithmetic does. That arithmetic
+    /// has <c>TrafficMeterTests</c>.</para>
+    ///
+    /// <para>Dated today, so it lands in the month the screen is about — and today in UTC, which is
+    /// the clock <c>TrafficMeter</c> and everything else in this product stamps by.</para>
+    /// </summary>
+    public void SeedTrafficThisMonth(Guid tenantId, long bytes, int downloads = 1)
+    {
+        using var db = NewDbContext();
+
+        db.TenantUsageDays.Add(new TenantUsageDay
+        {
+            TenantId = tenantId,
+            Day = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime),
+            EgressBytes = bytes,
+            Downloads = downloads,
+        });
+
+        db.SaveChanges();
     }
 
     public Tenant SeedWorkspace(string name, long storageUsedBytes = 0, long? storageQuotaBytes = null)
