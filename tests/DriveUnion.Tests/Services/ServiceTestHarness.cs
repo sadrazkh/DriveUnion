@@ -92,6 +92,13 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     public DriveFolders Folders(DriveUnionDbContext? context = null) =>
         new(context ?? Db, Drive, FolderCache);
 
+    /// <summary>
+    /// The customer's folder tree — <c>Tree()</c> and not <c>Folders()</c>, which is taken above by
+    /// the operator's Drive layout. Two different things called folders, and this is the one the
+    /// customer names and arranges.
+    /// </summary>
+    public FolderTree Tree(DriveUnionDbContext? context = null) => new(context ?? Db, Clock);
+
     public UploadCoordinator Uploads(DriveUnionDbContext? context = null)
     {
         var db = context ?? Db;

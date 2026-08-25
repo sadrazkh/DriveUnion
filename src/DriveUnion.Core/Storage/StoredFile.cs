@@ -58,6 +58,22 @@ public sealed class StoredFile
     /// </summary>
     public DateTimeOffset? PurgeAfter { get; set; }
 
+    /// <summary>
+    /// Where the customer filed it, or null for the workspace's root.
+    ///
+    /// <para>Not to be read as a sibling of <see cref="DriveFolderId"/>, which is three lines up and
+    /// means something else entirely: that one is a Google Drive folder id and says where the bytes
+    /// physically are, and this one is a <see cref="Folder"/> row and says where the customer put
+    /// it. They move independently — filing a file somewhere costs no Drive call at all — and the
+    /// reasoning is on <see cref="Folder"/>.</para>
+    ///
+    /// <para>No foreign key, deliberately. Deleting a folder is allowed while files that were in it
+    /// sit in the trash, and a cascade would take those files with it while a restrict would refuse
+    /// a delete for a reason the customer cannot see. A restore whose folder is gone lands at the
+    /// root instead, which is the behaviour that needs no constraint to explain it.</para>
+    /// </summary>
+    public Guid? FolderId { get; set; }
+
     public required string Name { get; set; }
 
     public required string MimeType { get; set; }

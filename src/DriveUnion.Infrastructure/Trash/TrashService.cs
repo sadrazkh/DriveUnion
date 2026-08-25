@@ -61,6 +61,7 @@ public sealed class TrashService(
                 f.DriveFileId,
                 f.DriveFolderId,
                 f.RestoreFolderId,
+                f.FolderId,
             })
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -89,12 +90,23 @@ public sealed class TrashService(
         // whole of putting it back.
         var folderNow = string.IsNullOrEmpty(destination) ? file.DriveFolderId : destination;
 
+        // …and the customer's own folder, which is a different question and can have moved on while
+        // the file was in the trash. Deleting an empty folder is allowed even when files that used
+        // to be in it are still deleted — see IFolderTree.DeleteAsync — so the row can name a folder
+        // that no longer exists. Landing at the root is the honest answer: the file comes back, and
+        // it comes back somewhere the customer can see rather than into a folder that is not there.
+        var filedIn = file.FolderId is { } folderId
+            && await db.Folders.AnyAsync(f => f.Id == folderId && f.TenantId == tenantId, cancellationToken)
+                ? file.FolderId
+                : null;
+
         var affected = await db.StoredFiles
             .Where(f => f.Id == fileId && f.TenantId == tenantId && f.DeletedAt != null)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(f => f.DeletedAt, (DateTimeOffset?)null)
                     .SetProperty(f => f.DriveFolderId, folderNow)
+                    .SetProperty(f => f.FolderId, filedIn)
                     .SetProperty(f => f.RestoreFolderId, (string?)null)
                     .SetProperty(f => f.PurgeAfter, (DateTimeOffset?)null),
                 cancellationToken);

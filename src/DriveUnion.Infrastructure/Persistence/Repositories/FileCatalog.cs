@@ -25,6 +25,7 @@ public sealed class FileCatalog(
 {
     public async Task<IReadOnlyList<FileListItem>> ListAsync(
         Guid tenantId,
+        Guid? folderId,
         string? nameQuery,
         CancellationToken cancellationToken)
     {
@@ -34,6 +35,9 @@ public sealed class FileCatalog(
 
         if (nameQuery?.Trim() is { Length: > 0 } term)
         {
+            // The folder is not applied here. A search is the whole workspace — see the contract for
+            // why — and the screen says where each hit lives instead of hiding the ones that are
+            // somewhere else.
             // Folded on both sides rather than compared with the database's own idea of case.
             //
             // `Name.Contains(term)` is what reads naturally and it is the trap: EF turns it into a
@@ -55,6 +59,10 @@ public sealed class FileCatalog(
 
             rows = rows.Where(f => f.Name.ToLower().Contains(folded));
         }
+        else
+        {
+            rows = rows.Where(f => f.FolderId == folderId);
+        }
 
         var files = await rows
             .Select(f => new FileListItem(
@@ -66,7 +74,8 @@ public sealed class FileCatalog(
                 // Revoked links drop out of the count; expiry and the download cap are per-link
                 // states the detail panel evaluates with ShareLink.Evaluate, and duplicating that
                 // rule in SQL would be two places to get it wrong.
-                db.ShareLinks.Count(l => l.StoredFileId == f.Id && l.IsActive)))
+                db.ShareLinks.Count(l => l.StoredFileId == f.Id && l.IsActive),
+                f.FolderId))
             .ToListAsync(cancellationToken);
 
         // Ordered here rather than in SQL because SQLite refuses ORDER BY on a DateTimeOffset — its

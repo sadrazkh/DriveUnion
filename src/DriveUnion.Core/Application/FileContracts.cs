@@ -1,12 +1,18 @@
 namespace DriveUnion.Core.Application;
 
+/// <param name="FolderId">
+/// Where the customer filed it, so a search result can say where it was found. Null is the root.
+/// The id and not the path: turning one into the other needs the whole tree, and the screen has
+/// that already.
+/// </param>
 public sealed record FileListItem(
     Guid Id,
     string Name,
     string MimeType,
     long SizeBytes,
     DateTimeOffset ModifiedAt,
-    int ActiveLinkCount);
+    int ActiveLinkCount,
+    Guid? FolderId);
 
 public sealed record FileDetail(
     Guid Id,
@@ -41,8 +47,18 @@ public interface IFileCatalog
     /// screen that grows a search box and forgets to pass it does not silently list everything —
     /// the same reasoning as <c>tenantId</c> above.</para>
     /// </param>
+    /// <param name="folderId">
+    /// The folder being browsed, or null for the workspace's root.
+    ///
+    /// <para><b>Ignored when <paramref name="nameQuery"/> is given</b>, and that is the design rather
+    /// than an oversight. A search inside the folder you happen to be standing in answers «not
+    /// found» for a file the customer owns and can see the name of, which is the failure the search
+    /// box already had once. A search is the whole workspace; browsing is one folder deep; and
+    /// <c>FileListItem.FolderId</c> is what lets the screen say where each hit was found.</para>
+    /// </param>
     Task<IReadOnlyList<FileListItem>> ListAsync(
         Guid tenantId,
+        Guid? folderId,
         string? nameQuery,
         CancellationToken cancellationToken);
 

@@ -128,7 +128,7 @@ public class ShareLinkServiceTests
         harness.SeedLink(tenant.Id, file.Id, "aaaaaaaa");
         harness.SeedLink(tenant.Id, file.Id, "bbbbbbbb", isActive: false);
 
-        var listing = await harness.Files().ListAsync(tenant.Id, nameQuery: null, default);
+        var listing = await harness.Files().ListAsync(tenant.Id, folderId: null, nameQuery: null, default);
 
         listing.Should().ContainSingle();
         listing[0].ActiveLinkCount.Should().Be(1);

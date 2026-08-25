@@ -28,7 +28,7 @@ public class FileSearchTests
         harness.SeedFile(tenant.Id, account.Id, "Q4-report.pdf");
         harness.SeedFile(tenant.Id, account.Id, "holiday-photo.jpg");
 
-        var found = await harness.Files().ListAsync(tenant.Id, "report", default);
+        var found = await harness.Files().ListAsync(tenant.Id, folderId: null, "report", default);
 
         found.Select(f => f.Name).Should().BeEquivalentTo(["Q3-report.pdf", "Q4-report.pdf"]);
     }
@@ -45,10 +45,10 @@ public class FileSearchTests
 
         // A substring anywhere, because that is how somebody looks for a file whose exact name they
         // do not remember — which is the only reason to open a search box at all.
-        (await harness.Files().ListAsync(tenant.Id, "earn", default))
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "earn", default))
             .Should().ContainSingle().Which.Name.Should().Be("quarterly-earnings.xlsx");
 
-        (await harness.Files().ListAsync(tenant.Id, "xlsx", default))
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "xlsx", default))
             .Should().ContainSingle().Which.Name.Should().Be("quarterly-earnings.xlsx");
     }
 
@@ -65,8 +65,8 @@ public class FileSearchTests
         // case-sensitive on Postgres and case-insensitive on SQLite — so the natural spelling passes
         // here and finds nothing for a customer. Both directions asserted, because folding only the
         // column or only the term is a half-fix that also passes one of these.
-        (await harness.Files().ListAsync(tenant.Id, "report", default)).Should().ContainSingle();
-        (await harness.Files().ListAsync(tenant.Id, "REPORT", default)).Should().ContainSingle();
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "report", default)).Should().ContainSingle();
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "REPORT", default)).Should().ContainSingle();
     }
 
     [Fact]
@@ -82,10 +82,10 @@ public class FileSearchTests
         // A hand-built LIKE pattern would answer this with both files, and «_» with every file whose
         // name has at least one character. EF's own Contains translation escapes them, which is the
         // reason the query is written as Contains rather than as a pattern.
-        (await harness.Files().ListAsync(tenant.Id, "%", default))
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "%", default))
             .Should().ContainSingle().Which.Name.Should().Be("100% done.txt");
 
-        (await harness.Files().ListAsync(tenant.Id, "_", default)).Should().BeEmpty();
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "_", default)).Should().BeEmpty();
     }
 
     [Fact]
@@ -101,9 +101,9 @@ public class FileSearchTests
         // «?q=» is what an empty box submits, and a box holding spaces is what a stray keystroke
         // leaves. Neither is a term, and answering either with an empty table would tell a reader
         // their workspace is empty.
-        (await harness.Files().ListAsync(tenant.Id, null, default)).Should().HaveCount(2);
-        (await harness.Files().ListAsync(tenant.Id, "", default)).Should().HaveCount(2);
-        (await harness.Files().ListAsync(tenant.Id, "   ", default)).Should().HaveCount(2);
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, null, default)).Should().HaveCount(2);
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "", default)).Should().HaveCount(2);
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "   ", default)).Should().HaveCount(2);
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class FileSearchTests
         // Pasting a file name picks up a trailing space more often than not, and a search that
         // answers «nothing matched» to a name that is right except for whitespace is a search the
         // reader stops trusting.
-        (await harness.Files().ListAsync(tenant.Id, "  report  ", default)).Should().ContainSingle();
+        (await harness.Files().ListAsync(tenant.Id, folderId: null, "  report  ", default)).Should().ContainSingle();
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class FileSearchTests
         // of listing: a WHERE bolted onto a query is exactly where a tenant scope goes missing, and
         // a deleted file surfacing in a search is the trash leaking into the screen it was built to
         // stay out of.
-        var found = await harness.Files().ListAsync(mine.Id, "shared-name", default);
+        var found = await harness.Files().ListAsync(mine.Id, folderId: null, "shared-name", default);
 
         found.Should().ContainSingle().Which.Name.Should().Be("shared-name.pdf");
     }

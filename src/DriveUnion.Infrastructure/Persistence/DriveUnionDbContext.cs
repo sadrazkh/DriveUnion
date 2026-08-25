@@ -32,6 +32,8 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     public DbSet<GoogleOAuthClient> GoogleOAuthClients => Set<GoogleOAuthClient>();
     public DbSet<StoredFile> StoredFiles => Set<StoredFile>();
 
+    public DbSet<Folder> Folders => Set<Folder>();
+
     /// <summary>
     /// The operator's own knobs. One row, seeded by the migration that made the table.
     ///
@@ -240,10 +242,31 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.HasIndex(f => new { f.TenantId, f.DeletedAt });
             e.HasIndex(f => new { f.GoogleAccountId, f.DriveFileId });
 
+            // Browsing a folder is the panel's most-run query after the list itself.
+            e.HasIndex(f => new { f.TenantId, f.FolderId, f.DeletedAt });
+
             // The sweeper's only query: what is due, oldest first, across every tenant. Filtered so
             // the index holds the trash rather than the whole catalogue — live files are the vast
             // majority and none of them has a deadline.
             e.HasIndex(f => f.PurgeAfter).HasFilter("\"PurgeAfter\" IS NOT NULL");
+        });
+
+        builder.Entity<Folder>(e =>
+        {
+            e.Property(f => f.Name).HasMaxLength(Folder.MaxNameLength);
+
+            // Listing one folder's children, and listing every folder in a workspace for the
+            // breadcrumb and the «move to…» list. Both are this index.
+            e.HasIndex(f => new { f.TenantId, f.ParentFolderId });
+
+            // Self-referencing and Restrict, so a parent cannot be deleted while it still has
+            // children. DeleteAsync refuses that in a sentence long before the database would, and
+            // this is what stands behind the sentence: a cascade here would silently take a subtree
+            // that the screen had just told the customer it would not touch.
+            e.HasOne<Folder>()
+                .WithMany()
+                .HasForeignKey(f => f.ParentFolderId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<OperatorSettings>(e =>

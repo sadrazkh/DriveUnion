@@ -1716,6 +1716,82 @@ a:hover {
   color: var(--bg);
 }
 
+/* ---------------------------------------------------------------- the folder toolbar */
+
+/*
+ * The breadcrumb: where you are, and every step back to the root.
+ *
+ * A nav of anchors and a separator, wrapping. Written with logical properties and no fixed widths
+ * because a path is as long as the customer's names make it, and «فایل‌های من / گزارش‌ها / سه‌ماهه‌ی
+ * سوم ۱۴۰۵» is one line on a desktop and three on a phone.
+ */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.crumbs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* Where you are is not a link, and reads as the heading of what is under it. */
+.crumbs .crumb-here {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.crumbs .crumb-sep {
+  color: var(--line);
+}
+
+/*
+ * «پوشه‌ی جدید» and «تغییر نام» open a form that is not on the screen until it is wanted.
+ *
+ * <details> and not a script, for the reason the whole panel is server-rendered: the form inside is
+ * a real POST and it works with JavaScript off, which a dialog does not. The summary wears .btn so
+ * it is the same control as everything beside it — `display: inline-flex` from .btn replaces the
+ * `list-item` a summary defaults to, and the two markers below are what is left of the disclosure
+ * triangle once it does.
+ */
+summary.btn {
+  list-style: none;
+}
+
+summary.btn::marker,
+summary.btn::-webkit-details-marker {
+  content: '';
+  display: none;
+}
+
+/* The form itself, floated over the row rather than pushing it apart: opening it must not move the
+   table underneath, or the reader's eye loses the row they were about to act on. */
+.disclose {
+  position: relative;
+}
+
+.disclose-body {
+  position: absolute;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-end: 0;
+  z-index: 5;
+  min-inline-size: 260px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface2);
+  box-shadow: var(--shadow);
+}
+
 /* ---------------------------------------------------------------- colour utilities */
 
 /*

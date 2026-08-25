@@ -11,6 +11,15 @@
     // track does not fit a 375px phone, and minmax(0,…) answers that by drawing no name at all.
     const string Cols = "--cols: 28px minmax(var(--name-min),2.4fr) 92px 110px 118px";
 }
+@{
+    // The last column, and the only thing that changes between browsing and searching.
+    //
+    // A search result's most useful fifth column is where it was found; a browsed row's is how many
+    // links it has. Swapped rather than added, so the tracks are the same five whichever state the
+    // screen is in — a table that changes shape when a reader types is a table that moves under
+    // them, and the fixed tracks are already 348px against a 341px phone.
+    var lastColumn = Model.IsSearching ? UiText.Files.ColumnFolder : UiText.Files.ColumnLinks;
+}
 
 @*
     Server-rendered whole. The antiforgery pair below is how an island's fetch satisfies the write
@@ -42,6 +51,100 @@
         <p class="page-sub" role="status">@Model.Notice</p>
     }
 
+    @*
+        The toolbar: where you are on one side, what you can do to it on the other.
+
+        Drawn only while browsing. A search is the whole workspace — it is not standing anywhere, so
+        a breadcrumb would be pointing at a place the results are not from, and «حذف این پوشه» would
+        name whichever folder the reader happened to be in before they typed.
+
+        A folder is managed from inside it rather than from a control on its own row: a row here is
+        an anchor that opens the folder, and an anchor cannot hold the three forms this needs.
+    *@
+    @if (!Model.IsSearching)
+    {
+        <div class="row" style="gap: 12px; flex-wrap: wrap; align-items: center;">
+            <nav class="crumbs" aria-label="@UiText.Files.RootFolder">
+                @foreach (var crumb in Model.Breadcrumb)
+                {
+                    if (!crumb.IsCurrent)
+                    {
+                        <a href="@Url.Action("Index", "Files", new { folder = crumb.Id })">@crumb.Name</a>
+                        <span class="crumb-sep" aria-hidden="true">/</span>
+                    }
+                    else
+                    {
+                        <span class="crumb-here" aria-current="page">@crumb.Name</span>
+                    }
+                }
+            </nav>
+
+            <span class="row push-end" style="gap: 8px; flex-wrap: wrap;">
+                <details class="disclose">
+                    <summary class="btn btn--sm">@UiText.Files.NewFolder</summary>
+                    <div class="disclose-body">
+                        <form method="post" class="stack" style="gap: 8px;"
+                              action="@Url.Action("CreateFolder", "Files", new { folder = Model.Folder })">
+                            @Html.AntiForgeryToken()
+                            <label class="visually-hidden" for="new-folder-name">@UiText.Files.FolderName</label>
+                            <input id="new-folder-name" name="name" class="control" required maxlength="512"
+                                   dir="auto" autocomplete="off" placeholder="@UiText.Files.FolderName" />
+                            <button type="submit" class="btn btn--primary btn--block">@UiText.Files.NewFolder</button>
+                        </form>
+                    </div>
+                </details>
+
+                @if (Model.Folder is { } current)
+                {
+                    var currentName = Model.Breadcrumb.LastOrDefault()?.Name ?? string.Empty;
+
+                    <details class="disclose">
+                        <summary class="btn btn--sm">@UiText.Files.Rename</summary>
+                        <div class="disclose-body">
+                            <form method="post" class="stack" style="gap: 8px;"
+                                  action="@Url.Action("RenameFolder", "Files", new { id = current, folder = current })">
+                                @Html.AntiForgeryToken()
+                                <label class="visually-hidden" for="rename-folder">@UiText.Files.FolderName</label>
+                                <input id="rename-folder" name="name" class="control" required maxlength="512"
+                                       dir="auto" autocomplete="off" value="@currentName" />
+                                <button type="submit" class="btn btn--primary btn--block">@UiText.Files.Rename</button>
+                            </form>
+                        </div>
+                    </details>
+
+                    <details class="disclose">
+                        <summary class="btn btn--sm">@UiText.Files.MoveTo</summary>
+                        <div class="disclose-body">
+                            @* The destination list leaves out this folder and everything under it,
+                               which is the one move that is always refused. It is filtered here
+                               rather than at the server's answer so the option is never offered. *@
+                            <form method="post" class="stack" style="gap: 8px;"
+                                  action="@Url.Action("MoveFolder", "Files", new { id = current, folder = current })">
+                                @Html.AntiForgeryToken()
+                                <label class="visually-hidden" for="move-folder">@UiText.Files.MoveTo</label>
+                                <select id="move-folder" name="destination" class="control">
+                                    @foreach (var choice in Model.FolderMoveTargets)
+                                    {
+                                        <option value="@choice.Id">@choice.Label</option>
+                                    }
+                                </select>
+                                <button type="submit" class="btn btn--primary btn--block">@UiText.Files.Move</button>
+                            </form>
+                        </div>
+                    </details>
+
+                    @* No confirmation step, and none is needed: this refuses any folder with
+                       anything live in it, so the worst it can destroy is a name. *@
+                    <form method="post"
+                          action="@Url.Action("DeleteFolder", "Files", new { id = current, folder = Model.Breadcrumb.Count > 1 ? Model.Breadcrumb[^2].Id : null })">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn--sm btn--danger">@UiText.Files.Delete</button>
+                    </form>
+                }
+            </span>
+        </div>
+    }
+
     <div class="split">
         <div class="card card--flush">
             <div class="dtable" style="@Cols">
@@ -50,8 +153,28 @@
                     <div>@UiText.Files.ColumnName</div>
                     <div>@UiText.Files.ColumnSize</div>
                     <div>@UiText.Files.ColumnModified</div>
-                    <div>@UiText.Files.ColumnLinks</div>
+                    <div>@lastColumn</div>
                 </div>
+
+                @* Folders first, and above the files rather than mixed in with them: a reader
+                   scanning for somewhere to go should not have to read past twenty file names to
+                   find it. Each is an anchor that opens it — everything you can do *to* a folder is
+                   in the toolbar once you are inside. *@
+                @foreach (var folder in Model.FolderRows)
+                {
+                    <a class="dtable-row" href="@Url.Action("Index", "Files", new { folder = folder.Id })"
+                       title="@UiText.Files.Open">
+                        <div><span class="muted" aria-hidden="true">▸</span></div>
+                        <div class="cell-name" title="@folder.Name">@folder.Name</div>
+                        @* The contents count sits under «حجم», because it is the answer to the same
+                           question a size answers — how much is in there. A folder has no size, and
+                           adding up its subtree on every row of every listing would be a walk of the
+                           whole catalogue to draw one column. *@
+                        <div class="cell-muted">@folder.ContentsText</div>
+                        <div class="cell-muted">—</div>
+                        <div class="cell-muted">—</div>
+                    </a>
+                }
 
                 @if (Model.Rows.Count == 0 && Model.IsSearching)
                 {
@@ -65,10 +188,17 @@
                         <a class="btn btn--primary" href="@Url.Action("Index", "Files")">@UiText.Files.ClearSearch</a>
                     </div>
                 }
-                else if (Model.Rows.Count == 0)
+                else if (Model.IsEmpty)
                 {
+                    @* Three emptinesses now, and the third is a folder somebody just made. «هنوز
+                       فایلی آپلود نشده» inside it would be a sentence about the workspace, and the
+                       workspace is not empty — they have files, just not here. *@
                     <div class="empty empty--incell">
-                        <span>@UiText.Files.EmptyStateHeading</span>
+                        <span>
+                            @(Model.Folder is null
+                                ? UiText.Files.EmptyStateHeading
+                                : UiText.Files.FolderEmptyStateHeading)
+                        </span>
                         <a class="btn btn--primary" href="@Url.Action("Upload", "Files")">@UiText.Files.EmptyStateAction</a>
                     </div>
                 }
@@ -81,12 +211,19 @@
                     {
                         @* The term rides along, or opening a result is what ends the search. *@
                         <a class="dtable-row @(row.IsSelected ? "is-selected" : null)"
-                           href="@Url.Action("Index", "Files", new { q = Model.Query, selected = row.Id })">
+                           href="@Url.Action("Index", "Files", new { q = Model.Query, folder = Model.Folder, selected = row.Id })">
                             <div><span class="rowbox @(row.IsSelected ? "is-checked" : null)"></span></div>
                             <div class="cell-name" title="@row.Name">@row.Name</div>
                             <div class="cell-num" dir="ltr">@row.SizeText</div>
                             <div class="cell-muted">@row.ModifiedText</div>
-                            <div class="@(row.ActiveLinkCount == 0 ? "cell-muted" : "cell-slug")">@row.LinkText</div>
+                            @if (row.FolderText is { } where)
+                            {
+                                <div class="cell-name cell-muted" title="@where">@where</div>
+                            }
+                            else
+                            {
+                                <div class="@(row.ActiveLinkCount == 0 ? "cell-muted" : "cell-slug")">@row.LinkText</div>
+                            }
                         </a>
                     }
                 }
@@ -97,7 +234,23 @@
                 <div class="dtable-foot">
                     <span>@Model.Selected.Name</span>
                     <span class="row" style="gap: 8px;">
-                        <form method="post" action="@Url.Action("Delete", "Files", new { id = Model.Selected.Id, q = Model.Query })">
+                        @* Filing the selected file. A select and a button rather than dragging,
+                           because the panel works with script off — and because a list of paths is
+                           the one control that can reach a folder the reader is not looking at. *@
+                        <form method="post" class="row" style="gap: 6px;"
+                              action="@Url.Action("MoveFileInto", "Files", new { id = Model.Selected.Id, q = Model.Query })">
+                            @Html.AntiForgeryToken()
+                            <label class="visually-hidden" for="file-into">@UiText.Files.MoveTo</label>
+                            <select id="file-into" name="destination" class="control">
+                                @foreach (var choice in Model.MoveTargets)
+                                {
+                                    <option value="@choice.Id" selected="@(choice.Id == Model.Folder)">@choice.Label</option>
+                                }
+                            </select>
+                            <button type="submit" class="btn btn--sm">@UiText.Files.Move</button>
+                        </form>
+
+                        <form method="post" action="@Url.Action("Delete", "Files", new { id = Model.Selected.Id, q = Model.Query, folder = Model.Folder })">
                             @Html.AntiForgeryToken()
                             <button type="submit" class="btn btn--danger btn--sm">@UiText.Files.Delete</button>
                         </form>
@@ -156,7 +309,7 @@
                             <div class="row" style="gap: 8px;">
                                 <form method="post"
                                       style="flex: 1;"
-                                      action="@Url.Action("RevokeLink", "Files", new { fileId = Model.Selected.Id, linkId = link.Id, q = Model.Query })">
+                                      action="@Url.Action("RevokeLink", "Files", new { fileId = Model.Selected.Id, linkId = link.Id, q = Model.Query, folder = Model.Folder })">
                                     @Html.AntiForgeryToken()
                                     <button type="submit" class="btn btn--block">@UiText.Files.RevokeLink</button>
                                 </form>
@@ -168,7 +321,7 @@
                         else
                         {
                             <p class="muted" style="font-size: 12.5px; margin: 0 0 12px;">@UiText.Files.NoPublicLink</p>
-                            <form method="post" action="@Url.Action("CreateLink", "Files", new { id = Model.Selected.Id, q = Model.Query })">
+                            <form method="post" action="@Url.Action("CreateLink", "Files", new { id = Model.Selected.Id, q = Model.Query, folder = Model.Folder })">
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="btn btn--primary btn--block">@UiText.Files.CreateLink</button>
                             </form>

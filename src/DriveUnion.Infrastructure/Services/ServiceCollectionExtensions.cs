@@ -32,6 +32,11 @@ public static class ServiceCollectionExtensions
 
         services.TryAddScoped<IDriveFolders, DriveFolders>();
         services.TryAddScoped<IFileCatalog, FileCatalog>();
+
+        // The customer's folder tree, beside the catalogue rather than in a slice of its own: it
+        // reads the same rows through the same DbContext, and every screen that draws one draws the
+        // other. Not to be confused with IDriveFolders above, which is the operator's Drive layout.
+        services.TryAddScoped<IFolderTree, FolderTree>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();

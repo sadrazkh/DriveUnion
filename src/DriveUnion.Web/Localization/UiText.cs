@@ -357,6 +357,89 @@ public static partial class UiText
         /// <summary>The way back to the whole list, which is otherwise only the address bar.</summary>
         public static string ClearSearch => Pick("دیدن همه‌ی فایل‌ها", "Show every file");
 
+        // ---------------------------------------------------------------- folders
+
+        /// <summary>
+        /// The top of the tree, which is a place and not a row.
+        ///
+        /// «فایل‌های من» rather than «ریشه»: the reader is not being shown a data structure, and the
+        /// first crumb of a breadcrumb is the one word that has to mean something without being
+        /// explained. It is also the label of the first «move to…» option, where «ریشه» would read
+        /// as a technical destination rather than as «out of every folder».
+        /// </summary>
+        public static string RootFolder => Pick("فایل‌های من", "My files");
+
+        public static string NewFolder => Pick("پوشه‌ی جدید", "New folder");
+
+        public static string FolderName => Pick("نام پوشه", "Folder name");
+
+        public static string Rename => Pick("تغییر نام", "Rename");
+
+        public static string MoveTo => Pick("انتقال به", "Move to");
+
+        public static string Move => Pick("انتقال", "Move");
+
+        public static string Open => Pick("باز کردن", "Open");
+
+        /// <summary>
+        /// What a folder row says instead of a size, because a folder has none.
+        ///
+        /// Counted rather than totalled: the sum of the bytes under a folder is a recursive walk on
+        /// every row of every listing, and «۳ فایل» is what somebody deciding whether to open it
+        /// actually wants to know. Empty says so in words — a blank cell reads as a value that
+        /// failed to load.
+        /// </summary>
+        public static string FolderContents(int files, int subfolders) => (files, subfolders) switch
+        {
+            (0, 0) => Pick("خالی", "Empty"),
+            (_, 0) => Pick($"{Numerals.Count(files)} فایل", files == 1 ? "1 file" : $"{Numerals.Count(files)} files"),
+            (0, _) => Pick(
+                $"{Numerals.Count(subfolders)} پوشه",
+                subfolders == 1 ? "1 folder" : $"{Numerals.Count(subfolders)} folders"),
+            _ => Pick(
+                $"{Numerals.Count(files)} فایل، {Numerals.Count(subfolders)} پوشه",
+                $"{Numerals.Count(files)} files, {Numerals.Count(subfolders)} folders"),
+        };
+
+        public static string FolderDone => Pick("انجام شد.", "Done.");
+
+        public static string FolderNeedsAName => Pick(
+            "پوشه بدون نام نمی‌شود ساخت.",
+            "A folder needs a name.");
+
+        /// <summary>The term is isolated for the reason <see cref="SearchCount"/> is: it is the reader's own text.</summary>
+        public static string FolderNameTaken(string name) => Pick(
+            $"همین‌جا پوشه‌ای به نام «{Ltr(name)}» هست.",
+            $"There is already a folder called “{name}” here.");
+
+        /// <summary>
+        /// The refusal, with the count — «not empty» sends somebody to look, «۱۲ چیز» tells them what
+        /// they will find. See <c>IFolderTree.DeleteAsync</c> for why an empty folder is the only one
+        /// this deletes.
+        /// </summary>
+        public static string FolderNotEmpty(int contains) => Pick(
+            $"این پوشه {Numerals.Count(contains)} چیز داخلش دارد. اول خالی‌اش کن.",
+            contains == 1
+                ? "That folder still has 1 thing in it. Empty it first."
+                : $"That folder still has {Numerals.Count(contains)} things in it. Empty it first.");
+
+        public static string FolderWouldLoop => Pick(
+            "یک پوشه را نمی‌شود داخل خودش برد.",
+            "A folder cannot go inside itself.");
+
+        public static string FolderTooDeep => Pick(
+            "پوشه‌ها از این عمیق‌تر نمی‌روند.",
+            "Folders do not nest deeper than this.");
+
+        public static string FileMoved => Pick("فایل منتقل شد.", "The file was moved.");
+
+        /// <summary>The column that appears only while searching: where the hit was found.</summary>
+        public static string ColumnFolder => Pick("جا", "In");
+
+        public static string FolderEmptyStateHeading => Pick(
+            "این پوشه خالی است.",
+            "This folder is empty.");
+
         /// <summary>The links cell: how many live links this file has.</summary>
         public static string LinkCount(int links) => Pick(
             $"{Numerals.Count(links)} لینک",

@@ -28,7 +28,7 @@ public sealed class FilesApiController(
 
         // The whole list. Searching over the API is a query parameter this endpoint does not
         // document yet, and inventing one here would be an API surface nothing has agreed.
-        var files = await catalog.ListAsync(tenantId, nameQuery: null, cancellationToken);
+        var files = await catalog.ListAsync(tenantId, folderId: null, nameQuery: null, cancellationToken);
         return Ok(files.Select(FileResponse.From).ToList());
     }
 

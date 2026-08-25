@@ -13,19 +13,43 @@ namespace DriveUnion.Web.Models;
 /// active link count and no download total, so the list says how many links a file has and the
 /// detail panel says how often each was pulled.
 /// </summary>
+/// <param name="FolderText">
+/// Where the file was found, drawn only while a search is on. A result list mixes folders, and a row
+/// that does not say where it came from is a row the reader has to go and look for afterwards.
+/// Null while browsing, because there the answer is the breadcrumb above the table.
+/// </param>
 public sealed record FileRowViewModel(
     Guid Id,
     string Name,
     string SizeText,
     string ModifiedText,
     int ActiveLinkCount,
-    bool IsSelected)
+    bool IsSelected,
+    string? FolderText = null)
 {
     /// <summary>«—» is a dash and not a word, so it has no language and stays a literal.</summary>
     public string LinkText => ActiveLinkCount == 0
         ? "—"
         : UiText.Files.LinkCount(ActiveLinkCount);
 }
+
+/// <summary>
+/// One folder as a row above the files, in the same table and on the same tracks.
+///
+/// <para>A row rather than a second list, because a folder and a file are two things the reader is
+/// choosing between and putting them in separate boxes makes that a choice about boxes. Size and
+/// links are «—»: a folder has neither, and inventing a total would be inventing a number.</para>
+/// </summary>
+public sealed record FolderRowViewModel(Guid Id, string Name, int FileCount, int SubfolderCount)
+{
+    public string ContentsText => UiText.Files.FolderContents(FileCount, SubfolderCount);
+}
+
+/// <summary>One step of the breadcrumb. <paramref name="Id"/> null is the workspace's root.</summary>
+public sealed record CrumbViewModel(Guid? Id, string Name, bool IsCurrent);
+
+/// <summary>A «move to…» option: the full path, and the depth so the list can be indented.</summary>
+public sealed record FolderChoiceViewModel(Guid? Id, string Label);
 
 public sealed record ShareLinkViewModel(
     Guid Id,
@@ -56,14 +80,45 @@ public sealed record FileDetailViewModel(
 /// screen has to lead somewhere that still has it — otherwise opening a result is what ends the
 /// search.</para>
 /// </param>
+/// <param name="Folder">The folder being browsed, or null for the root. Always null while searching.</param>
+/// <param name="Crumbs">Root first, the current folder last. One entry — the root — when at the top.</param>
+/// <param name="Choices">Every folder in the workspace as a «move to…» option, with the root first.</param>
 public sealed record FilesPageViewModel(
     IReadOnlyList<FileRowViewModel> Rows,
     FileDetailViewModel? Selected,
     AntiforgeryTokenViewModel Antiforgery,
     string? Notice,
-    string? Query)
+    string? Query,
+    Guid? Folder = null,
+    IReadOnlyList<FolderRowViewModel>? Folders = null,
+    IReadOnlyList<CrumbViewModel>? Crumbs = null,
+    IReadOnlyList<FolderChoiceViewModel>? Choices = null,
+    IReadOnlyList<FolderChoiceViewModel>? FolderChoices = null)
 {
     public bool IsSearching => Query is { Length: > 0 };
+
+    public IReadOnlyList<FolderRowViewModel> FolderRows => Folders ?? [];
+
+    public IReadOnlyList<CrumbViewModel> Breadcrumb => Crumbs ?? [];
+
+    /// <summary>Where a file may be filed: anywhere in the workspace.</summary>
+    public IReadOnlyList<FolderChoiceViewModel> MoveTargets => Choices ?? [];
+
+    /// <summary>
+    /// Where the folder being browsed may be moved: anywhere except itself and everything under it.
+    ///
+    /// <para>A second list rather than the first one with the current folder filtered out. Filtering
+    /// one entry leaves its children in the list, and a folder offered its own child as a
+    /// destination is offering the one move that is always refused — the reader picks it, presses
+    /// the button, and is told no by a screen that suggested it.</para>
+    /// </summary>
+    public IReadOnlyList<FolderChoiceViewModel> FolderMoveTargets => FolderChoices ?? [];
+
+    /// <summary>
+    /// Whether the table has anything at all in it. Both halves, because a folder holding only
+    /// folders is not an empty screen and «آپلود اولین فایل» under it would be the wrong sentence.
+    /// </summary>
+    public bool IsEmpty => Rows.Count == 0 && FolderRows.Count == 0;
 }
 
 /// <summary>
