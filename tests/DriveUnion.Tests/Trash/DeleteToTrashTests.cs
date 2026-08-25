@@ -1,3 +1,4 @@
+using DriveUnion.Core.Application;
 using DriveUnion.Core.Settings;
 using DriveUnion.Tests.Fakes;
 using DriveUnion.Tests.Plans;
@@ -183,7 +184,7 @@ public class DeleteToTrashTests
         waiting[0].PurgeAfter.Should().Be(
             ServiceTestHarness.Now.AddDays(OperatorSettings.DefaultTrashRetentionDays));
 
-        var live = await harness.FilesInTrash().ListAsync(tenant.Id, folderId: null, nameQuery: null, default);
+        var live = await harness.FilesInTrash().ListAsync(tenant.Id, new FileListFilter(), default);
 
         live.Should().ContainSingle().Which.Id.Should().Be(kept.Id);
     }

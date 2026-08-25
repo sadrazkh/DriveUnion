@@ -25,15 +25,25 @@ public sealed class FileCatalog(
 {
     public async Task<IReadOnlyList<FileListItem>> ListAsync(
         Guid tenantId,
-        Guid? folderId,
-        string? nameQuery,
+        FileListFilter filter,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(filter);
+
         var rows = db.StoredFiles
             .AsNoTracking()
             .Where(f => f.TenantId == tenantId && f.DeletedAt == null);
 
-        if (nameQuery?.Trim() is { Length: > 0 } term)
+        if (filter.TagId is { } tagId)
+        {
+            // An EXISTS rather than a join, so a file carrying the tag appears once however the join
+            // table grows. The tenant is on the join row as well as on the file — see FileTag for
+            // why a scope goes missing in exactly this kind of query.
+            rows = rows.Where(f => db.FileTags.Any(t =>
+                t.StoredFileId == f.Id && t.TagId == tagId && t.TenantId == tenantId));
+        }
+
+        if (filter.Term is { } term)
         {
             // The folder is not applied here. A search is the whole workspace — see the contract for
             // why — and the screen says where each hit lives instead of hiding the ones that are
@@ -59,9 +69,10 @@ public sealed class FileCatalog(
 
             rows = rows.Where(f => f.Name.ToLower().Contains(folded));
         }
-        else
+
+        if (!filter.IsWorkspaceWide)
         {
-            rows = rows.Where(f => f.FolderId == folderId);
+            rows = rows.Where(f => f.FolderId == filter.FolderId);
         }
 
         var files = await rows

@@ -1716,6 +1716,48 @@ a:hover {
   color: var(--bg);
 }
 
+/* ---------------------------------------------------------------- selection and dragging */
+
+/*
+ * A row's checkbox, and it is a real one.
+ *
+ * .rowbox above is its predecessor: an 11px <span> that looked like a checkbox inside a row that
+ * was an <a>, because a real input inside an anchor is a control whose every click navigates. The
+ * row is a box now and the name is the link, so this can be an <input type="checkbox"> that the
+ * form posts — which is the whole of how a selection reaches the server without a script.
+ *
+ * `accent-color` rather than a hand-drawn control: the browser's own checkbox already answers to
+ * indeterminate, to the keyboard and to every assistive technology, and one property is what it
+ * takes to make it this panel's colour.
+ */
+.rowcheck {
+  inline-size: 13px;
+  block-size: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/*
+ * The folder under a drag.
+ *
+ * An outline and not a border: a border would change the row's box and shift every cell in it by a
+ * pixel as the pointer crosses, which reads as the table twitching. `outline-offset` is negative
+ * for the reason .dtable-row:focus-visible is — the row starts at the scroll container's edge and
+ * anything drawn outside it is clipped away.
+ */
+.is-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--soft);
+}
+
+/* A file being dragged out of the list. Not `display: none` — the row has to stay where it is or
+   the list reflows under the pointer and the drop lands somewhere nobody aimed at. */
+.dtable-row[draggable='true']:active {
+  cursor: grabbing;
+}
+
 /* ---------------------------------------------------------------- the folder toolbar */
 
 /*

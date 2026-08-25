@@ -24,10 +24,22 @@ namespace DriveUnion.Web.Controllers;
 public sealed class FilesController(
     IFileCatalog catalog,
     IFolderTree folders,
+    ITags tags,
     IShareLinkService shareLinks,
     IAntiforgery antiforgery,
     IOptions<DriveUnionWebOptions> options) : Controller
 {
+    /// <summary>
+    /// How many files one press of «حذف» may take.
+    ///
+    /// <para>Moving a selection is one UPDATE and has no ceiling. Deleting is a Drive round trip per
+    /// file — roughly a third of a second each against Google — so twenty is about six seconds of
+    /// somebody watching a button, and two hundred is a request that times out with half the
+    /// selection deleted and no way to tell which half. Past this the screen says so and takes
+    /// none of them, rather than doing what it can and leaving the reader to work out the rest.</para>
+    /// </summary>
+    private const int MostDeletableAtOnce = 20;
+
     /// <summary>
     /// The list, and the shell's search box lands here.
     ///
@@ -51,6 +63,7 @@ public sealed class FilesController(
     public async Task<IActionResult> Index(
         string? q,
         Guid? folder,
+        Guid? tag,
         Guid? selected,
         CancellationToken cancellationToken)
     {
@@ -59,14 +72,21 @@ public sealed class FilesController(
         SetShell();
 
         var query = q?.Trim() is { Length: > 0 } typed ? typed : null;
+        var everywhere = query is not null || tag is not null;
 
-        Guid? here = query is null && folder is { } asked
+        Guid? here = !everywhere && folder is { } asked
             && await folders.ExistsAsync(tenantId, asked, cancellationToken)
                 ? asked
                 : null;
 
         var now = DateTimeOffset.UtcNow;
-        var files = await catalog.ListAsync(tenantId, here, query, cancellationToken);
+        var files = await catalog.ListAsync(
+            tenantId,
+            new FileListFilter(here, query, tag),
+            cancellationToken);
+
+        var labels = await tags.ListAsync(tenantId, cancellationToken);
+        var onFiles = await tags.ForFilesAsync(tenantId, [.. files.Select(f => f.Id)], cancellationToken);
 
         // One read of the tree, used three ways: the folders drawn as rows, the breadcrumb above
         // them, and the «move to…» list in the detail panel. Reading it once is not an optimisation
@@ -82,14 +102,17 @@ public sealed class FilesController(
                 DisplayFormats.Relative(file.ModifiedAt, now),
                 file.ActiveLinkCount,
                 file.Id == selected,
-                query is null
+                !everywhere
                     ? null
                     : file.FolderId is { } id && pathOf.TryGetValue(id, out var path)
                         ? path
-                        : UiText.Files.RootFolder))
+                        : UiText.Files.RootFolder,
+                onFiles.TryGetValue(file.Id, out var mine)
+                    ? [.. mine.Select(t => new TagViewModel(t.Id, t.Name, 0))]
+                    : []))
             .ToList();
 
-        var folderRows = query is not null
+        var folderRows = everywhere
             ? []
             : (await folders.ChildrenAsync(tenantId, here, cancellationToken))
                 .Select(f => new FolderRowViewModel(f.Id, f.Name, f.FileCount, f.SubfolderCount))
@@ -137,7 +160,121 @@ public sealed class FilesController(
             folderRows,
             crumbs,
             moveTargets,
-            folderTargets));
+            folderTargets,
+            [.. labels.Select(t => new TagViewModel(t.Id, t.Name, t.FileCount))],
+            tag));
+    }
+
+    /// <summary>
+    /// Everything a selection can have done to it, behind one button name.
+    ///
+    /// <para>One action rather than three, because the three share a form: the checkboxes are the
+    /// selection and the button that was pressed is the verb. Three forms would mean three copies of
+    /// the same checkbox list, or a script to keep them in step — and this screen works without one.</para>
+    /// </summary>
+    [HttpPost("selection")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Selection(
+        string? act,
+        Guid[]? ids,
+        Guid? destination,
+        string? label,
+        string? q,
+        Guid? folder,
+        Guid? tag,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var chosen = ids ?? [];
+
+        if (chosen.Length == 0)
+        {
+            TempData["Notice"] = UiText.Files.NothingSelected;
+            return RedirectToAction(nameof(Index), new { q, folder, tag });
+        }
+
+        switch (act)
+        {
+            case "move":
+            {
+                var moved = await folders.MoveFilesAsync(tenantId, chosen, destination, cancellationToken);
+
+                TempData["Notice"] = moved.Succeeded
+                    ? UiText.Files.FilesMoved(moved.Contains)
+                    : UiText.Files.NotFound;
+
+                // Follows the selection into the folder it was sent to, the same as moving one file:
+                // landing where they went is the confirmation that they arrived.
+                return RedirectToAction(nameof(Index), new { q, folder = destination, tag });
+            }
+
+            case "tag" when label is not null:
+            {
+                var made = await tags.EnsureAsync(tenantId, label, cancellationToken);
+
+                if (!made.Succeeded || made.TagId is not { } tagId)
+                {
+                    TempData["Notice"] = made.Outcome == TagOutcome.TooMany
+                        ? UiText.Files.TooManyTags(Core.Storage.Tag.MaxPerTenant)
+                        : UiText.Files.TagNeedsAName;
+
+                    return RedirectToAction(nameof(Index), new { q, folder, tag });
+                }
+
+                var applied = await tags.ApplyAsync(tenantId, chosen, tagId, cancellationToken);
+                TempData["Notice"] = UiText.Files.TagApplied(label.Trim(), applied.Affected);
+
+                return RedirectToAction(nameof(Index), new { q, folder, tag });
+            }
+
+            case "untag" when destination is null && tag is { } current:
+            {
+                var removed = await tags.RemoveAsync(tenantId, chosen, current, cancellationToken);
+                TempData["Notice"] = UiText.Files.TagRemoved(removed.Affected);
+
+                return RedirectToAction(nameof(Index), new { q, folder, tag });
+            }
+
+            case "delete":
+            {
+                if (chosen.Length > MostDeletableAtOnce)
+                {
+                    // None of them, rather than the first twenty. Deleting half a selection and
+                    // saying so is worse than deleting none and saying why: the reader cannot see
+                    // which half without going and looking.
+                    TempData["Notice"] = UiText.Files.TooManyToDelete(MostDeletableAtOnce, chosen.Length);
+                    return RedirectToAction(nameof(Index), new { q, folder, tag });
+                }
+
+                var deleted = 0;
+                foreach (var id in chosen)
+                {
+                    if (await catalog.DeleteAsync(tenantId, id, cancellationToken)) deleted++;
+                }
+
+                TempData["Notice"] = UiText.Files.FilesDeleted(deleted);
+
+                return RedirectToAction(nameof(Index), new { q, folder, tag });
+            }
+
+            default:
+                TempData["Notice"] = UiText.Files.NotFound;
+                return RedirectToAction(nameof(Index), new { q, folder, tag });
+        }
+    }
+
+    [HttpPost("tags/{id:guid}/delete")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteTag(Guid id, Guid? folder, CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var result = await tags.DeleteAsync(tenantId, id, cancellationToken);
+
+        TempData["Notice"] = result.Succeeded ? UiText.Files.TagRetired(result.Affected) : UiText.Files.NotFound;
+
+        return RedirectToAction(nameof(Index), new { folder });
     }
 
     [HttpPost("folders")]

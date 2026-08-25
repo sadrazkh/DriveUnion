@@ -53,10 +53,13 @@ public class FileSearchScreenTests
         using var client = harness.NewClient(tenant.Id);
         var markup = await client.GetStringAsync("/files?q=report");
 
-        // Selection is a URL on this screen, so a row href without the term is a row that ends the
+        // Selection is a URL on this screen, so a link without the term is a row that ends the
         // search the moment it is opened — the reader clicks their result and the table refills with
         // everything.
-        markup.Should().MatchRegex(@"<a class=""dtable-row[^""]*""\s+href=""/files\?q=report&amp;selected=");
+        //
+        // The link is inside the name cell rather than being the row, and that is what multi-select
+        // cost: a real checkbox cannot live inside an anchor, because every click on it navigates.
+        markup.Should().MatchRegex(@"<a href=""/files\?q=report&amp;selected=");
     }
 
     [Fact]

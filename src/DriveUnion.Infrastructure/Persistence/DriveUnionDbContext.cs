@@ -34,6 +34,10 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
 
     public DbSet<Folder> Folders => Set<Folder>();
 
+    public DbSet<Tag> Tags => Set<Tag>();
+
+    public DbSet<FileTag> FileTags => Set<FileTag>();
+
     /// <summary>
     /// The operator's own knobs. One row, seeded by the migration that made the table.
     ///
@@ -267,6 +271,35 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
                 .WithMany()
                 .HasForeignKey(f => f.ParentFolderId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Tag>(e =>
+        {
+            e.Property(t => t.Name).HasMaxLength(Tag.MaxNameLength);
+            e.HasIndex(t => t.TenantId);
+        });
+
+        builder.Entity<FileTag>(e =>
+        {
+            // The pair is the identity. A file carrying a tag twice is a row the reader cannot see
+            // and a count that is wrong, and TagStore's «skip the ones that already have it» is the
+            // sentence in front of this rather than a substitute for it.
+            e.HasKey(ft => new { ft.StoredFileId, ft.TagId });
+
+            // «Everything tagged X», which is the whole point of the feature.
+            e.HasIndex(ft => new { ft.TenantId, ft.TagId });
+
+            // Retiring a tag takes it off everything, and deleting a file for good takes its labels
+            // with it. Neither is a decision a customer would want to make twice.
+            e.HasOne<Tag>()
+                .WithMany()
+                .HasForeignKey(ft => ft.TagId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<StoredFile>()
+                .WithMany()
+                .HasForeignKey(ft => ft.StoredFileId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<OperatorSettings>(e =>

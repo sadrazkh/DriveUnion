@@ -18,7 +18,10 @@
     // links it has. Swapped rather than added, so the tracks are the same five whichever state the
     // screen is in — a table that changes shape when a reader types is a table that moves under
     // them, and the fixed tracks are already 348px against a 341px phone.
-    var lastColumn = Model.IsSearching ? UiText.Files.ColumnFolder : UiText.Files.ColumnLinks;
+    // IsFiltered and not IsSearching: filtering by a label is workspace-wide too, so those rows
+    // carry a folder path in that cell as well. Keyed off the narrower question, the header said
+    // «لینک» over a column of folder names.
+    var lastColumn = Model.IsFiltered ? UiText.Files.ColumnFolder : UiText.Files.ColumnLinks;
 }
 
 @*
@@ -61,7 +64,7 @@
         A folder is managed from inside it rather than from a control on its own row: a row here is
         an anchor that opens the folder, and an anchor cannot hold the three forms this needs.
     *@
-    @if (!Model.IsSearching)
+    @if (!Model.IsFiltered)
     {
         <div class="row" style="gap: 12px; flex-wrap: wrap; align-items: center;">
             <nav class="crumbs" aria-label="@UiText.Files.RootFolder">
@@ -69,7 +72,8 @@
                 {
                     if (!crumb.IsCurrent)
                     {
-                        <a href="@Url.Action("Index", "Files", new { folder = crumb.Id })">@crumb.Name</a>
+                        <a href="@Url.Action("Index", "Files", new { folder = crumb.Id })"
+                           data-drop-folder="@crumb.Id">@crumb.Name</a>
                         <span class="crumb-sep" aria-hidden="true">/</span>
                     }
                     else
@@ -97,59 +101,114 @@
                 @if (Model.Folder is { } current)
                 {
                     var currentName = Model.Breadcrumb.LastOrDefault()?.Name ?? string.Empty;
+                    var above = Model.Breadcrumb.Count > 1 ? Model.Breadcrumb[^2].Id : null;
 
+                    @*
+                        One menu, not three buttons.
+
+                        Rename, move and delete are the three things you can do to the folder you are
+                        standing in, and each of them was its own control in the toolbar — four
+                        controls across the top of a screen whose job is to show a list. They are one
+                        «این پوشه» now, and what is inside it is the same three forms.
+                    *@
                     <details class="disclose">
-                        <summary class="btn btn--sm">@UiText.Files.Rename</summary>
+                        <summary class="btn btn--sm">@UiText.Files.ThisFolder</summary>
                         <div class="disclose-body">
-                            <form method="post" class="stack" style="gap: 8px;"
-                                  action="@Url.Action("RenameFolder", "Files", new { id = current, folder = current })">
-                                @Html.AntiForgeryToken()
-                                <label class="visually-hidden" for="rename-folder">@UiText.Files.FolderName</label>
-                                <input id="rename-folder" name="name" class="control" required maxlength="512"
-                                       dir="auto" autocomplete="off" value="@currentName" />
-                                <button type="submit" class="btn btn--primary btn--block">@UiText.Files.Rename</button>
-                            </form>
+                            <div class="stack" style="gap: 12px;">
+                                <form method="post" class="stack" style="gap: 6px;"
+                                      action="@Url.Action("RenameFolder", "Files", new { id = current, folder = current })">
+                                    @Html.AntiForgeryToken()
+                                    <label class="hint" for="rename-folder">@UiText.Files.Rename</label>
+                                    <input id="rename-folder" name="name" class="control" required maxlength="512"
+                                           dir="auto" autocomplete="off" value="@currentName" />
+                                    <button type="submit" class="btn btn--block">@UiText.Files.Rename</button>
+                                </form>
+
+                                @* The destination list leaves out this folder and everything under
+                                   it, which is the one move that is always refused. Built by its own
+                                   walk rather than by filtering the file list: dropping one entry
+                                   would leave its children in. *@
+                                <form method="post" class="stack" style="gap: 6px;"
+                                      action="@Url.Action("MoveFolder", "Files", new { id = current, folder = current })">
+                                    @Html.AntiForgeryToken()
+                                    <label class="hint" for="move-folder">@UiText.Files.MoveTo</label>
+                                    <select id="move-folder" name="destination" class="control">
+                                        @foreach (var choice in Model.FolderMoveTargets)
+                                        {
+                                            <option value="@choice.Id">@choice.Label</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="btn btn--block">@UiText.Files.Move</button>
+                                </form>
+
+                                @* No confirmation step, and none is needed: this refuses any folder
+                                   with anything live in it, so the worst it can destroy is a name. *@
+                                <form method="post"
+                                      action="@Url.Action("DeleteFolder", "Files", new { id = current, folder = above })">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn--danger btn--block">@UiText.Files.Delete</button>
+                                </form>
+                            </div>
                         </div>
                     </details>
-
-                    <details class="disclose">
-                        <summary class="btn btn--sm">@UiText.Files.MoveTo</summary>
-                        <div class="disclose-body">
-                            @* The destination list leaves out this folder and everything under it,
-                               which is the one move that is always refused. It is filtered here
-                               rather than at the server's answer so the option is never offered. *@
-                            <form method="post" class="stack" style="gap: 8px;"
-                                  action="@Url.Action("MoveFolder", "Files", new { id = current, folder = current })">
-                                @Html.AntiForgeryToken()
-                                <label class="visually-hidden" for="move-folder">@UiText.Files.MoveTo</label>
-                                <select id="move-folder" name="destination" class="control">
-                                    @foreach (var choice in Model.FolderMoveTargets)
-                                    {
-                                        <option value="@choice.Id">@choice.Label</option>
-                                    }
-                                </select>
-                                <button type="submit" class="btn btn--primary btn--block">@UiText.Files.Move</button>
-                            </form>
-                        </div>
-                    </details>
-
-                    @* No confirmation step, and none is needed: this refuses any folder with
-                       anything live in it, so the worst it can destroy is a name. *@
-                    <form method="post"
-                          action="@Url.Action("DeleteFolder", "Files", new { id = current, folder = Model.Breadcrumb.Count > 1 ? Model.Breadcrumb[^2].Id : null })">
-                        @Html.AntiForgeryToken()
-                        <button type="submit" class="btn btn--sm btn--danger">@UiText.Files.Delete</button>
-                    </form>
                 }
             </span>
         </div>
     }
 
+    @*
+        The workspace's labels, as a row of filters.
+
+        A tag is only worth having if pressing it shows you what carries it, so the list is the
+        control rather than a legend beside one. Drawn whenever the workspace has any — including
+        while a search is on, because narrowing a search by label is the pair of them doing what
+        neither does alone.
+    *@
+    @if (Model.Labels.Count > 0)
+    {
+        <div class="row" style="gap: 6px; flex-wrap: wrap; align-items: center;">
+            @foreach (var label in Model.Labels)
+            {
+                var isOn = label.Id == Model.Tag;
+
+                <a class="badge @(isOn ? "badge--count" : "badge--muted")"
+                   href="@Url.Action("Index", "Files", new { q = Model.Query, tag = isOn ? (Guid?)null : label.Id })"
+                   title="@UiText.Files.TagCount(label.FileCount, label.Name)">@label.Name</a>
+            }
+
+            @if (Model.ActiveTag is { } active)
+            {
+                <form method="post" class="row" style="gap: 6px;"
+                      action="@Url.Action("DeleteTag", "Files", new { id = active.Id, folder = Model.Folder })">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn--sm btn--danger" title="@UiText.Files.RemoveLabel">
+                        @UiText.Files.RemoveLabel
+                    </button>
+                </form>
+            }
+        </div>
+    }
+
+    @*
+        One form around the whole table.
+
+        The checkboxes are the selection and the button that is pressed is the verb, so «انتقال»,
+        «برچسب» and «حذف» share one list of ids. Three forms would be three copies of that list, or
+        a script keeping them in step — and this screen works without one.
+
+        It is `data-file-grid` as well, which is where the drag-and-drop enhancement attaches. That
+        is an enhancement in the strict sense: everything below already works by pressing things.
+    *@
     <div class="split">
         <div class="card card--flush">
+            <form method="post" data-file-grid data-island="file-grid"
+                  action="@Url.Action("Selection", "Files", new { q = Model.Query, folder = Model.Folder, tag = Model.Tag })">
+            @Html.AntiForgeryToken()
             <div class="dtable" style="@Cols">
                 <div class="dtable-head">
-                    <div></div>
+                    @* The header checkbox is a script-only convenience: with JavaScript off there is
+                       nothing for it to do, so it is not drawn at all rather than drawn dead. *@
+                    <div><span data-select-all hidden></span></div>
                     <div>@UiText.Files.ColumnName</div>
                     <div>@UiText.Files.ColumnSize</div>
                     <div>@UiText.Files.ColumnModified</div>
@@ -159,11 +218,12 @@
                 @* Folders first, and above the files rather than mixed in with them: a reader
                    scanning for somewhere to go should not have to read past twenty file names to
                    find it. Each is an anchor that opens it — everything you can do *to* a folder is
-                   in the toolbar once you are inside. *@
+                   in the toolbar once you are inside, and `data-drop-folder` makes it a place files
+                   can be dragged onto. *@
                 @foreach (var folder in Model.FolderRows)
                 {
                     <a class="dtable-row" href="@Url.Action("Index", "Files", new { folder = folder.Id })"
-                       title="@UiText.Files.Open">
+                       title="@UiText.Files.Open" data-drop-folder="@folder.Id">
                         <div><span class="muted" aria-hidden="true">▸</span></div>
                         <div class="cell-name" title="@folder.Name">@folder.Name</div>
                         @* The contents count sits under «حجم», because it is the answer to the same
@@ -176,15 +236,23 @@
                     </a>
                 }
 
-                @if (Model.Rows.Count == 0 && Model.IsSearching)
+                @if (Model.Rows.Count == 0 && Model.IsFiltered)
                 {
                     @* Two different emptinesses, and telling them apart is most of what makes a
                        search trustworthy: an account with nothing in it, and a term that matched
                        nothing in an account that is full. The action is the way back to the list,
-                       not «upload the first file» — the reader has files, just not this one. *@
+                       not «upload the first file» — the reader has files, just not this one.
+                       A label that carries nothing is the same shape and gets the same answer. *@
                     <div class="empty empty--incell">
-                        <span>@UiText.Files.NoMatchHeading(Model.Query!)</span>
-                        <span>@UiText.Files.NoMatchBody</span>
+                        <span>
+                            @(Model.IsSearching
+                                ? UiText.Files.NoMatchHeading(Model.Query!)
+                                : UiText.Files.NoTagMatchHeading(Model.ActiveTag?.Name ?? string.Empty))
+                        </span>
+                        @if (Model.IsSearching)
+                        {
+                            <span>@UiText.Files.NoMatchBody</span>
+                        }
                         <a class="btn btn--primary" href="@Url.Action("Index", "Files")">@UiText.Files.ClearSearch</a>
                     </div>
                 }
@@ -204,16 +272,33 @@
                 }
                 else
                 {
-                    @* An anchor row: display:contents keeps the cells in the one grid while the
-                       wrapper carries :hover and .is-selected, and selection stays a URL — the
-                       detail panel survives a refresh and can be linked to. *@
+                    @*
+                        A file row is no longer an anchor, and that is what multi-select cost.
+
+                        A real <input type="checkbox"> inside an <a> is a control whose every click
+                        navigates instead of ticking; the row that was a link had a .rowbox that
+                        looked like a checkbox and was a <span>. So the row is a box and the name is
+                        the link — the cell you read is the cell you press to open it — and the
+                        checkbox in the first column is a checkbox. `draggable` and `data-file` are
+                        for the enhancement; neither is needed for any of this to work.
+                    *@
                     foreach (var row in Model.Rows)
                     {
-                        @* The term rides along, or opening a result is what ends the search. *@
-                        <a class="dtable-row @(row.IsSelected ? "is-selected" : null)"
-                           href="@Url.Action("Index", "Files", new { q = Model.Query, folder = Model.Folder, selected = row.Id })">
-                            <div><span class="rowbox @(row.IsSelected ? "is-checked" : null)"></span></div>
-                            <div class="cell-name" title="@row.Name">@row.Name</div>
+                        <div class="dtable-row @(row.IsSelected ? "is-selected" : null)"
+                             draggable="true" data-file="@row.Id" data-file-name="@row.Name">
+                            <div>
+                                <input type="checkbox" name="ids" value="@row.Id" class="rowcheck"
+                                       aria-label="@UiText.Files.SelectThisFile(row.Name)" />
+                            </div>
+                            <div class="cell-name" title="@row.Name">
+                                @* The term and the folder ride along, or opening a result is what
+                                   ends the search that found it. *@
+                                <a href="@Url.Action("Index", "Files", new { q = Model.Query, folder = Model.Folder, tag = Model.Tag, selected = row.Id })">@row.Name</a>
+                                @foreach (var label in row.Labels)
+                                {
+                                    <span class="badge badge--muted">@label.Name</span>
+                                }
+                            </div>
                             <div class="cell-num" dir="ltr">@row.SizeText</div>
                             <div class="cell-muted">@row.ModifiedText</div>
                             @if (row.FolderText is { } where)
@@ -224,39 +309,55 @@
                             {
                                 <div class="@(row.ActiveLinkCount == 0 ? "cell-muted" : "cell-slug")">@row.LinkText</div>
                             }
-                        </a>
+                        </div>
                     }
                 }
             </div>
 
-            @if (Model.Selected is not null)
+            @*
+                The bar that acts on the ticked rows.
+
+                It replaced two forms that used to live here — «move this file» and «delete this
+                file», both about whichever row the detail panel was showing. A selection can do
+                both and more, so keeping the singular pair would have been two controls for the
+                subset of what the three below already do, on a screen this change exists to
+                simplify.
+
+                Always drawn while there are rows, and not only once something is ticked: with
+                JavaScript off nothing can reveal it, and a bar that appears on a click is a bar
+                somebody without a click never finds. The «۳ انتخاب شده» reading is filled in by the
+                enhancement, and is empty until then.
+            *@
+            @if (Model.Rows.Count > 0)
             {
                 <div class="dtable-foot">
-                    <span>@Model.Selected.Name</span>
-                    <span class="row" style="gap: 8px;">
-                        @* Filing the selected file. A select and a button rather than dragging,
-                           because the panel works with script off — and because a list of paths is
-                           the one control that can reach a folder the reader is not looking at. *@
-                        <form method="post" class="row" style="gap: 6px;"
-                              action="@Url.Action("MoveFileInto", "Files", new { id = Model.Selected.Id, q = Model.Query })">
-                            @Html.AntiForgeryToken()
-                            <label class="visually-hidden" for="file-into">@UiText.Files.MoveTo</label>
-                            <select id="file-into" name="destination" class="control">
+                    <span data-selection-count class="muted"></span>
+                    <span class="row" style="gap: 8px; flex-wrap: wrap;">
+                        <span class="row" style="gap: 6px;">
+                            <label class="visually-hidden" for="bulk-into">@UiText.Files.MoveTo</label>
+                            <select id="bulk-into" name="destination" class="control">
                                 @foreach (var choice in Model.MoveTargets)
                                 {
                                     <option value="@choice.Id" selected="@(choice.Id == Model.Folder)">@choice.Label</option>
                                 }
                             </select>
-                            <button type="submit" class="btn btn--sm">@UiText.Files.Move</button>
-                        </form>
+                            <button type="submit" name="act" value="move" class="btn btn--sm">@UiText.Files.Move</button>
+                        </span>
 
-                        <form method="post" action="@Url.Action("Delete", "Files", new { id = Model.Selected.Id, q = Model.Query, folder = Model.Folder })">
-                            @Html.AntiForgeryToken()
-                            <button type="submit" class="btn btn--danger btn--sm">@UiText.Files.Delete</button>
-                        </form>
+                        <span class="row" style="gap: 6px;">
+                            <label class="visually-hidden" for="bulk-label">@UiText.Files.Label</label>
+                            <input id="bulk-label" name="label" class="control" maxlength="64" dir="auto"
+                                   autocomplete="off" placeholder="@UiText.Files.Label" />
+                            <button type="submit" name="act" value="tag" class="btn btn--sm">@UiText.Files.AddLabel</button>
+                        </span>
+
+                        <button type="submit" name="act" value="delete" class="btn btn--sm btn--danger">
+                            @UiText.Files.Delete
+                        </button>
                     </span>
                 </div>
             }
+            </form>
         </div>
 
         <aside class="split-aside">

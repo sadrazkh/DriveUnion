@@ -4,6 +4,7 @@ import UploadDock from './islands/UploadDock.vue';
 import UploadPanel from './islands/UploadPanel.vue';
 import { createUploadStore, type UploadConfig, type UploadStore } from './uploads/store';
 import { mountCopyLink } from './copyLink';
+import { mountFileGrid } from './fileGrid';
 import { mountGoogleConnect } from './googleConnect';
 import { mountNavToggle } from './nav';
 import { startNavigation } from './navigate';
@@ -115,6 +116,17 @@ const islands: Record<string, Island> = {
 
       app.mount(el);
       return () => app.unmount();
+    },
+  },
+
+  'file-grid': {
+    // Inside the swapped region, and it must be: its listeners are on the document as well as on
+    // the table, so a mount that outlived its page would answer drops for a table that has gone.
+    region: 'content',
+    mount: (el) => {
+      const wiring = mountFileGrid(el);
+
+      return () => wiring.teardown();
     },
   },
 

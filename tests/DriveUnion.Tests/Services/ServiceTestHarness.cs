@@ -99,6 +99,12 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     /// </summary>
     public FolderTree Tree(DriveUnionDbContext? context = null) => new(context ?? Db, Clock);
 
+    /// <summary>
+    /// The workspace's labels — <c>Labels()</c> and not <c>Tags()</c>, so it reads as the thing on
+    /// the screen rather than as the table underneath it.
+    /// </summary>
+    public TagStore Labels(DriveUnionDbContext? context = null) => new(context ?? Db, Clock);
+
     public UploadCoordinator Uploads(DriveUnionDbContext? context = null)
     {
         var db = context ?? Db;

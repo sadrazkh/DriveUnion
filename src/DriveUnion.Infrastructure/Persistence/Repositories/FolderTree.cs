@@ -265,6 +265,29 @@ public sealed class FolderTree(DriveUnionDbContext db, TimeProvider clock) : IFo
             : new FolderResult(FolderOutcome.Done, folderId);
     }
 
+    public async Task<FolderResult> MoveFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        Guid? folderId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(fileIds);
+
+        if (fileIds.Count == 0) return new FolderResult(FolderOutcome.Done, folderId);
+
+        if (folderId is { } destination
+            && !await ExistsAsync(tenantId, destination, cancellationToken))
+        {
+            return new FolderResult(FolderOutcome.NotFound);
+        }
+
+        var affected = await db.StoredFiles
+            .Where(f => f.TenantId == tenantId && f.DeletedAt == null && fileIds.Contains(f.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(f => f.FolderId, folderId), cancellationToken);
+
+        return new FolderResult(FolderOutcome.Done, folderId, affected);
+    }
+
     /// <summary>Every folder in the workspace, by id. One query, and the basis of every walk above.</summary>
     private async Task<Dictionary<Guid, Folder>> FlatAsync(Guid tenantId, CancellationToken cancellationToken) =>
         await db.Folders

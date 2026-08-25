@@ -114,4 +114,19 @@ public interface IFolderTree
         Guid fileId,
         Guid? folderId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same for a selection, in one statement.
+    ///
+    /// <para>Unbounded on purpose, unlike anything that deletes: filing costs no Drive call at all —
+    /// see <see cref="Storage.Folder"/> — so moving four hundred files is one UPDATE and not four
+    /// hundred round trips to Google. <c>Contains</c> on the result is how many actually moved,
+    /// which is not how many were asked for: ids that are not this workspace's, or are in the trash,
+    /// are simply not matched.</para>
+    /// </summary>
+    Task<FolderResult> MoveFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        Guid? folderId,
+        CancellationToken cancellationToken);
 }

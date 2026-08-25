@@ -37,6 +37,10 @@ public static class ServiceCollectionExtensions
         // reads the same rows through the same DbContext, and every screen that draws one draws the
         // other. Not to be confused with IDriveFolders above, which is the operator's Drive layout.
         services.TryAddScoped<IFolderTree, FolderTree>();
+
+        // Labels, which cut across the tree rather than nesting inside it. Beside it for the same
+        // reason: same rows, same DbContext, same screen.
+        services.TryAddScoped<ITags, TagStore>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();

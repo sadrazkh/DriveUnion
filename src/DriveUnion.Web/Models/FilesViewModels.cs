@@ -18,6 +18,9 @@ namespace DriveUnion.Web.Models;
 /// that does not say where it came from is a row the reader has to go and look for afterwards.
 /// Null while browsing, because there the answer is the breadcrumb above the table.
 /// </param>
+/// <summary>A label, and how many live files carry it. The count is zero on a row's own tags.</summary>
+public sealed record TagViewModel(Guid Id, string Name, int FileCount);
+
 public sealed record FileRowViewModel(
     Guid Id,
     string Name,
@@ -25,8 +28,11 @@ public sealed record FileRowViewModel(
     string ModifiedText,
     int ActiveLinkCount,
     bool IsSelected,
-    string? FolderText = null)
+    string? FolderText = null,
+    IReadOnlyList<TagViewModel>? Tags = null)
 {
+    public IReadOnlyList<TagViewModel> Labels => Tags ?? [];
+
     /// <summary>«—» is a dash and not a word, so it has no language and stays a literal.</summary>
     public string LinkText => ActiveLinkCount == 0
         ? "—"
@@ -93,9 +99,22 @@ public sealed record FilesPageViewModel(
     IReadOnlyList<FolderRowViewModel>? Folders = null,
     IReadOnlyList<CrumbViewModel>? Crumbs = null,
     IReadOnlyList<FolderChoiceViewModel>? Choices = null,
-    IReadOnlyList<FolderChoiceViewModel>? FolderChoices = null)
+    IReadOnlyList<FolderChoiceViewModel>? FolderChoices = null,
+    IReadOnlyList<TagViewModel>? Tags = null,
+    Guid? Tag = null)
 {
     public bool IsSearching => Query is { Length: > 0 };
+
+    public IReadOnlyList<TagViewModel> Labels => Tags ?? [];
+
+    /// <summary>
+    /// Whether the table is showing the whole workspace rather than one folder. A search does it and
+    /// a tag filter does it, and everything that is about «where you are standing» — the breadcrumb,
+    /// the folder rows, the folder toolbar — is off in both.
+    /// </summary>
+    public bool IsFiltered => IsSearching || Tag is not null;
+
+    public TagViewModel? ActiveTag => Tag is { } id ? Labels.FirstOrDefault(t => t.Id == id) : null;
 
     public IReadOnlyList<FolderRowViewModel> FolderRows => Folders ?? [];
 

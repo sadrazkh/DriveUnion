@@ -231,12 +231,12 @@ public class FolderTreeTests
             .Succeeded.Should().BeTrue();
 
         // Browsing is one folder deep, so the root no longer holds it and the folder does.
-        (await harness.Files().ListAsync(tenant.Id, folderId: null, null, default)).Should().BeEmpty();
-        (await harness.Files().ListAsync(tenant.Id, folder.FolderId, null, default)).Should().ContainSingle();
+        (await harness.Files().ListAsync(tenant.Id, new FileListFilter(NameQuery: null), default)).Should().BeEmpty();
+        (await harness.Files().ListAsync(tenant.Id, new FileListFilter(FolderId: folder.FolderId), default)).Should().ContainSingle();
 
         // …and back out again.
         (await harness.Tree().MoveFileAsync(tenant.Id, file.Id, null, default)).Succeeded.Should().BeTrue();
-        (await harness.Files().ListAsync(tenant.Id, folderId: null, null, default)).Should().ContainSingle();
+        (await harness.Files().ListAsync(tenant.Id, new FileListFilter(NameQuery: null), default)).Should().ContainSingle();
     }
 
     [Fact]
@@ -255,7 +255,7 @@ public class FolderTreeTests
         // Searching inside the folder somebody happens to be standing in answers «not found» for a
         // file they own and can see the name of — which is the defect the search box already had
         // once. A search is the whole workspace, and the row says where the hit lives.
-        var hits = await harness.Files().ListAsync(tenant.Id, folderId: null, "report", default);
+        var hits = await harness.Files().ListAsync(tenant.Id, new FileListFilter(NameQuery: "report"), default);
 
         hits.Should().HaveCount(2);
         hits.Should().ContainSingle(f => f.FolderId == folder.FolderId);
@@ -287,7 +287,7 @@ public class FolderTreeTests
         // Somewhere the customer can see, rather than into a folder that is not there. This is the
         // case StoredFile.FolderId has no foreign key for: a cascade would have taken the file with
         // the folder, and a restrict would have refused the delete for a reason nobody could see.
-        var listed = await harness.Files().ListAsync(tenant.Id, folderId: null, null, default);
+        var listed = await harness.Files().ListAsync(tenant.Id, new FileListFilter(NameQuery: null), default);
 
         listed.Should().ContainSingle().Which.FolderId.Should().BeNull();
     }

@@ -297,7 +297,7 @@ public sealed class TelegramUpdateHandler(
         IReadOnlyList<FileListItem> all;
         try
         {
-            all = await files.ListAsync(identity.TenantId, folderId: null, nameQuery: null, cancellationToken);
+            all = await files.ListAsync(identity.TenantId, new FileListFilter(), cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
         {
@@ -591,7 +591,7 @@ public sealed class TelegramUpdateHandler(
         IReadOnlyList<FileListItem> all;
         try
         {
-            all = await files.ListAsync(identity.TenantId, folderId: null, nameQuery: null, cancellationToken);
+            all = await files.ListAsync(identity.TenantId, new FileListFilter(), cancellationToken);
         }
         catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
         {

@@ -440,6 +440,79 @@ public static partial class UiText
             "این پوشه خالی است.",
             "This folder is empty.");
 
+        // ---------------------------------------------------------------- selection and labels
+
+        public static string SelectedCount(int files) => Pick(
+            $"{Numerals.Count(files)} انتخاب شده",
+            files == 1 ? "1 selected" : $"{Numerals.Count(files)} selected");
+
+        public static string SelectAll => Pick("انتخاب همه", "Select all");
+
+        public static string SelectThisFile(string name) => Pick($"انتخاب «{Ltr(name)}»", $"Select “{name}”");
+
+        public static string NothingSelected => Pick(
+            "اول فایل‌ها را انتخاب کن.",
+            "Pick some files first.");
+
+        public static string FilesMoved(int files) => Pick(
+            $"{Numerals.Count(files)} فایل منتقل شد.",
+            files == 1 ? "1 file was moved." : $"{Numerals.Count(files)} files were moved.");
+
+        public static string FilesDeleted(int files) => Pick(
+            $"{Numerals.Count(files)} فایل به زباله‌دان رفت.",
+            files == 1 ? "1 file went to the trash." : $"{Numerals.Count(files)} files went to the trash.");
+
+        /// <summary>
+        /// The refusal when a selection is bigger than one request can honestly delete. It names both
+        /// numbers, because «too many» without the limit is a sentence somebody has to guess at.
+        /// </summary>
+        public static string TooManyToDelete(int limit, int chosen) => Pick(
+            $"یک‌بار حداکثر {Numerals.Count(limit)} فایل؛ {Numerals.Count(chosen)} تا انتخاب شده. هیچ‌کدام حذف نشد.",
+            $"Up to {Numerals.Count(limit)} at a time, and {Numerals.Count(chosen)} are selected. None were deleted.");
+
+        public static string Label => Pick("برچسب", "Label");
+
+        public static string AddLabel => Pick("برچسب بزن", "Add a label");
+
+        public static string RemoveLabel => Pick("برداشتن برچسب", "Remove the label");
+
+        public static string AllLabels => Pick("برچسب‌ها", "Labels");
+
+        public static string TagNeedsAName => Pick(
+            "برچسب بدون نام نمی‌شود.",
+            "A label needs a name.");
+
+        public static string TooManyTags(int limit) => Pick(
+            $"بیشتر از {Numerals.Count(limit)} برچسب نمی‌شود؛ برای دسته‌های بزرگ‌تر پوشه بساز.",
+            $"There is room for {Numerals.Count(limit)} labels; use folders for anything bigger.");
+
+        public static string TagApplied(string name, int files) => Pick(
+            $"«{Ltr(name)}» روی {Numerals.Count(files)} فایل نشست.",
+            $"“{name}” was put on {Numerals.Count(files)} files.");
+
+        public static string TagRemoved(int files) => Pick(
+            $"برچسب از {Numerals.Count(files)} فایل برداشته شد.",
+            $"The label came off {Numerals.Count(files)} files.");
+
+        /// <summary>Retiring a tag says how many files it came off, so «هیچ‌کدام» is not a surprise.</summary>
+        public static string TagRetired(int files) => Pick(
+            $"برچسب حذف شد و از {Numerals.Count(files)} فایل برداشته شد. خود فایل‌ها دست‌نخورده‌اند.",
+            $"The label is gone, off {Numerals.Count(files)} files. The files themselves are untouched.");
+
+        public static string TagCount(int files, string name) => Pick(
+            $"{Numerals.Count(files)} فایل با برچسب «{Ltr(name)}»",
+            files == 1 ? $"1 file labelled “{name}”" : $"{Numerals.Count(files)} files labelled “{name}”");
+
+        public static string NoTagMatchHeading(string name) => Pick(
+            $"هیچ فایلی برچسب «{Ltr(name)}» ندارد.",
+            $"Nothing carries “{name}”.");
+
+        /// <summary>The way back from a label filter, the same control the search has.</summary>
+        public static string ClearLabel => Pick("دیدن همه‌ی فایل‌ها", "Show every file");
+
+        /// <summary>The one menu the folder's own three actions live behind. See the view for why.</summary>
+        public static string ThisFolder => Pick("این پوشه", "This folder");
+
         /// <summary>The links cell: how many live links this file has.</summary>
         public static string LinkCount(int links) => Pick(
             $"{Numerals.Count(links)} لینک",

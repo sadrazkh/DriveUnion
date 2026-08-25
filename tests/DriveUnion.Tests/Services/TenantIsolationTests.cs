@@ -24,8 +24,8 @@ public class TenantIsolationTests
 
         var catalog = harness.Files();
 
-        (await catalog.ListAsync(a.Id, folderId: null, nameQuery: null, default)).Should().ContainSingle();
-        (await catalog.ListAsync(b.Id, folderId: null, nameQuery: null, default)).Should().BeEmpty();
+        (await catalog.ListAsync(a.Id, new FileListFilter(), default)).Should().ContainSingle();
+        (await catalog.ListAsync(b.Id, new FileListFilter(), default)).Should().BeEmpty();
     }
 
     [Fact]

@@ -24,6 +24,38 @@ public sealed record FileDetail(
     IReadOnlyList<ShareLinkSummary> Links);
 
 /// <summary>
+/// Which of a workspace's files a listing wants.
+///
+/// <para>A record rather than three more parameters, and it is the third time this signature has
+/// grown: <c>nameQuery</c>, then <c>folderId</c>, now <c>TagId</c>. Each of those was a sweep of
+/// every call site in the product for one more argument nobody at the far end cared about. A filter
+/// with defaults is one type to add a field to.</para>
+/// </summary>
+/// <param name="FolderId">
+/// The folder being browsed, or null for the workspace's root. <b>Ignored whenever this filter is
+/// workspace-wide</b>, and that is the design rather than an oversight: looking inside the folder
+/// somebody happens to be standing in answers «not found» for a file they own and can see the name
+/// of, which is the failure the search box already had once. <c>FileListItem.FolderId</c> is what
+/// lets the screen say where each hit was found instead.
+/// </param>
+/// <param name="NameQuery">What the reader typed into the shell's search box, or null.</param>
+/// <param name="TagId">A label to filter by, or null. Combines with the query rather than replacing it.</param>
+public sealed record FileListFilter(
+    Guid? FolderId = null,
+    string? NameQuery = null,
+    Guid? TagId = null)
+{
+    /// <summary>The trimmed term, or null — so «?q=» and a box full of spaces are not a search.</summary>
+    public string? Term => NameQuery?.Trim() is { Length: > 0 } typed ? typed : null;
+
+    /// <summary>
+    /// Whether this reaches past one folder. Searching and filtering by tag both do: neither is a
+    /// question about where the reader is standing.
+    /// </summary>
+    public bool IsWorkspaceWide => Term is not null || TagId is not null;
+}
+
+/// <summary>
 /// A tenant's own files.
 ///
 /// Every method takes <c>tenantId</c> explicitly, and that is the design rather than an oversight:
@@ -47,19 +79,9 @@ public interface IFileCatalog
     /// screen that grows a search box and forgets to pass it does not silently list everything —
     /// the same reasoning as <c>tenantId</c> above.</para>
     /// </param>
-    /// <param name="folderId">
-    /// The folder being browsed, or null for the workspace's root.
-    ///
-    /// <para><b>Ignored when <paramref name="nameQuery"/> is given</b>, and that is the design rather
-    /// than an oversight. A search inside the folder you happen to be standing in answers «not
-    /// found» for a file the customer owns and can see the name of, which is the failure the search
-    /// box already had once. A search is the whole workspace; browsing is one folder deep; and
-    /// <c>FileListItem.FolderId</c> is what lets the screen say where each hit was found.</para>
-    /// </param>
     Task<IReadOnlyList<FileListItem>> ListAsync(
         Guid tenantId,
-        Guid? folderId,
-        string? nameQuery,
+        FileListFilter filter,
         CancellationToken cancellationToken);
 
     Task<FileDetail?> GetAsync(Guid tenantId, Guid fileId, CancellationToken cancellationToken);

@@ -743,11 +743,16 @@ public class PanelLayoutTests
             RegexOptions.None,
             TimeSpan.FromSeconds(5)))
         {
-            // A header cell holds text and never an element, which is what lets this stop at the
-            // end of the header instead of walking into the first row.
+            // A header cell may hold text or an element, but never another <div> — which is what
+            // lets this stop at the end of the header instead of walking into the first row.
+            //
+            // It used to say «text and never an element», and that stopped being true the moment
+            // the files table's checkbox column grew a slot for a select-all box. The rule that was
+            // actually load-bearing is the narrower one: rows are divs, cells are divs, and nothing
+            // inside a cell is.
             var head = Regex.Match(
                 markup[table.Index..],
-                @"<div class=""dtable-head"">(?<cells>(?:\s*<div[^>]*>[^<]*</div>)+)\s*</div>",
+                """<div class="dtable-head">(?<cells>(?:\s*<div[^>]*>(?:[^<]|<(?!/?div))*</div>)+)\s*</div>""",
                 RegexOptions.None,
                 TimeSpan.FromSeconds(5));
 
