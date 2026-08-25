@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Tenancy;
+using DriveUnion.Tests.Hosting;
 using DriveUnion.Web.Security;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
@@ -212,14 +213,9 @@ public sealed class OperatorRouteHarness(bool? asOperator) : WebApplicationFacto
             // Against a shared SQLite :memory: connection that turns into "database is locked" in
             // the middle of a transaction these tests do open — a failure about the harness rather
             // than about the product. Nothing here has a bot, a chat or an outbox row.
-            foreach (var background in services
-                .Where(d => d.ServiceType == typeof(IHostedService)
-                    && d.ImplementationType?.Namespace?.StartsWith(
-                        "DriveUnion.Infrastructure.Telegram", StringComparison.Ordinal) == true)
-                .ToList())
-            {
-                services.Remove(background);
-            }
+            // Every loop and not only Telegram's, for the reason TestHostServices sets out: the one
+            // this host misses is the one that lands on somebody else's teardown.
+            services.RemoveEveryBackgroundLoop();
 
             services.AddDriveUnionTenancy();
 

@@ -5,6 +5,7 @@ using DriveUnion.Core.Storage;
 using DriveUnion.Core.Tenancy;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Tests.Fakes;
+using DriveUnion.Tests.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -237,6 +238,9 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            // Before anything else, and before the connection below exists to be raced with.
+            services.RemoveEveryBackgroundLoop();
+
             ReplaceNpgsqlWithSqlite(services);
 
             RemoveAllOf(services, typeof(IDriveClient));

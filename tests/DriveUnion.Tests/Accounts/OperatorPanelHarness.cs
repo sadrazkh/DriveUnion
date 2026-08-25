@@ -5,6 +5,7 @@ using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Storage;
 using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Persistence;
+using DriveUnion.Tests.Hosting;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -309,6 +310,9 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            // Before anything else, and before the connection below exists to be raced with.
+            services.RemoveEveryBackgroundLoop();
+
             ReplaceNpgsqlWithSqlite(services);
 
             // No IDriveClient may reach Google. Nothing in this file exchanges a code, and this is

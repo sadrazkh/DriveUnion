@@ -8,6 +8,7 @@ using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Plans;
 using DriveUnion.Infrastructure.Trash;
 using DriveUnion.Tests.Fakes;
+using DriveUnion.Tests.Hosting;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
@@ -304,13 +305,10 @@ public sealed class TrashPanelHarness : WebApplicationFactory<Program>
             // it is not thread-safe. Both produce failures that come and go with how busy the
             // machine is. What is under test here is what the screens do; the sweeper has its own
             // tests, and its own harness.
-            foreach (var descriptor in services
-                .Where(d => d.ServiceType == typeof(IHostedService)
-                    && d.ImplementationType?.Namespace == typeof(TrashService).Namespace)
-                .ToList())
-            {
-                services.Remove(descriptor);
-            }
+            // …and every other loop with it. Matching on the trash namespace left Program.cs's
+            // Telegram drainer, poller and work sweeper running against this same connection, which
+            // is the same defect wearing a different name.
+            services.RemoveEveryBackgroundLoop();
 
             services.AddAuthentication(options =>
                 {

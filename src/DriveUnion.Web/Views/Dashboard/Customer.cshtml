@@ -1,0 +1,210 @@
+@using DriveUnion.Web.Models
+@model CustomerDashboardPageViewModel
+@{
+    ViewData["Title"] = UiText.Shell.Dashboard;
+
+    // Name · حجم · تغییر. The name track's floor is --name-min from app.css rather than 0: the two
+    // fixed tracks are 202px and a 375px phone leaves little else, so minmax(0,…) would answer
+    // "there is no room" by drawing no file name at all — the one column that tells two rows apart.
+    const string UploadCols = "--cols: minmax(var(--name-min),2fr) 92px 110px";
+
+    // Name · address · downloads.
+    const string LinkCols = "--cols: minmax(var(--name-min),1.6fr) 118px 96px";
+}
+
+@*
+    The customer's dashboard, and nothing on it belongs to anybody else.
+
+    Nothing here names a Google account, the pool, its daily 750 GB, another workspace or what the
+    operator has committed — and nothing here can: every value is a field of
+    CustomerDashboardPageViewModel, which is built from a record that carries none of them. M1 §1.4
+    is enforced by the shape of the data rather than by this file remembering.
+
+    Every figure is counted from rows that exist. The one that is not — traffic spent this month —
+    is drawn as a dash with the sentence that says why, which is the same answer the sidebar's
+    capacity card gives, from the same catalogue entry.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">@UiText.Shell.Dashboard</h1>
+        <p class="page-sub">@UiText.Dashboard.CustomerSubtitle</p>
+    </div>
+
+    <div class="grid-4">
+        @* Storage: the one dimension of the plan with a real meter behind it. The bar and its
+           colour come from the same PlanMeter the plan card and the sidebar use, so the three
+           cannot disagree about how full this workspace is. *@
+        <div class="card card--stat">
+            <div class="muted" style="font-size: 11.5px; margin-bottom: 6px;">@UiText.Plans.StorageLabel</div>
+            @* A byte quantity is a Latin technical readout in either language, and in an RTL box
+               the bidi algorithm lays «4.7 GB / 100 GB» out backwards without this. *@
+            <div class="mono" dir="ltr" style="font-size: 15px; font-weight: 800; margin-bottom: 8px;">@Model.StorageText</div>
+            <div class="bar">
+                <span class="@Model.StorageFillClass"
+                      style="width: @Model.StoragePercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+            </div>
+        </div>
+
+        <div class="card card--stat">
+            <div class="muted" style="font-size: 11.5px; margin-bottom: 6px;">@UiText.Shell.Files</div>
+            <div style="font-size: 15px; font-weight: 800;">@Model.FilesText</div>
+            <a class="btn btn--sm" style="margin-top: 10px;" href="/files">@UiText.Dashboard.AllFiles</a>
+        </div>
+
+        <div class="card card--stat">
+            <div class="muted" style="font-size: 11.5px; margin-bottom: 6px;">@UiText.Dashboard.LiveLinksLabel</div>
+            @if (Model.HasLinks)
+            {
+                <div style="font-size: 15px; font-weight: 800;">@Model.LiveLinksText</div>
+                <a class="btn btn--sm" style="margin-top: 10px;" href="/links">@UiText.Dashboard.AllLinks</a>
+            }
+            else
+            {
+                @* A workspace with no links has genuinely made none, so this is a real zero said in
+                   words rather than a figure that might mean «not counted». *@
+                <p class="hint" style="margin: 0;">@UiText.Dashboard.NoLinksYet</p>
+            }
+        </div>
+
+        @*
+            Downloads, all of them, since each link was made. There is no «this month» figure and
+            the subline says so rather than leaving the number to be read as one: a window has to be
+            counted from the download log, which is indexed by link and not by date, so producing it
+            on the panel's most-visited page would mean reading every download this workspace has
+            ever served. An unqualified count is honest; a mislabelled one is not.
+        *@
+        <div class="card card--stat">
+            <div class="muted" style="font-size: 11.5px; margin-bottom: 6px;">@UiText.Dashboard.DownloadsAllTimeLabel</div>
+            @* A count of downloads is a number of things a person counts, so it takes this
+               language's own numerals rather than staying Latin. *@
+            <div style="font-size: 15px; font-weight: 800;">@Model.DownloadsAllTimeText</div>
+            <p class="hint" style="margin: 6px 0 0;">@UiText.Dashboard.DownloadsAreLifetime</p>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card card--flush">
+            <div class="card-head">
+                <div class="card-title">@UiText.Dashboard.RecentUploadsHeading</div>
+                <a class="muted" style="font-size: 11.5px;" href="/files">@UiText.Dashboard.AllFiles</a>
+            </div>
+
+            <div class="dtable" style="@UploadCols">
+                <div class="dtable-head">
+                    <div>@UiText.Trash.ColumnName</div>
+                    <div>@UiText.Trash.ColumnSize</div>
+                    <div>@UiText.Files.ColumnModified</div>
+                </div>
+
+                @if (Model.RecentUploads.Count == 0)
+                {
+                    <div class="empty empty--incell">
+                        <span>@UiText.Dashboard.NoUploadsYet</span>
+                        <a class="btn btn--primary" href="/files/upload">@UiText.Dashboard.NoUploadsAction</a>
+                    </div>
+                }
+                else
+                {
+                    @* The way in. A row is an anchor into the file's own detail panel, which is
+                       where its link, its size and its controls already are — so this list is a
+                       route to the file rather than a second set of buttons to keep in step. *@
+                    foreach (var row in Model.RecentUploads)
+                    {
+                        <a class="dtable-row"
+                           href="@Url.Action("Index", "Files", new { selected = row.FileId })"
+                           title="@row.OpenLabel">
+                            <div class="cell-name" title="@row.Name">@row.Name</div>
+                            <div class="cell-num" dir="ltr">@row.SizeText</div>
+                            <div class="cell-muted">@row.WhenText</div>
+                        </a>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="stack" style="gap: 14px;">
+            <div class="card card--flush">
+                <div class="card-head">
+                    <div class="card-title">@UiText.Dashboard.BusyLinksHeading</div>
+                    <a class="muted" style="font-size: 11.5px;" href="/links">@UiText.Dashboard.AllLinks</a>
+                </div>
+
+                <div class="dtable" style="@LinkCols">
+                    <div class="dtable-head">
+                        <div>@UiText.Links.ColumnFile</div>
+                        <div>@UiText.Links.ColumnAddress</div>
+                        <div>@UiText.Links.ColumnDownloads</div>
+                    </div>
+
+                    @if (Model.BusiestLinks.Count == 0)
+                    {
+                        <div class="empty empty--incell">
+                            <span>@UiText.Dashboard.NoDownloadsYet</span>
+                        </div>
+                    }
+                    else
+                    {
+                        foreach (var row in Model.BusiestLinks)
+                        {
+                            <a class="dtable-row"
+                               href="@Url.Action("Index", "Files", new { selected = row.FileId })">
+                                <div class="cell-name" title="@row.FileName">@row.FileName</div>
+                                @* A slug is an address, which is Latin in both languages. *@
+                                <div class="cell-slug" dir="ltr">@row.SlugPath</div>
+                                <div class="cell-num">@row.DownloadsText</div>
+                            </a>
+                        }
+                    }
+                </div>
+
+                <div class="card-foot">
+                    <span class="hint">@UiText.Dashboard.DownloadsExplained</span>
+                </div>
+            </div>
+
+            <div class="card card--pad">
+                <div class="stack" style="gap: 10px;">
+                    @*
+                        The trash, on a dashboard, because it is exactly the difference between what
+                        a customer believes they freed and what they actually did — the
+                        misunderstanding the trash phase started from. The figure is the same one
+                        the sidebar's capacity card shows, from the same service.
+                    *@
+                    <div class="row" style="justify-content: space-between; align-items: baseline; gap: 12px;">
+                        <span style="font-size: 12.5px; font-weight: 700;">@UiText.Trash.Title</span>
+                        <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.TrashText</span>
+                    </div>
+                    <p class="hint" style="margin: 0;">@Model.TrashSummary</p>
+                    @if (Model.HasTrash)
+                    {
+                        <a class="btn btn--sm" href="/trash">@UiText.Dashboard.OpenTrash</a>
+                    }
+
+                    @*
+                        Traffic. The allowance is real and sold; what has been spent against it is
+                        not measured yet, so the first half is a dash rather than a zero — a zero
+                        would tell a customer who has been serving downloads all month that they
+                        have used none. Same entry as the capacity card, so the two say one thing.
+                    *@
+                    <div class="row"
+                         style="justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 4px;"
+                         title="@UiText.Capacity.TrafficNotMeteredYet">
+                        <span style="font-size: 12.5px; font-weight: 700;">@UiText.Capacity.TrafficLabel</span>
+                        <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.TrafficText</span>
+                    </div>
+                    <p class="hint" style="margin: 0;">@UiText.Capacity.TrafficNotMeteredYet</p>
+                </div>
+            </div>
+
+            @if (Model.IsOverStorage)
+            {
+                @* Said in words rather than only in a red bar: nothing has been deleted, uploads are
+                   what stopped, and the way out is deleting files — which needs the panel, which
+                   still works. The plan screen says the same sentence from the same entry. *@
+                <div class="card card--pad">
+                    <p class="hint" style="margin: 0;">@UiText.Plans.OverStorage</p>
+                </div>
+            }
+        </div>
+    </div>
+</div>

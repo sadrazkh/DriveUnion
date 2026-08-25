@@ -4,6 +4,7 @@ using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
 using DriveUnion.Core.Tenancy;
 using DriveUnion.Infrastructure.Persistence;
+using DriveUnion.Tests.Hosting;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -130,6 +131,40 @@ public sealed class PanelPageHarness : WebApplicationFactory<Program>
         return tenant;
     }
 
+    /// <summary>
+    /// A second file in a tenant that already has one, so a screen can be asked to narrow a list.
+    ///
+    /// <para>Separate from <see cref="SeedTenant"/> rather than a parameter on it: that method seeds
+    /// a workspace, an account, a file and a link as one coherent thing, and the tests that call it
+    /// count on the one file it makes. Reuses the account already in the pool for the same reason —
+    /// what is under test is the list, and a second account would be a second thing to explain.</para>
+    /// </summary>
+    public StoredFile SeedFile(Guid tenantId, string fileName)
+    {
+        using var db = NewDbContext();
+
+        var accountId = db.StoredFiles.AsNoTracking().First(f => f.TenantId == tenantId).GoogleAccountId;
+        var now = DateTimeOffset.UtcNow;
+
+        var file = new StoredFile
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            GoogleAccountId = accountId,
+            DriveFileId = $"1{Guid.NewGuid():N}AbCdEf",
+            Name = fileName,
+            MimeType = "application/octet-stream",
+            SizeBytes = 2048,
+            CreatedAt = now,
+            ModifiedAt = now,
+        };
+
+        db.StoredFiles.Add(file);
+        db.SaveChanges();
+
+        return file;
+    }
+
     /// <summary>The pool account's address and the Drive file id — the two facts a customer must never see.</summary>
     public (string AccountEmail, string DriveFileId) SecretsOf(Guid tenantId)
     {
@@ -154,6 +189,9 @@ public sealed class PanelPageHarness : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            // Before anything else, and before the connection below exists to be raced with.
+            services.RemoveEveryBackgroundLoop();
+
             // AddDbContext leaves the context, DbContextOptions, DbContextOptions<T> and EF 9's
             // IDbContextOptionsConfiguration<T> behind, and the last still carries UseNpgsql —
             // stacking UseSqlite on a surviving provider throws at resolve time.

@@ -5,6 +5,7 @@ using DriveUnion.Core.Storage;
 using DriveUnion.Core.Tenancy;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Plans;
+using DriveUnion.Tests.Hosting;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -161,6 +162,9 @@ public sealed class PlanPageHarness : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            // Before anything else, and before the connection below exists to be raced with.
+            services.RemoveEveryBackgroundLoop();
+
             var doomed = services
                 .Where(d => d.ServiceType == typeof(DriveUnionDbContext)
                     || d.ServiceType == typeof(DbContextOptions)

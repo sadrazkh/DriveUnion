@@ -7,6 +7,7 @@ using DriveUnion.Core.Application;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Telegram;
 using DriveUnion.Tests.Fakes;
+using DriveUnion.Tests.Hosting;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -198,10 +199,7 @@ public sealed class TelegramPanelHarness : WebApplicationFactory<Program>
             // The comment further up says the transport is "deliberately NOT added", and that was
             // true of this method and untrue of the host: Program.cs had already added it. Removing
             // is what makes the sentence true.
-            foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
-            {
-                services.Remove(descriptor);
-            }
+            services.RemoveEveryBackgroundLoop();
 
             var isOperator = IsOperator;
             var userId = UserId;

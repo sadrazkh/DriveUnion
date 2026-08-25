@@ -1,0 +1,279 @@
+@using DriveUnion.Web.Models
+@model OperatorDashboardPageViewModel
+@{
+    ViewData["Title"] = UiText.Shell.Dashboard;
+
+    // Workspace · used / cap · how full. The name track's floor is --name-min from app.css rather
+    // than 0, for the reason every other table in the panel gives: minmax(0,…) answers a narrow
+    // window by drawing no name at all, and the name is what tells two rows apart.
+    const string PressureCols = "--cols: minmax(var(--name-min),1.6fr) 150px 70px";
+}
+
+@*
+    The operator's dashboard: the pool, who is running out, and what is broken.
+
+    It is built to answer the two questions an operator actually has — is storage running out, and
+    is anything broken — and everything on it serves one of the two.
+
+    Two things the comp draws are absent, and the absence is the point. Each Google account is
+    allowed 750 GB of upload a day and this product counts none of it; the monthly traffic the plans
+    sell is carried on every workspace's row and metered by nobody. A bar drawn from nothing is a bar
+    that is always empty, and an operator reading it would conclude the pool is idle on the day it
+    stops accepting uploads. So both say what is not measured, in words, where the figure would be.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">@UiText.Shell.Dashboard</h1>
+        <p class="page-sub">@UiText.Dashboard.OperatorSubtitle</p>
+    </div>
+
+    @if (Model.DisconnectedText is not null)
+    {
+        @* First, above everything, because it is the one state on this screen where uploads are
+           already failing. role="alert" so a screen reader is told rather than left to find it. *@
+        <p class="notice notice--danger" role="alert">@Model.DisconnectedText</p>
+    }
+
+    @if (!Model.HasAccounts)
+    {
+        <div class="card">
+            <div class="card-head">
+                <div class="card-title danger">@UiText.Dashboard.NoAccountsHeading</div>
+            </div>
+            <div class="card-body">
+                <p class="hint" style="margin: 0 0 12px;">@UiText.Dashboard.NoAccountsBody</p>
+                <a class="btn btn--primary" href="/Accounts">@UiText.Dashboard.ConnectAccounts</a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card card--flush">
+            <div class="card-head">
+                <div class="card-title">@UiText.Dashboard.PoolHeading</div>
+                <div class="row" style="gap: 12px;">
+                    <span class="muted" style="font-size: 11.5px;">@Model.ConnectedAccountsText</span>
+                    <a class="muted" style="font-size: 11.5px;" href="/Accounts">@UiText.Dashboard.ConnectAccounts</a>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div class="stack" style="gap: 14px;">
+                    <div class="grid-2">
+                        @foreach (var account in Model.Accounts)
+                        {
+                            <div class="subcard">
+                                <div class="row" style="gap: 10px; margin-bottom: 10px;">
+                                    @* The operator's short handle, which is how they tell two
+                                       accounts apart. The comp draws it in a 34px rounded square;
+                                       .avatar is that box in every respect but its radius — the
+                                       same --soft and --accent-ink pair, centred and bold — and it
+                                       is a class, which is what a colour in this panel has to be.
+                                       A square of its own would be a stylesheet rule, and the
+                                       stylesheet is not this slice's to write. *@
+                                    <span class="avatar mono" dir="ltr">@account.Label</span>
+                                    @* An address is a Latin readout, and an RTL box lays one out
+                                       backwards without this. It is the operator's own address and
+                                       is rendered on operator screens only. *@
+                                    <span dir="ltr"
+                                          style="font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                          title="@account.Email">@account.Email</span>
+                                    <span class="@account.StatusBadgeClass push-end">@account.StatusText</span>
+                                </div>
+
+                                @if (account.HasQuota)
+                                {
+                                    <div class="bar-label" style="font-size: 11.5px; margin-bottom: 7px;">
+                                        <span>@UiText.Plans.StorageLabel</span>
+                                        <span class="mono" dir="ltr">@account.UsedText</span>
+                                    </div>
+                                    <div class="bar">
+                                        <span class="@account.UsedFillClass"
+                                              style="width: @account.UsedPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @* Google has never been asked what this account holds. A
+                                       skeleton, never a plausible number — and never a full bar,
+                                       which is what a cap of zero would otherwise draw. *@
+                                    <div class="skeleton" style="height: 8px;"></div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="stack" style="gap: 6px;">
+                        <div class="row" style="justify-content: space-between; align-items: baseline; gap: 12px;">
+                            <span style="font-size: 12.5px;">@UiText.Dashboard.PoolUsedLabel</span>
+                            <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.PoolUsedText</span>
+                        </div>
+                        @if (Model.HasPool)
+                        {
+                            <div class="bar bar--lg">
+                                <span class="@Model.PoolFillClass"
+                                      style="width: @Model.PoolPercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-foot">
+                @* The card's missing half, said rather than drawn. *@
+                <span class="hint">@UiText.Dashboard.DailyUploadNotMetered</span>
+            </div>
+        </div>
+    }
+
+    <div class="grid-2">
+        <div class="card card--flush">
+            <div class="card-head">
+                <div class="card-title">@UiText.Dashboard.WorkspacesHeading</div>
+                <div class="row" style="gap: 12px;">
+                    <span class="muted" style="font-size: 11.5px;">@Model.WorkspaceCountText</span>
+                    <a class="muted" style="font-size: 11.5px;" href="/operator/tenants">@UiText.Dashboard.AllWorkspaces</a>
+                </div>
+            </div>
+
+            <div class="dtable" style="@PressureCols">
+                <div class="dtable-head">
+                    <div>@UiText.Plans.ColumnTenant</div>
+                    <div>@UiText.Plans.ColumnUsed</div>
+                    <div>@UiText.Plans.ColumnStorage</div>
+                </div>
+
+                @if (Model.Pressing.Count == 0)
+                {
+                    <div class="empty empty--incell">
+                        <span>@(Model.HasWorkspaces ? UiText.Dashboard.NobodyNearCeiling : UiText.Dashboard.NoWorkspaces)</span>
+                    </div>
+                }
+                else
+                {
+                    @* The row leads to the workspace's own plan page, which is where a ceiling is
+                       actually moved — so the list is a route to the action rather than a second
+                       set of controls to keep in step with the first. *@
+                    foreach (var row in Model.Pressing)
+                    {
+                        <a class="dtable-row"
+                           href="@Url.Action("OperatorTenant", "Plans", new { tenantId = row.TenantId })">
+                            <div class="cell-name" title="@row.Name">@row.Name</div>
+                            <div class="cell-num" dir="ltr">@row.UsedText</div>
+                            @* A percentage set beside a workspace's name is prose, not a readout an
+                               operator copies, so it takes this language's own numerals. *@
+                            <div class="cell-num">@row.PercentText</div>
+                        </a>
+                    }
+                }
+            </div>
+
+            <div class="card-foot">
+                @* The threshold comes from the reader that applied it rather than from a literal
+                   here, so the sentence cannot come to describe a list it did not select. *@
+                <span class="hint">@Model.CeilingNote</span>
+            </div>
+        </div>
+
+        <div class="stack" style="gap: 14px;">
+            <div class="card card--flush">
+                <div class="card-head">
+                    <div class="card-title">@UiText.Dashboard.TransfersHeading</div>
+                </div>
+                <div class="card-body">
+                    <div class="grid-2">
+                        <div class="card card--stat">
+                            <div class="muted" style="font-size: 11.5px; margin-bottom: 6px;">@UiText.Dashboard.TransfersInFlightLabel</div>
+                            <div style="font-size: 22px; font-weight: 800;">@Model.InFlightText</div>
+                        </div>
+                        <div class="card card--stat">
+                            <div class="muted" style="font-size: 11.5px; margin-bottom: 6px;">@Model.FailedLabel</div>
+                            <div class="@(Model.HasFailures ? "danger" : null)"
+                                 style="font-size: 22px; font-weight: 800;">@Model.FailedText</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-foot">
+                    @* Where the comp's egress chart is. There is no traffic meter to draw one from,
+                       and seven invented bars on the operator's home page would be the worst place
+                       in the product to put a plausible figure. *@
+                    <span class="hint">@UiText.Dashboard.EgressNotMetered</span>
+                </div>
+            </div>
+
+            <div class="card card--flush">
+                <div class="card-head">
+                    <div class="row" style="gap: 8px;">
+                        @if (Model.HasFailures)
+                        {
+                            <span class="status-dot" aria-hidden="true"></span>
+                        }
+                        <div class="card-title">@UiText.Dashboard.FailuresHeading</div>
+                    </div>
+                    <span class="muted" style="font-size: 11.5px;">@Model.FailedText</span>
+                </div>
+
+                <div class="card-body">
+                    @if (Model.Failures.Count == 0)
+                    {
+                        <p class="hint" style="margin: 0;">@UiText.Dashboard.NothingFailed</p>
+                    }
+                    else
+                    {
+                        <div class="stack" style="gap: 12px;">
+                            @foreach (var failure in Model.Failures)
+                            {
+                                <div class="stack" style="gap: 4px;">
+                                    <div class="row" style="justify-content: space-between; gap: 12px; align-items: baseline;">
+                                        <span style="font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                              title="@failure.FileName">@failure.FileName</span>
+                                        <span class="mono" dir="ltr" style="font-size: 11px;">@failure.SizeText</span>
+                                    </div>
+                                    <span class="muted" style="font-size: 11px;">@failure.WhenText</span>
+                                    @if (failure.HasReason)
+                                    {
+                                        @* Google's own words, kept as they arrived. A Latin
+                                           diagnostic in an RTL box, so the run carries dir="ltr";
+                                           it is never wrapped around a Persian sentence, because no
+                                           part of a string can be isolated from the rest of it. *@
+                                        <span class="mono danger" dir="ltr" style="font-size: 11px; overflow-wrap: anywhere;">@failure.Reason</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted" style="font-size: 11px;">@failure.Reason</span>
+                                    }
+                                </div>
+                            }
+
+                            @if (Model.MoreFailuresText is not null)
+                            {
+                                <span class="hint">@Model.MoreFailuresText</span>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="card-foot">
+                    <span class="hint">@UiText.Dashboard.FailuresAreDiagnostics</span>
+                </div>
+            </div>
+
+            <div class="card card--pad">
+                @* What the operator has sold against what the pool actually holds. The same sentence
+                   the plans screen prints, from the same catalogue entry, so the two cannot come to
+                   disagree about whether the pool is over-committed. *@
+                @* No dir="ltr" on this run, and that is not an oversight: it is a Persian sentence
+                   with two byte quantities in it, and the catalogue already isolates each figure
+                   inside the string with LRI/PDI. A dir attribute cannot reach into a string, and
+                   one wrapped around the whole sentence would lay the Persian out backwards. *@
+                <div class="stack" style="gap: 8px;">
+                    <span class="@(Model.IsOverCommitted ? "warn" : null)" style="font-size: 12.5px;">@Model.CommittedText</span>
+                    @if (Model.IsOverCommitted)
+                    {
+                        <p class="hint" style="margin: 0;">@UiText.Plans.OverCommittedNote</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
+using DriveUnion.Tests.Hosting;
 using DriveUnion.Web.Localization;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authentication;
@@ -202,6 +203,9 @@ public sealed class LocalizationHarness : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            // Before anything else, and before the connection below exists to be raced with.
+            services.RemoveEveryBackgroundLoop();
+
             // AddDbContext leaves the context, DbContextOptions, DbContextOptions<T> and EF 9's
             // IDbContextOptionsConfiguration<T> behind, and the last still carries UseNpgsql —
             // stacking UseSqlite on a surviving provider throws at resolve time.

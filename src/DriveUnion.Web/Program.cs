@@ -1,3 +1,4 @@
+using DriveUnion.Infrastructure.Dashboard;
 using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.LocalStorage;
@@ -118,6 +119,12 @@ builder.Services.AddDriveUnionTrashSweeper();
 // The trash screen's own reader, plus the capacity card the layout draws for a tenant. After
 // AddDriveUnionTrash, whose ITrash it reads, and AddDriveUnionPlans, whose figures it puts beside it.
 builder.Services.AddDriveUnionTrashPanel();
+
+// The two dashboards behind «/». After the three lines above and AddGoogleDrive: the customer's
+// reader is built on ITenantPlanService and ITrash, the operator's on IGoogleAccountDirectory, and a
+// dashboard assembled from services nobody registered fails on the panel's home page rather than at
+// start-up — which is where this exact line being absent put it.
+builder.Services.AddDriveUnionDashboard();
 
 // Telegram identity, account linking and the operator's bot settings. After AddGoogleDrive, which
 // registers the ITokenProtector the bot token is encrypted with. No transport yet: the gateway

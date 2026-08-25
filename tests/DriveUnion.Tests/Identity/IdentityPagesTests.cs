@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
+using DriveUnion.Tests.Hosting;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -159,6 +160,9 @@ public sealed class IdentityPagesHarness(string environment = "Production") : We
 
         builder.ConfigureTestServices(services =>
         {
+            // Before anything else, and before the connection below exists to be raced with.
+            services.RemoveEveryBackgroundLoop();
+
             // AddDbContext leaves the context, DbContextOptions, DbContextOptions<T> and EF 9's
             // IDbContextOptionsConfiguration<T> behind, and the last still carries UseNpgsql —
             // stacking UseSqlite on a surviving provider throws at resolve time.

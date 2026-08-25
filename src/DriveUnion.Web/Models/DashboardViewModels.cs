@@ -1,0 +1,343 @@
+using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
+using DriveUnion.Web.Localization;
+
+namespace DriveUnion.Web.Models;
+
+/// <summary>
+/// One row of «آخرین آپلودها». <see cref="FileId"/> is not drawn — it is where the row goes.
+/// </summary>
+public sealed record RecentUploadRowViewModel(
+    Guid FileId,
+    string Name,
+    string SizeText,
+    string WhenText,
+    string OpenLabel);
+
+/// <summary>
+/// One row of «پربازدیدترین لینک‌ها»: the file, its address, and what it has served.
+/// </summary>
+/// <param name="DownloadsText">
+/// «۲۴۱ / ۵۰۰» where the customer set a cap, and a bare count where they did not. There is no ∞ in
+/// the second case: the customer never chose one, and a symbol they did not set reads as a promise
+/// the product is making.
+/// </param>
+public sealed record BusyLinkRowViewModel(
+    Guid FileId,
+    string FileName,
+    string SlugPath,
+    string DownloadsText);
+
+/// <summary>
+/// «داشبورد» as the customer's own screen renders it.
+///
+/// <para>Nothing here names a Google account, the pool, its daily allowance or another workspace,
+/// and nothing here can: every field is built from <see cref="CustomerDashboard"/>, which carries
+/// none of them. M1 §1.4 — a customer must never learn which account holds their file or that a
+/// pool exists — is enforced by the shape of the record rather than by a view remembering.</para>
+///
+/// <para>Every member is a string that has already been formatted, for the reason
+/// <c>ShellCapacity</c> gives: arithmetic in a view is arithmetic no test can reach.</para>
+/// </summary>
+public sealed class CustomerDashboardPageViewModel
+{
+    public CustomerDashboardPageViewModel(CustomerDashboard dashboard)
+    {
+        ArgumentNullException.ThrowIfNull(dashboard);
+
+        var plan = dashboard.Plan;
+
+        PlanName = plan.PlanName ?? UiText.Plans.NoPlan;
+
+        StorageText = UiText.Plans.OfCap(
+            DisplayFormats.Bytes(plan.StorageUsedBytes),
+            DisplayFormats.Bytes(plan.Limits.StorageBytes));
+
+        StoragePercent = PlanMeter.Percent(plan.StorageUsedBytes, plan.Limits.StorageBytes);
+        StorageFillClass = PlanMeter.FillClass(StoragePercent);
+        IsOverStorage = plan.IsOverStorage;
+
+        FilesText = UiText.Dashboard.FilesStored(plan.FileCount);
+
+        // The traffic allowance with a dash where the spent figure will go, which is the same
+        // decision the sidebar's capacity card already made and for the same reason: the meter is
+        // P2's, and a zero would read as «you have used none» to a customer who has been serving
+        // downloads all month. Reusing the entry keeps the two from drifting into two answers.
+        TrafficText = UiText.Capacity.TrafficOfCap(DisplayFormats.Bytes(plan.Limits.MonthlyEgressBytes));
+
+        HasLinks = dashboard.LinkCount > 0;
+        LiveLinksText = UiText.Dashboard.LiveOfTotal(dashboard.LiveLinkCount, dashboard.LinkCount);
+
+        DownloadsAllTimeText = Numerals.Count(dashboard.DownloadsAllTime);
+
+        TrashText = DisplayFormats.Bytes(dashboard.TrashBytes);
+        HasTrash = dashboard.TrashFileCount > 0;
+        TrashSummary = HasTrash
+            ? UiText.Dashboard.TrashHolds(dashboard.TrashFileCount)
+            : UiText.Dashboard.TrashIsEmpty;
+
+        var now = DateTimeOffset.UtcNow;
+
+        RecentUploads =
+        [
+            .. dashboard.RecentUploads.Select(upload => new RecentUploadRowViewModel(
+                upload.FileId,
+                upload.Name,
+                DisplayFormats.Bytes(upload.SizeBytes),
+                DisplayFormats.Relative(upload.UploadedAt, now),
+                UiText.Dashboard.OpenFile(upload.Name))),
+        ];
+
+        BusiestLinks =
+        [
+            .. dashboard.BusiestLinks.Select(link => new BusyLinkRowViewModel(
+                link.FileId,
+                link.FileName,
+                PublicLinkFormatter.Path(link.Slug),
+                link.MaxDownloads is { } cap
+                    ? UiText.Dashboard.DownloadsOfCap(link.DownloadCount, cap)
+                    : UiText.Dashboard.DownloadsUncapped(link.DownloadCount))),
+        ];
+    }
+
+    public string PlanName { get; }
+
+    public string StorageText { get; }
+
+    public double StoragePercent { get; }
+
+    public string StorageFillClass { get; }
+
+    public bool IsOverStorage { get; }
+
+    public string FilesText { get; }
+
+    public string TrafficText { get; }
+
+    public bool HasLinks { get; }
+
+    public string LiveLinksText { get; }
+
+    public string DownloadsAllTimeText { get; }
+
+    public string TrashText { get; }
+
+    public bool HasTrash { get; }
+
+    public string TrashSummary { get; }
+
+    public IReadOnlyList<RecentUploadRowViewModel> RecentUploads { get; }
+
+    public IReadOnlyList<BusyLinkRowViewModel> BusiestLinks { get; }
+}
+
+/// <summary>
+/// One account card on the operator's dashboard: the comp's card, with the half of it that nothing
+/// meters left out rather than drawn empty.
+/// </summary>
+public sealed record PoolAccountCardViewModel(
+    Guid Id,
+    string Email,
+    string Label,
+    string StatusText,
+    string StatusBadgeClass,
+    string UsedText,
+    double UsedPercent,
+    string UsedFillClass,
+    bool HasQuota)
+{
+    public static PoolAccountCardViewModel From(PoolAccount account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+
+        var percent = PlanMeter.Percent(account.QuotaUsedBytes, account.QuotaTotalBytes);
+
+        return new PoolAccountCardViewModel(
+            account.Id,
+            account.Email,
+            account.Label,
+            account.Status switch
+            {
+                GoogleAccountStatus.Healthy => UiText.Accounts.StatusHealthy,
+                GoogleAccountStatus.Paused => UiText.Accounts.StatusPaused,
+                _ => UiText.Accounts.StatusDisconnected,
+            },
+            account.Status switch
+            {
+                GoogleAccountStatus.Healthy => "badge",
+                GoogleAccountStatus.Paused => "badge badge--warn",
+                _ => "badge badge--danger",
+            },
+            UiText.Plans.OfCap(
+                DisplayFormats.Bytes(account.QuotaUsedBytes),
+                DisplayFormats.Bytes(account.QuotaTotalBytes)),
+            percent,
+            PlanMeter.FillClass(percent),
+
+            // An account whose quota has never been read has a total of zero, and PlanMeter reads a
+            // cap of zero as full. That is right for a plan — being over a cap of nothing is being
+            // over it — and wrong here, where it would draw a brand-new account as a red bar at
+            // 100%. So the bar is absent instead, which is the shell's own rule for a figure that
+            // has not been read yet.
+            account.QuotaTotalBytes > 0);
+    }
+}
+
+/// <summary>One row of «نزدیک به سقف»: a workspace, and how much of its cap is gone.</summary>
+public sealed record WorkspacePressureRowViewModel(
+    Guid TenantId,
+    string Name,
+    string UsedText,
+    string PercentText,
+    double Percent,
+    string FillClass)
+{
+    public static WorkspacePressureRowViewModel From(WorkspacePressure workspace)
+    {
+        ArgumentNullException.ThrowIfNull(workspace);
+
+        var percent = PlanMeter.Percent(workspace.StorageUsedBytes, workspace.StorageQuotaBytes);
+
+        return new WorkspacePressureRowViewModel(
+            workspace.TenantId,
+            workspace.Name,
+            UiText.Plans.OfCap(
+                DisplayFormats.Bytes(workspace.StorageUsedBytes),
+                DisplayFormats.Bytes(workspace.StorageQuotaBytes)),
+            Numerals.Percent(percent),
+            percent,
+            PlanMeter.FillClass(percent));
+    }
+}
+
+/// <summary>
+/// One failed upload, as the «کارهای ناموفق» card reads it.
+/// </summary>
+/// <param name="Reason">
+/// The words the failure arrived in, untranslated, or the sentence that says none were recorded.
+/// Rendered on this screen and no other: it can carry a resumable session URI or the address of a
+/// Google account, and both are the operator's business alone.
+/// </param>
+public sealed record FailedTransferRowViewModel(
+    string FileName,
+    string SizeText,
+    string WhenText,
+    string Reason,
+    bool HasReason)
+{
+    public static FailedTransferRowViewModel From(FailedTransfer failure, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+
+        return new FailedTransferRowViewModel(
+            failure.FileName,
+            DisplayFormats.Bytes(failure.SizeBytes),
+            DisplayFormats.Relative(failure.FailedAt, now),
+            failure.Reason ?? UiText.Dashboard.NoReasonRecorded,
+            failure.Reason is { Length: > 0 });
+    }
+}
+
+/// <summary>
+/// «داشبورد» as the operator's screen renders it: the pool, who is running out, and what is broken.
+///
+/// <para>Every figure on it is counted from rows that exist. The two the comp draws and this product
+/// does not meter — each account's daily upload allowance, and the egress chart — are absent and
+/// said in words, because a bar drawn from nothing is a bar that is always empty and an operator
+/// reading it would conclude the pool is idle on the day it is not.</para>
+/// </summary>
+public sealed class OperatorDashboardPageViewModel
+{
+    public OperatorDashboardPageViewModel(OperatorDashboard dashboard)
+    {
+        ArgumentNullException.ThrowIfNull(dashboard);
+
+        Accounts = [.. dashboard.Accounts.Select(PoolAccountCardViewModel.From)];
+
+        HasAccounts = dashboard.Accounts.Count > 0;
+        ConnectedAccountsText = UiText.Dashboard.PoolAccounts(
+            dashboard.Accounts.Count - dashboard.DisconnectedAccountCount);
+
+        DisconnectedText = dashboard.DisconnectedAccountCount > 0
+            ? UiText.Dashboard.AccountsDisconnected(dashboard.DisconnectedAccountCount)
+            : null;
+
+        PoolUsedText = UiText.Plans.OfCap(
+            DisplayFormats.Bytes(dashboard.PoolUsedBytes),
+            DisplayFormats.Bytes(dashboard.PoolTotalBytes));
+
+        PoolPercent = PlanMeter.Percent(dashboard.PoolUsedBytes, dashboard.PoolTotalBytes);
+        PoolFillClass = PlanMeter.FillClass(PoolPercent);
+        HasPool = dashboard.PoolTotalBytes > 0;
+
+        // The same sentence the operator's plan screen prints, from the same two quantities. Over-
+        // commitment is shown rather than prevented — caps are ceilings, not reservations — and the
+        // note beside it is the one that says so.
+        CommittedText = UiText.Plans.Committed(
+            DisplayFormats.Bytes(dashboard.CommittedStorageBytes),
+            DisplayFormats.Bytes(dashboard.PoolTotalBytes));
+
+        IsOverCommitted = dashboard.IsOverCommitted;
+
+        WorkspaceCountText = UiText.Dashboard.WorkspaceCount(dashboard.WorkspaceCount);
+        HasWorkspaces = dashboard.WorkspaceCount > 0;
+
+        Pressing = [.. dashboard.WorkspacesNearTheirCeiling.Select(WorkspacePressureRowViewModel.From)];
+        CeilingNote = UiText.Dashboard.WorkspacesNote(dashboard.NearCeilingPercent);
+
+        InFlightText = Numerals.Count(dashboard.TransfersInFlight);
+        FailedText = Numerals.Count(dashboard.TransfersFailedInWindow);
+        FailedLabel = UiText.Dashboard.TransfersFailedLabel(dashboard.FailureWindowHours);
+        HasFailures = dashboard.TransfersFailedInWindow > 0;
+
+        var now = DateTimeOffset.UtcNow;
+
+        Failures = [.. dashboard.RecentFailures.Select(failure => FailedTransferRowViewModel.From(failure, now))];
+
+        // The card shows a handful and says how many it is not showing, so the list stays bounded
+        // and the figure above it stays the truth.
+        var hidden = dashboard.TransfersFailedInWindow - Failures.Count;
+        MoreFailuresText = hidden > 0 ? UiText.Dashboard.MoreFailures(hidden) : null;
+    }
+
+    public IReadOnlyList<PoolAccountCardViewModel> Accounts { get; }
+
+    public bool HasAccounts { get; }
+
+    public string ConnectedAccountsText { get; }
+
+    public string? DisconnectedText { get; }
+
+    public string PoolUsedText { get; }
+
+    public double PoolPercent { get; }
+
+    public string PoolFillClass { get; }
+
+    public bool HasPool { get; }
+
+    public string CommittedText { get; }
+
+    public bool IsOverCommitted { get; }
+
+    public string WorkspaceCountText { get; }
+
+    public bool HasWorkspaces { get; }
+
+    public IReadOnlyList<WorkspacePressureRowViewModel> Pressing { get; }
+
+    /// <summary>The threshold the reader selected the list with, in the sentence under it.</summary>
+    public string CeilingNote { get; }
+
+    public string InFlightText { get; }
+
+    public string FailedText { get; }
+
+    public string FailedLabel { get; }
+
+    public bool HasFailures { get; }
+
+    public IReadOnlyList<FailedTransferRowViewModel> Failures { get; }
+
+    public string? MoreFailuresText { get; }
+}

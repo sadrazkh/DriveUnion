@@ -4,6 +4,7 @@ using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Tenancy;
+using DriveUnion.Tests.Hosting;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -223,18 +224,11 @@ public sealed class TenantPanelHarness : WebApplicationFactory<Program>
 
             services.AddDbContext<DriveUnionDbContext>(options => options.UseSqlite(connection));
 
-            // The Telegram drainer, poller and sweeper open their own scopes on a background timer.
-            // Against a shared SQLite :memory: connection that turns into "database is locked" in
-            // the middle of a transaction these tests do open — a failure about the harness rather
-            // than about the product. Nothing here has a bot, a chat or an outbox row.
-            foreach (var background in services
-                .Where(d => d.ServiceType == typeof(IHostedService)
-                    && d.ImplementationType?.Namespace?.StartsWith(
-                        "DriveUnion.Infrastructure.Telegram", StringComparison.Ordinal) == true)
-                .ToList())
-            {
-                services.Remove(background);
-            }
+            // Every background loop, not only Telegram's. Naming one namespace left the trash purge
+            // sweeper running here, and it opens scopes on the same shared connection for the same
+            // reason — the version of this that listed the loops it knew about is exactly how the
+            // next one got missed.
+            services.RemoveEveryBackgroundLoop();
 
             // The one line Program.cs is missing. Written as the same call rather than as three
             // hand-rolled registrations, so a test that passes here is a test that passes there.
