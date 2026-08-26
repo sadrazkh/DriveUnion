@@ -15,8 +15,9 @@ internal sealed record LinkRow(
     int? MaxDownloads,
     int DownloadCount,
     bool IsActive,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    string? Note = null)
 {
     public ShareLinkSummary ToSummary() =>
-        new(Id, Slug, ExpiresAt, MaxDownloads, DownloadCount, IsActive);
+        new(Id, Slug, ExpiresAt, MaxDownloads, DownloadCount, IsActive, Note);
 }

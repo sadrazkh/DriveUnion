@@ -50,6 +50,11 @@ public sealed class ShareLinkService(
                 TenantId = tenantId,
                 ExpiresAt = request.ExpiresAt,
                 MaxDownloads = request.MaxDownloads,
+                // Cut rather than refused: this is a sentence typed into a box beside a button, and
+                // losing the link because the sentence ran long would be the wrong trade. Trimmed to
+                // null so an empty box and a box full of spaces are both «no note» — the page tests
+                // one thing rather than two.
+                Note = Trimmed(request.Note),
                 DownloadCount = 0,
                 IsActive = true,
                 CreatedAt = now,
@@ -62,7 +67,8 @@ public sealed class ShareLinkService(
                 await db.SaveChangesAsync(cancellationToken);
 
                 return new ShareLinkSummary(
-                    link.Id, link.Slug, link.ExpiresAt, link.MaxDownloads, link.DownloadCount, link.IsActive);
+                    link.Id, link.Slug, link.ExpiresAt, link.MaxDownloads, link.DownloadCount,
+                    link.IsActive, link.Note);
             }
             catch (DbUpdateException) when (attempt < MaxSlugAttempts)
             {
@@ -95,7 +101,8 @@ public sealed class ShareLinkService(
             .AsNoTracking()
             .Where(l => l.TenantId == tenantId && l.StoredFileId == fileId)
             .Select(l => new LinkRow(
-                l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive, l.CreatedAt))
+                l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive, l.CreatedAt,
+                l.Note))
             .ToListAsync(cancellationToken);
 
         // Newest first, sorted in memory: SQLite refuses ORDER BY on a DateTimeOffset and this code
@@ -119,7 +126,8 @@ public sealed class ShareLinkService(
                 (l, f) => new
                 {
                     Row = new LinkRow(
-                        l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive, l.CreatedAt),
+                        l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive,
+                        l.CreatedAt, l.Note),
                     FileId = f.Id,
                     f.Name,
                 })
@@ -141,5 +149,21 @@ public sealed class ShareLinkService(
                 cancellationToken);
 
         return affected > 0;
+    }
+
+    /// <summary>
+    /// The note as it will be stored: trimmed, cut to the column, or null.
+    ///
+    /// <para>Null and not an empty string, so «no note» is one state rather than two and the page
+    /// has one thing to test. Cut rather than refused — see <see cref="CreateShareLinkRequest"/>.
+    /// </para>
+    /// </summary>
+    private static string? Trimmed(string? note)
+    {
+        if (note?.Trim() is not { Length: > 0 } typed) return null;
+
+        return typed.Length <= ShareLink.MaxNoteLength
+            ? typed
+            : typed[..ShareLink.MaxNoteLength];
     }
 }

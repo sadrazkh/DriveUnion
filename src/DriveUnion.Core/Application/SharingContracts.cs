@@ -8,12 +8,19 @@ public sealed record ShareLinkSummary(
     DateTimeOffset? ExpiresAt,
     int? MaxDownloads,
     int DownloadCount,
-    bool IsActive);
+    bool IsActive,
+    string? Note = null);
 
+/// <param name="Note">
+/// A line for whoever opens the link. Trimmed and cut to <c>ShareLink.MaxNoteLength</c> by the
+/// service rather than refused: this is a sentence somebody typed into a box beside a button, and
+/// losing the link because the sentence ran long would be the wrong trade.
+/// </param>
 public sealed record CreateShareLinkRequest(
     Guid StoredFileId,
     DateTimeOffset? ExpiresAt,
-    int? MaxDownloads);
+    int? MaxDownloads,
+    string? Note = null);
 
 /// <summary>The owner's side of a link. Tenant-scoped, like everything else in the panel.</summary>
 public interface IShareLinkService
@@ -61,6 +68,24 @@ public interface IShareLinkService
 /// give the file to; making them ask a second endpoint for the header would be one more round trip
 /// protecting nothing.</para>
 /// </param>
+/// <param name="SharedBy">
+/// The workspace's name, and the only fact about the owner that crosses to this page.
+///
+/// <para>Not a leak and not an accident: the visitor was given this link deliberately, and a page
+/// that will not say who sent them a file is a page nobody trusts enough to press the button on.
+/// It is the workspace's own name — the one they chose and put on their invoices — and not a user's
+/// name or address, which is a different question the visitor was not asked to be told the answer
+/// to.</para>
+/// </param>
+/// <param name="Note">What the sender wrote for this link's recipients, or null.</param>
+/// <param name="Preview">
+/// What the page may draw, decided in <see cref="Previews"/> rather than by the view.
+///
+/// <para>Here rather than in Razor because the same decision governs the route that serves the
+/// bytes inline, and a page that offers a preview the route refuses — or worse, a route that serves
+/// inline what the page would never have asked for — is the two halves of one rule drifting apart.
+/// </para>
+/// </param>
 public sealed record PublicFileView(
     string Slug,
     string FileName,
@@ -70,7 +95,10 @@ public sealed record PublicFileView(
     int DownloadCount,
     int? MaxDownloads,
     DateTimeOffset? ExpiresAt,
-    EncryptionHeader? Encryption = null);
+    EncryptionHeader? Encryption = null,
+    string SharedBy = "",
+    string? Note = null,
+    PreviewKind Preview = PreviewKind.None);
 
 /// <summary>
 /// Everything the streaming route needs. <see cref="GoogleAccountId"/> and
@@ -85,6 +113,11 @@ public sealed record PublicFileView(
 /// belongs to somebody, and the bytes about to be sent are billed to them. It stays server-side
 /// like the two below.</para>
 /// </param>
+/// <param name="IsEncrypted">
+/// Whether the bytes are ciphertext. The streaming route serves them either way — that is the whole
+/// design — but the <i>inline</i> route must not, because there is nothing to render and an inline
+/// disposition is not something to hand out for a file nobody can read.
+/// </param>
 public sealed record PublicDownloadTicket(
     Guid ShareLinkId,
     Guid TenantId,
@@ -92,7 +125,8 @@ public sealed record PublicDownloadTicket(
     string DriveFileId,
     string FileName,
     string MimeType,
-    long SizeBytes);
+    long SizeBytes,
+    bool IsEncrypted = false);
 
 /// <summary>
 /// A slug lookup. <c>Reason</c> is null when no such slug exists, and set when a real link is

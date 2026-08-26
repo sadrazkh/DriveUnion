@@ -454,6 +454,19 @@ public static partial class UiText
             "اول فایل‌ها را انتخاب کن.",
             "Pick some files first.");
 
+        public static string LinkNoteLabel => Pick("یادداشت برای گیرنده", "A note for whoever opens it");
+
+        public static string LinkNotePlaceholder => Pick(
+            "مثلاً: فاکتور مرداد، رمز را جدا می‌فرستم.",
+            "e.g. August invoice — I'll send the password separately.");
+
+        /// <summary>
+        /// Says the two things somebody needs before typing: who reads it, and that it is optional.
+        /// </summary>
+        public static string LinkNoteHint => Pick(
+            "اختیاری. هرکسی که این لینک را باز کند این را می‌بیند.",
+            "Optional. Anyone who opens this link will see it.");
+
         /// <summary>The padlock's label, for a reader who is hearing the row rather than seeing it.</summary>
         public static string Locked => Pick("قفل‌شده", "Locked");
 

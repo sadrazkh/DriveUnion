@@ -259,14 +259,14 @@ public class PanelScreenLanguageTests
 
         var body = await LocalizationHarness.TextAsync(response);
 
-        body.Should().Contain("فایل به اشتراک گذاشته‌شده", "?lang= is the visitor's own click and it wins here");
+        body.Should().Contain("به اشتراک گذاشته‌شده توسط", "?lang= is the visitor's own click and it wins here");
         body.Should().Contain("<html dir=\"rtl\" lang=\"fa\"");
 
         // And the other way: no cookie at all, ?lang=en, still the English card.
         var english = await LocalizationHarness.TextAsync(
             await client.GetAsync(new Uri($"/d/{seeded.Slug}?lang=en", UriKind.Relative)));
 
-        english.Should().Contain("Shared file");
+        english.Should().Contain("Shared by");
         english.Should().Contain("<html dir=\"ltr\" lang=\"en\"");
     }
 

@@ -1,3 +1,4 @@
+@using DriveUnion.Core.Sharing
 @using DriveUnion.Web.Models
 @model FilesPageViewModel
 @{
@@ -446,6 +447,25 @@
                             <p class="muted" style="font-size: 12.5px; margin: 0 0 12px;">@UiText.Files.NoPublicLink</p>
                             <form method="post" action="@Url.Action("CreateLink", "Files", new { id = Model.Selected.Id, q = Model.Query, folder = Model.Folder })">
                                 @Html.AntiForgeryToken()
+                                @*
+                                    Optional, and above the button rather than behind a «more
+                                    options» toggle: it is one field, and the moment somebody has to
+                                    press something to find it is the moment nobody writes a note.
+
+                                    maxlength matches the column, so the browser stops the typing
+                                    rather than the server silently keeping the first 280 characters
+                                    of what was typed.
+                                *@
+                                <label class="field-label" for="link-note">@UiText.Files.LinkNoteLabel</label>
+                                <textarea id="link-note"
+                                          name="note"
+                                          class="control"
+                                          rows="2"
+                                          maxlength="@ShareLink.MaxNoteLength"
+                                          placeholder="@UiText.Files.LinkNotePlaceholder"></textarea>
+                                <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 6px 0 10px;">
+                                    @UiText.Files.LinkNoteHint
+                                </p>
                                 <button type="submit" class="btn btn--primary btn--block">@UiText.Files.CreateLink</button>
                             </form>
                         }

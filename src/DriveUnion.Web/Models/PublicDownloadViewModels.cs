@@ -1,3 +1,4 @@
+using DriveUnion.Core.Sharing;
 using Microsoft.Net.Http.Headers;
 
 namespace DriveUnion.Web.Models;
@@ -90,7 +91,19 @@ public sealed record PublicDownloadViewModel(
     /// the script that does the decrypting, and a string the view writes into a data attribute is
     /// how every other island on this site is handed its input. The C# side reads none of it.</para>
     /// </summary>
-    string? EncryptionJson = null);
+    string? EncryptionJson = null,
+
+    /// <summary>The workspace that shared it, or empty when there is nothing to say.</summary>
+    string SharedBy = "",
+
+    /// <summary>The sender's line for this link's recipients. Razor encodes it; see the view.</summary>
+    string? Note = null,
+
+    /// <summary>What may be drawn, decided in <c>Previews</c> and never in the view.</summary>
+    PreviewKind Preview = PreviewKind.None,
+
+    /// <summary>Where the inline bytes are, for the one of those that is not <c>None</c>.</summary>
+    string PreviewUrl = "");
 
 /// <summary>
 /// The refusal card. It carries no slug, no reason and no file: revoked, expired, capped and

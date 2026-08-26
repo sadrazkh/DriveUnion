@@ -431,6 +431,7 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
         builder.Entity<ShareLink>(e =>
         {
             e.Property(l => l.Slug).HasMaxLength(32);
+            e.Property(l => l.Note).HasMaxLength(ShareLink.MaxNoteLength);
             // The public route's only lookup, and the guard against a slug collision becoming two
             // links that resolve to different files depending on row order.
             e.HasIndex(l => l.Slug).IsUnique();

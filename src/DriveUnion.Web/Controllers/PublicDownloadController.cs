@@ -96,7 +96,11 @@ public sealed class PublicDownloadController(
             $"{PublicLinkFormatter.Path(file.Slug)}/file",
             file.Encryption is { } header
                 ? JsonSerializer.Serialize(header, PublicJson)
-                : null);
+                : null,
+            file.SharedBy,
+            file.Note,
+            file.Preview,
+            $"{PublicLinkFormatter.Path(file.Slug)}/preview");
 
         // The count on the card moves and the link can be revoked while a copy sits in a cache.
         Response.Headers.CacheControl = "no-store";
@@ -141,7 +145,74 @@ public sealed class PublicDownloadController(
         // Range header is the whole question, which is exactly what DownloadCounting takes. A request
         // that does not count reserves nothing: a player's one-byte probe and a mid-file seek are
         // somebody continuing a download that has already been paid for.
-        var counts = DownloadCounting.CountsAsDownload(rangeHeader);
+        return await StreamAsync(
+            ticket,
+            rangeHeader,
+            DownloadCounting.CountsAsDownload(rangeHeader),
+            inline: false,
+            language,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The same bytes, for a page to draw rather than for somebody to keep.
+    ///
+    /// <para>Separate from <see cref="Download"/> for two reasons that both had to be true.
+    /// <c>Content-Disposition: inline</c> is what makes a PDF appear in a frame instead of landing in
+    /// the downloads folder, and it is also what turns a served file into something a browser will
+    /// execute — so it is issued from one place, for one list of types, and never for anything a
+    /// visitor could have chosen. And a page load is not a download: a link capped at five would be
+    /// spent by five people looking at it.</para>
+    ///
+    /// <para>Not spending the cap is the awkward half, and <c>Previews.MostBytesToShowWhole</c> is
+    /// what holds it — see there. The egress is metered either way.</para>
+    /// </summary>
+    [HttpGet("/d/{slug}/preview")]
+    [EnableRateLimiting(DriveUnionRateLimits.PublicDownload)]
+    public async Task<IActionResult> Preview(
+        string slug,
+        [FromQuery(Name = "lang")] string? lang,
+        CancellationToken cancellationToken)
+    {
+        var language = ResolveLanguage(lang);
+
+        if (!SlugGenerator.IsWellFormed(slug)) return Unavailable(language);
+
+        var ticket = await links.ResolveForDownloadAsync(slug, cancellationToken);
+        if (ticket is null) return Unavailable(language);
+
+        // Asked again here rather than trusted from the page that linked here. The page and this
+        // route read the same rule, and this is the side of it that matters: the page can only offer
+        // what somebody drew, and a URL is something anybody can type.
+        if (ticket.IsEncrypted
+            || ticket.SizeBytes > Previews.MostBytesToShowWhole
+            || !Previews.MayBeInline(ticket.MimeType))
+        {
+            return Unavailable(language);
+        }
+
+        var rangeHeader = Request.Headers.Range.Count > 0 ? Request.Headers.Range.ToString() : null;
+
+        return await StreamAsync(ticket, rangeHeader, counts: false, inline: true, language, cancellationToken);
+    }
+
+    /// <summary>
+    /// Browser → this server → Google, one buffer at a time, for whichever of the two routes above
+    /// asked.
+    /// </summary>
+    /// <param name="counts">
+    /// Whether this request takes one of the link's downloads. False for a seek, for a resume, and
+    /// for every preview.
+    /// </param>
+    /// <param name="inline">Whether the browser is being asked to render it rather than save it.</param>
+    private async Task<IActionResult> StreamAsync(
+        PublicDownloadTicket ticket,
+        string? rangeHeader,
+        bool counts,
+        bool inline,
+        PublicLanguage language,
+        CancellationToken cancellationToken)
+    {
         var reserved = false;
 
         if (counts)
@@ -191,7 +262,7 @@ public sealed class PublicDownloadController(
                 Response.StatusCode = download.IsPartial
                     ? StatusCodes.Status206PartialContent
                     : StatusCodes.Status200OK;
-                WriteFileHeaders(ticket);
+                WriteFileHeaders(ticket, inline);
 
                 if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
                 if (download.ContentLength is { } contentLength) Response.ContentLength = contentLength;
@@ -336,13 +407,18 @@ public sealed class PublicDownloadController(
     /// The headers the stream and the probe agree on, in one place — a player must not be told two
     /// different things about the same file depending on which verb it used.
     /// </summary>
-    private void WriteFileHeaders(PublicDownloadTicket ticket)
+    private void WriteFileHeaders(PublicDownloadTicket ticket, bool inline = false)
     {
         Response.ContentType = string.IsNullOrWhiteSpace(ticket.MimeType)
             ? "application/octet-stream"
             : ticket.MimeType;
         Response.Headers.AcceptRanges = "bytes";
-        Response.Headers.ContentDisposition = Disposition(ticket.FileName);
+        Response.Headers.ContentDisposition = Disposition(ticket.FileName, inline);
+
+        // Belt and braces on the one route that renders. The type came from a browser at upload time
+        // and is echoed back here, so a file lying about what it is must not be given a second chance
+        // by a browser sniffing the bytes and deciding for itself.
+        Response.Headers.XContentTypeOptions = "nosniff";
     }
 
     private async Task RecordAsync(Guid shareLinkId, CancellationToken cancellationToken)
@@ -372,11 +448,15 @@ public sealed class PublicDownloadController(
         return result;
     }
 
-    private static string Disposition(string fileName)
+    /// <param name="inline">
+    /// Only ever true on <see cref="Preview"/>, and only for a type on <c>Previews</c>' list. This is
+    /// the one word in the whole response that decides whether a browser saves a file or runs it.
+    /// </param>
+    private static string Disposition(string fileName, bool inline)
     {
         // The names are Persian. SetHttpFileName writes both the RFC 5987 filename* and an ASCII
         // fallback for clients that cannot read it, which is exactly the pair RFC 6266 asks for.
-        var disposition = new ContentDispositionHeaderValue("attachment");
+        var disposition = new ContentDispositionHeaderValue(inline ? "inline" : "attachment");
         disposition.SetHttpFileName(fileName);
 
         return disposition.ToString();

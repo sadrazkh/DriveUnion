@@ -435,15 +435,27 @@ public sealed class FilesController(
     /// A link with no expiry and no cap, which is what the panel's «ساخت لینک» means. Expiry, the
     /// download cap and the rest of the settings panel are the API's business.
     /// </summary>
+    /// <param name="note">
+    /// What the sender wants whoever opens the link to read, or nothing.
+    ///
+    /// <para>Bound loose and not validated here: the service trims it, cuts it to the column and
+    /// turns an empty one into null. A 400 on a sentence that ran three characters long would lose
+    /// somebody the link they were making.</para>
+    /// </param>
     [HttpPost("{id:guid}/links")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateLink(Guid id, string? q, Guid? folder, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateLink(
+        Guid id,
+        string? note,
+        string? q,
+        Guid? folder,
+        CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
         var link = await shareLinks.CreateAsync(
             tenantId,
-            new CreateShareLinkRequest(id, null, null),
+            new CreateShareLinkRequest(id, null, null, note),
             cancellationToken);
 
         TempData["Notice"] = UiText.Files.LinkCreated(PublicLinkFormatter.Display(PublicBaseUrl(), link.Slug));

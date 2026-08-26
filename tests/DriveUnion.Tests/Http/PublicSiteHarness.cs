@@ -146,7 +146,9 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
         DateTimeOffset? expiresAt = null,
         int? maxDownloads = null,
         int downloadCount = 0,
-        bool isActive = true)
+        bool isActive = true,
+        string? note = null,
+        long? sizeBytes = null)
     {
         var bytes = content ?? TestBytes(4096);
         var now = DateTimeOffset.UtcNow;
@@ -180,7 +182,10 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
             DriveFileId = $"1{unique}AbCdEf",
             Name = fileName,
             MimeType = mimeType,
-            SizeBytes = bytes.LongLength,
+            // Overridable, so a test can put a 26 MB figure on the row without seeding 26 MB into
+            // the fake Drive: what the preview ceiling reads is the catalogue, before anything is
+            // opened, and that is the thing worth exercising.
+            SizeBytes = sizeBytes ?? bytes.LongLength,
             CreatedAt = now,
             ModifiedAt = now,
         };
@@ -195,6 +200,7 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
             MaxDownloads = maxDownloads,
             DownloadCount = downloadCount,
             IsActive = isActive,
+            Note = note,
             CreatedAt = now,
         };
 

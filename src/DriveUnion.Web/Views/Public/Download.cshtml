@@ -1,3 +1,4 @@
+@using DriveUnion.Core.Sharing
 @using DriveUnion.Web.Models
 @model PublicDownloadViewModel
 @{
@@ -13,14 +14,77 @@
 }
 
 <div class="public-card">
-    <div class="ph public-preview">
-        <span class="ph-label" dir="ltr">@Model.KindText</span>
+    @*
+        The preview, or the stripes that stood in for one.
+
+        Every element below points at /d/{slug}/preview and never at storage: a thumbnail served from
+        googleusercontent.com would put the operator's account in the visitor's network log, which is
+        the one thing this product may never do. Which of them is drawn was decided by `Previews`,
+        server-side, against an allow-list — the view is told, it does not choose. `KindText` is the
+        caption underneath because a preview that fails to load leaves a page with nothing on it.
+    *@
+    <div class="public-preview @(Model.Preview == PreviewKind.None ? "ph" : "public-preview--media")">
+        @switch (Model.Preview)
+        {
+            case PreviewKind.Image:
+                @*
+                    alt is the file's own name: there is nothing else true to say about it.
+
+                    No loading="lazy". This is the first thing on the card and it is the reason the
+                    card looks like anything — deferring the one element the page exists to show is
+                    what that attribute is for not doing.
+                *@
+                <img class="preview-image" src="@Model.PreviewUrl" alt="@Model.FileName" />
+                break;
+
+            case PreviewKind.Video:
+                @* preload="metadata": enough for a first frame and a duration, not the whole film. *@
+                <video class="preview-media" src="@Model.PreviewUrl" controls preload="metadata"
+                       playsinline></video>
+                break;
+
+            case PreviewKind.Audio:
+                <audio class="preview-media" src="@Model.PreviewUrl" controls preload="metadata"></audio>
+                break;
+
+            case PreviewKind.Document:
+                @* title, because a frame without one is an unlabelled region to anything reading the page. *@
+                <iframe class="preview-frame" src="@Model.PreviewUrl" title="@Model.FileName"></iframe>
+                break;
+
+            default:
+                <span class="ph-label" dir="ltr">@Model.KindText</span>
+                break;
+        }
     </div>
 
     <div class="public-body">
-        <span class="badge" style="margin-bottom: 12px;">@PublicText.Pick(lang, "فایل به اشتراک گذاشته‌شده", "Shared file")</span>
+        <span class="badge" style="margin-bottom: 12px;">
+            @if (Model.SharedBy.Length > 0)
+            {
+                @* dir="auto": a workspace name is whatever its owner called it, in whichever script. *@
+                @PublicText.Pick(lang, "به اشتراک گذاشته‌شده توسط", "Shared by") <span dir="auto">@Model.SharedBy</span>
+            }
+            else
+            {
+                @PublicText.Pick(lang, "فایل به اشتراک گذاشته‌شده", "Shared file")
+            }
+        </span>
 
         <h1 class="public-title">@Model.FileName</h1>
+
+        @if (Model.Note is { Length: > 0 } note)
+        {
+            @*
+                What the sender wrote. Interpolated, so Razor encodes it — this is the one string on
+                this page that came from a person and is shown to a different person, and the whole
+                point of it is that it says whatever they wanted it to.
+
+                dir="auto" for the same reason the name has it, and white-space:pre-line so the line
+                breaks somebody typed are the line breaks that are read.
+            *@
+            <p class="sender-note" dir="auto">@note</p>
+        }
 
         <div class="meta-grid">
             <div class="meta-cell">

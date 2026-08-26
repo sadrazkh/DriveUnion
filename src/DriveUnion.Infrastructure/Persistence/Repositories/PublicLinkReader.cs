@@ -50,6 +50,14 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
                 e.WrappedKey))
             .FirstOrDefaultAsync(cancellationToken);
 
+        // The name on the card. Read by the file's tenant rather than the link's — they are the same
+        // row and always have been, and the file is what is being shown.
+        var sharedBy = await db.Tenants
+            .AsNoTracking()
+            .Where(t => t.Id == file.TenantId)
+            .Select(t => t.Name)
+            .FirstOrDefaultAsync(cancellationToken) ?? string.Empty;
+
         return new PublicLinkResolution(
             true,
             ShareLinkAvailability.Available,
@@ -62,7 +70,10 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
                 link.DownloadCount,
                 link.MaxDownloads,
                 link.ExpiresAt,
-                encryption));
+                encryption,
+                sharedBy,
+                link.Note,
+                Previews.For(file.MimeType, file.SizeBytes, encryption is not null)));
     }
 
     public async Task<PublicDownloadTicket?> ResolveForDownloadAsync(
@@ -81,7 +92,8 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
             file.DriveFileId,
             file.Name,
             file.MimeType,
-            file.SizeBytes);
+            file.SizeBytes,
+            await db.FileEncryptions.AnyAsync(e => e.StoredFileId == file.Id, cancellationToken));
     }
 
     public async Task<bool> TryReserveDownloadAsync(Guid shareLinkId, CancellationToken cancellationToken)
