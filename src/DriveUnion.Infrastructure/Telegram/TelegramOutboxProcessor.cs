@@ -243,6 +243,19 @@ public sealed class TelegramOutboxProcessor(
             return TelegramCall<TelegramSentMessage>.Failed(404, "The queued file is no longer available.");
         }
 
+        if (ticket.IsEncrypted)
+        {
+            // Ahead of the storage read, the size check and the file-id cache: none of those can
+            // change the answer, and reading two gigabytes out of Drive to then refuse them would
+            // spend the customer's egress on a delivery that was never going to happen.
+            await EditCardAsync(item, payload, TelegramMessages.FileIsLocked, null, cancellationToken);
+
+            // Permanent for the same reason a deletion is. A retry would find the same file, still
+            // encrypted, and this bot will never have the key — the browser holds it and nothing
+            // else does.
+            return TelegramCall<TelegramSentMessage>.Failed(409, "The queued file is encrypted.");
+        }
+
         var bot = await botSettings.ReadAsync(cancellationToken);
         var botUserId = bot.BotUserId;
 

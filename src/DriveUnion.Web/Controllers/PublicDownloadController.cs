@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Sharing;
@@ -40,6 +41,14 @@ public sealed class PublicDownloadController(
     /// </summary>
     private const int CopyBuffer = 81920;
 
+    /// <summary>
+    /// camelCase, because the only reader is the browser and the format's TypeScript definition is
+    /// where the field names actually live. Nothing here is escaped into HTML by this serialiser —
+    /// the view writes it into an attribute, which Razor encodes.
+    /// </summary>
+    private static readonly JsonSerializerOptions PublicJson =
+        new(JsonSerializerDefaults.Web);
+
     [HttpGet("/d/{slug}")]
     [EnableRateLimiting(DriveUnionRateLimits.PublicPage)]
     public async Task<IActionResult> Landing(
@@ -72,7 +81,9 @@ public sealed class PublicDownloadController(
         var model = new PublicDownloadViewModel(
             language,
             file.FileName,
-            DisplayFormats.Bytes(file.SizeBytes),
+            // The file's own size for a locked one, not the ciphertext's: the visitor is about to
+            // receive the file, and the tags that make the stored figure larger are not part of it.
+            DisplayFormats.Bytes(file.Encryption?.PlaintextLength ?? file.SizeBytes),
             DisplayFormats.FileKind(file.FileName, file.MimeType),
             language == PublicLanguage.Fa
                 ? DisplayFormats.PersianDate(file.CreatedAt)
@@ -82,7 +93,10 @@ public sealed class PublicDownloadController(
                 ? $"{PersianDigits.Count(file.DownloadCount)} بار دانلود شده"
                 : $"Downloaded {file.DownloadCount} times",
             PublicLinkFormatter.Display(baseUrl, file.Slug),
-            $"{PublicLinkFormatter.Path(file.Slug)}/file");
+            $"{PublicLinkFormatter.Path(file.Slug)}/file",
+            file.Encryption is { } header
+                ? JsonSerializer.Serialize(header, PublicJson)
+                : null);
 
         // The count on the card moves and the link can be revoked while a copy sits in a cache.
         Response.Headers.CacheControl = "no-store";

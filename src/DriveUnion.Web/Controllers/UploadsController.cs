@@ -33,7 +33,11 @@ public sealed class UploadsController(IUploadCoordinator coordinator) : Controll
         var result = await coordinator.BeginAsync(
             tenantId,
             User.GetUserId(),
-            new BeginUploadRequest(payload.FileName, payload.MimeType, payload.SizeBytes),
+            new BeginUploadRequest(
+                payload.FileName,
+                payload.MimeType,
+                payload.SizeBytes,
+                payload.Encryption),
             cancellationToken);
 
         var response = new BeginUploadResponse(result.SessionId, result.ChunkSize);

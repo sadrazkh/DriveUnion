@@ -19,6 +19,21 @@ public sealed class BeginUploadPayload
 
     [Range(0, long.MaxValue)]
     public long SizeBytes { get; init; }
+
+    /// <summary>
+    /// What the browser will need to open this file again, for an upload it encrypted itself.
+    ///
+    /// <para>Absent for an ordinary upload, and absent from anything the server can act on either
+    /// way: it is bound here, checked for shape by the coordinator, and stored. Nothing in it is
+    /// secret — the wrapped key is only a key to whoever also has the passphrase — and nothing in it
+    /// is usable by this process.</para>
+    ///
+    /// <para>No <c>[Required]</c>, and no validation attributes on the way in. Shape is
+    /// <see cref="EncryptionHeader.IsWellFormed"/>'s to judge, in one place, because the API and the
+    /// panel post the same body and a rule written twice is a rule that will disagree with itself.
+    /// </para>
+    /// </summary>
+    public EncryptionHeader? Encryption { get; init; }
 }
 
 public sealed record BeginUploadResponse(Guid Id, int ChunkSize);

@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import ThemeLanguageToggle from './islands/ThemeLanguageToggle.vue';
+import UnlockDownload from './islands/UnlockDownload.vue';
 import UploadDock from './islands/UploadDock.vue';
 import UploadPanel from './islands/UploadPanel.vue';
 import { createUploadStore, type UploadConfig, type UploadStore } from './uploads/store';
@@ -113,6 +114,24 @@ const islands: Record<string, Island> = {
     region: 'content',
     mount: (el) => {
       const app = createApp(UploadPanel, { store: uploadStore(), config: readUploadConfig });
+
+      app.mount(el);
+      return () => app.unmount();
+    },
+  },
+
+  'unlock-download': {
+    // Drawn on the public download card, which is its own layout with no swapped region in it — the
+    // same reason the theme control there is a shell island. This page is loaded, used and left.
+    region: 'shell',
+    mount: (el) => {
+      const app = createApp(UnlockDownload, {
+        // The view wrote the header into the attribute; the C# that put it there never read it.
+        header: JSON.parse(el.dataset.header ?? '{}'),
+        downloadUrl: el.dataset.downloadUrl ?? '',
+        fileName: el.dataset.fileName ?? 'download',
+        lang: el.dataset.lang === 'en' ? 'en' : 'fa',
+      });
 
       app.mount(el);
       return () => app.unmount();

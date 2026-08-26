@@ -30,23 +30,23 @@ public sealed class FileEncryptionStore(DriveUnionDbContext db) : IFileEncryptio
                 e.WrappedKey))
             .FirstOrDefaultAsync(cancellationToken);
 
-    public async Task<IReadOnlySet<Guid>> EncryptedAmongAsync(
+    public async Task<IReadOnlyDictionary<Guid, long>> PlaintextLengthsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> fileIds,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(fileIds);
 
-        if (fileIds.Count == 0) return new HashSet<Guid>();
+        if (fileIds.Count == 0) return new Dictionary<Guid, long>();
 
-        // Ids only. A listing draws a padlock, and sending every wrapped key to a screen that needed
-        // one bit per row would be handing out material for nothing.
-        var encrypted = await db.FileEncryptions
+        // Two columns. A listing draws a padlock and a size; the wrapped key that would open the file
+        // has no business on a screen that needed neither.
+        var rows = await db.FileEncryptions
             .AsNoTracking()
             .Where(e => e.TenantId == tenantId && fileIds.Contains(e.StoredFileId))
-            .Select(e => e.StoredFileId)
+            .Select(e => new { e.StoredFileId, e.PlaintextLength })
             .ToListAsync(cancellationToken);
 
-        return encrypted.ToHashSet();
+        return rows.ToDictionary(r => r.StoredFileId, r => r.PlaintextLength);
     }
 }

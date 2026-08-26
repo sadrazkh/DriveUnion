@@ -386,16 +386,48 @@ public class UploadDockTests
     private static string? ElementAround(string markup, int index)
     {
         var opened = markup.LastIndexOf('<', index);
-        var closed = markup.LastIndexOf('>', index);
+        if (opened < 0) return null;
 
-        if (opened < 0 || closed < 0) return null;
+        var closed = TagEnd(markup, opened);
 
-        // An unclosed '<' before the index means the index is in an attribute.
-        if (opened > closed) return null;
+        // The index is inside the tag rather than in the text after it: an :aria-valuenow, or a
+        // v-if, which is script and not something a reader is laid out.
+        return closed < 0 || closed >= index ? null : markup[opened..(closed + 1)];
+    }
 
-        var start = markup.LastIndexOf('<', closed);
+    /// <summary>
+    /// The '&gt;' that actually ends the tag opening at <paramref name="at"/>, ignoring the ones
+    /// inside attribute values.
+    ///
+    /// <para>Not pedantry: <c>v-if="a.length &gt; 0"</c> is ordinary Vue, and reading the first
+    /// '&gt;' as the end of the tag cuts the element in half. That reported this test's own template
+    /// as a defect once — the visible failure — and the invisible one is the other direction, where a
+    /// mis-bounded tag swallows the <c>dir="ltr"</c> of the element it belongs to and a genuinely
+    /// undirected figure goes unnoticed.</para>
+    /// </summary>
+    private static int TagEnd(string markup, int at)
+    {
+        var quote = '\0';
 
-        return start < 0 ? null : markup[start..(closed + 1)];
+        for (var i = at; i < markup.Length; i++)
+        {
+            var c = markup[i];
+
+            if (quote != '\0')
+            {
+                if (c == quote) quote = '\0';
+            }
+            else if (c is '"' or '\'')
+            {
+                quote = c;
+            }
+            else if (c == '>')
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>The braces of the block a Razor conditional opens after <paramref name="at"/>.</summary>

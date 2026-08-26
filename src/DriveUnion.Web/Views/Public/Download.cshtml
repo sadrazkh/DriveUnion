@@ -41,17 +41,48 @@
             </div>
         </div>
 
-        <div class="public-cta">
-            <a class="btn btn--primary btn--cta" href="@Model.DownloadUrl">
-                @PublicText.Pick(lang, "دانلود فایل", "Download file")
-            </a>
-            <span class="public-assurance">
-                @PublicText.Pick(
-                    lang,
-                    "دانلود مستقیم و استریم‌شده از سرور ما · بدون تبلیغ، بدون انتظار",
-                    "Streamed directly from our server · no ads, no waiting")
-            </span>
-        </div>
+        @if (Model.EncryptionJson is { } header)
+        {
+            @*
+                A locked file, and the button is deliberately not here.
+
+                The bytes behind /d/{slug}/file are ciphertext, so an ordinary download link would
+                hand the visitor a file of the right name and the right length that no program on
+                their machine can open — the one failure that looks like success. What replaces it
+                asks for the key and does the work in the tab.
+
+                The fallback below is what a reader with no JavaScript sees, and it says so instead
+                of offering the link anyway. There is nothing this server can do for them: it does
+                not have the key and could not use it if it did.
+            *@
+            <div class="public-cta"
+                 data-island="unlock-download"
+                 data-header="@header"
+                 data-download-url="@Model.DownloadUrl"
+                 data-file-name="@Model.FileName"
+                 data-lang="@PublicText.LangCode(lang)">
+                <span class="public-assurance">
+                    @PublicText.Pick(
+                        lang,
+                        "این فایل قفل است و برای باز شدن به جاوااسکریپت نیاز دارد.",
+                        "This file is locked and needs JavaScript to be opened.")
+                </span>
+            </div>
+        }
+        else
+        {
+            <div class="public-cta">
+                <a class="btn btn--primary btn--cta" href="@Model.DownloadUrl">
+                    @PublicText.Pick(lang, "دانلود فایل", "Download file")
+                </a>
+                <span class="public-assurance">
+                    @PublicText.Pick(
+                        lang,
+                        "دانلود مستقیم و استریم‌شده از سرور ما · بدون تبلیغ، بدون انتظار",
+                        "Streamed directly from our server · no ads, no waiting")
+                </span>
+            </div>
+        }
     </div>
 
     <div class="public-foot">

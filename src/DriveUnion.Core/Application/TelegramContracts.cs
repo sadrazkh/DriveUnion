@@ -252,13 +252,22 @@ public interface ITelegramOutboxWriter
 /// as the public download path's server-side ticket: the two identifying fields exist because
 /// <c>IDriveClient</c> needs them, and they must never reach a message, a log line or a card.</para>
 /// </summary>
+/// <param name="IsEncrypted">
+/// Whether what is stored is ciphertext, and therefore whether this delivery can happen at all.
+///
+/// <para>The drainer is the third of the three paths that cannot decrypt — the API's content route
+/// and the S3 gateway are the others — and it is the one where sending it anyway would be least
+/// visible: a document arrives in a chat, with the right name and the right size, and is opened by
+/// somebody days later. It is refused before the file is read, and the refusal says why.</para>
+/// </param>
 public sealed record TelegramDeliveryTicket(
     Guid StoredFileId,
     Guid GoogleAccountId,
     string DriveFileId,
     string FileName,
     string MimeType,
-    long SizeBytes);
+    long SizeBytes,
+    bool IsEncrypted = false);
 
 /// <summary>
 /// Resolves a queued delivery back to the bytes it names, scoped to the tenant on the outbox row.

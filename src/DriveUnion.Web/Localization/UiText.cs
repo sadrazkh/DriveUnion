@@ -454,6 +454,17 @@ public static partial class UiText
             "اول فایل‌ها را انتخاب کن.",
             "Pick some files first.");
 
+        /// <summary>The padlock's label, for a reader who is hearing the row rather than seeing it.</summary>
+        public static string Locked => Pick("قفل‌شده", "Locked");
+
+        /// <summary>
+        /// Said in the detail panel, where there is room to say why the ordinary controls behave
+        /// differently: the bot will refuse this file and the link page will ask for the key.
+        /// </summary>
+        public static string LockedExplained => Pick(
+            "این فایل رمزگذاری‌شده است. ما نسخه‌ی خوانای آن را نداریم — گیرنده رمز را در مرورگر خودش وارد می‌کند. ربات تلگرام نمی‌تواند آن را بفرستد.",
+            "This file is encrypted. We hold no readable copy — whoever opens it enters the key in their own browser. The Telegram bot cannot send it.");
+
         public static string FilesMoved(int files) => Pick(
             $"{Numerals.Count(files)} فایل منتقل شد.",
             files == 1 ? "1 file was moved." : $"{Numerals.Count(files)} files were moved.");

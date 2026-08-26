@@ -29,7 +29,8 @@ public sealed record FileRowViewModel(
     int ActiveLinkCount,
     bool IsSelected,
     string? FolderText = null,
-    IReadOnlyList<TagViewModel>? Tags = null)
+    IReadOnlyList<TagViewModel>? Tags = null,
+    bool IsEncrypted = false)
 {
     public IReadOnlyList<TagViewModel> Labels => Tags ?? [];
 
@@ -72,7 +73,8 @@ public sealed record FileDetailViewModel(
     string SizeText,
     string KindText,
     string CreatedText,
-    IReadOnlyList<ShareLinkViewModel> Links)
+    IReadOnlyList<ShareLinkViewModel> Links,
+    bool IsEncrypted = false)
 {
     public ShareLinkViewModel? ActiveLink => Links.FirstOrDefault(link => link.IsActive);
 }

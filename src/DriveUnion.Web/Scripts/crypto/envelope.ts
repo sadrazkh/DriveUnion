@@ -7,6 +7,7 @@ import {
   fromBase64,
   nonceFor,
   toBase64,
+  type Bytes,
   type EncryptionHeader,
 } from './format';
 
@@ -31,6 +32,32 @@ export interface SealedFile {
 }
 
 /**
+ * One derivation, kept for as long as a batch of files needs it.
+ *
+ * <p>Six hundred thousand rounds is between half a second and a second of blocked CPU. Per file that
+ * is nothing; for the twenty somebody drops onto the upload screen at once it is twenty seconds of a
+ * frozen tab before the first byte moves, which is the difference between a feature and one nobody
+ * uses. So the salt and the wrapping key it derives are made once and the batch shares them.</p>
+ *
+ * <p>What is <i>not</i> shared is the content key: every file still gets its own, and every file is
+ * still opened on its own. The salt exists to stop one precomputed table from attacking every
+ * passphrase in the world at once, and a salt that is fresh per batch does that as well as one that
+ * is fresh per file. Sharing the content key instead would have been the version of this that is
+ * actually weaker, and it is worth saying which corner was cut and which was not.</p>
+ */
+export interface Wrapping {
+  readonly salt: Bytes;
+  readonly iterations: number;
+  readonly key: CryptoKey;
+}
+
+export async function deriveWrapping(secret: Secret): Promise<Wrapping> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+
+  return { salt, iterations: KdfIterations, key: await wrappingKey(secret, salt, KdfIterations) };
+}
+
+/**
  * A recovery key, for the customer who would rather not choose a passphrase.
  *
  * <p>Thirty-two bytes of base64url in groups of six, because a string somebody may have to type or
@@ -48,7 +75,7 @@ export function newRecoveryKey(): string {
 /** Derives the wrapping key. The salt and the count come from the header, so an old file still opens. */
 async function wrappingKey(
   secret: Secret,
-  salt: Uint8Array,
+  salt: Bytes,
   iterations: number,
 ): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
@@ -76,7 +103,14 @@ async function wrappingKey(
  * it holds — and the plain form is never serialised anywhere.</p>
  */
 export async function seal(secret: Secret, plaintextLength: number): Promise<SealedFile> {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return sealWith(await deriveWrapping(secret), plaintextLength);
+}
+
+/** <see cref="seal"/> against a derivation already paid for. */
+export async function sealWith(
+  wrapping: Wrapping,
+  plaintextLength: number,
+): Promise<SealedFile> {
   const noncePrefix = crypto.getRandomValues(new Uint8Array(NoncePrefixBytes));
   const wrapNonce = crypto.getRandomValues(new Uint8Array(12));
 
@@ -85,10 +119,8 @@ export async function seal(secret: Secret, plaintextLength: number): Promise<Sea
     'decrypt',
   ]);
 
-  const wrapper = await wrappingKey(secret, salt, KdfIterations);
-
   const wrapped = new Uint8Array(
-    await crypto.subtle.wrapKey('raw', key, wrapper, {
+    await crypto.subtle.wrapKey('raw', key, wrapping.key, {
       name: 'AES-GCM',
       iv: wrapNonce as BufferSource,
     }),
@@ -107,8 +139,8 @@ export async function seal(secret: Secret, plaintextLength: number): Promise<Sea
       segmentSize: SegmentSize,
       noncePrefix: toBase64(noncePrefix),
       plaintextLength,
-      kdfSalt: toBase64(salt),
-      kdfIterations: KdfIterations,
+      kdfSalt: toBase64(wrapping.salt),
+      kdfIterations: wrapping.iterations,
       wrappedKey: toBase64(envelope),
     },
   };
@@ -148,8 +180,8 @@ export async function encryptSegment(
   header: EncryptionHeader,
   index: number,
   isFinal: boolean,
-  plain: Uint8Array,
-): Promise<Uint8Array> {
+  plain: Bytes,
+): Promise<Bytes> {
   const sealed = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
@@ -175,8 +207,8 @@ export async function decryptSegment(
   header: EncryptionHeader,
   index: number,
   isFinal: boolean,
-  sealed: Uint8Array,
-): Promise<Uint8Array | null> {
+  sealed: Bytes,
+): Promise<Bytes | null> {
   try {
     const plain = await crypto.subtle.decrypt(
       {

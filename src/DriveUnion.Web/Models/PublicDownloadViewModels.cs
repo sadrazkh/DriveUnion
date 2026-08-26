@@ -81,7 +81,16 @@ public sealed record PublicDownloadViewModel(
     string ExpiryText,
     string DownloadCountText,
     string DisplayUrl,
-    string DownloadUrl);
+    string DownloadUrl,
+    /// <summary>
+    /// The header, as JSON, for a file that was locked before it was uploaded — and null for one
+    /// that was not.
+    ///
+    /// <para>JSON rather than the record, because the only thing on this page that can act on it is
+    /// the script that does the decrypting, and a string the view writes into a data attribute is
+    /// how every other island on this site is handed its input. The C# side reads none of it.</para>
+    /// </summary>
+    string? EncryptionJson = null);
 
 /// <summary>
 /// The refusal card. It carries no slug, no reason and no file: revoked, expired, capped and

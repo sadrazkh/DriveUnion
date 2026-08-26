@@ -26,6 +26,7 @@ public sealed class FilesController(
     IFolderTree folders,
     ITags tags,
     IShareLinkService shareLinks,
+    IFileEncryption encryption,
     IAntiforgery antiforgery,
     IOptions<DriveUnionWebOptions> options) : Controller
 {
@@ -88,6 +89,12 @@ public sealed class FilesController(
         var labels = await tags.ListAsync(tenantId, cancellationToken);
         var onFiles = await tags.ForFilesAsync(tenantId, [.. files.Select(f => f.Id)], cancellationToken);
 
+        // One row per encrypted file on this page and nothing for the rest, which is nearly all of
+        // them. Membership draws the padlock; the value is the size, because what the catalogue
+        // holds for a locked file is the ciphertext and that is not the file the customer has.
+        var lengths = await encryption.PlaintextLengthsAsync(
+            tenantId, [.. files.Select(f => f.Id)], cancellationToken);
+
         // One read of the tree, used three ways: the folders drawn as rows, the breadcrumb above
         // them, and the «move to…» list in the detail panel. Reading it once is not an optimisation
         // — it is what stops the three of them disagreeing inside one response.
@@ -98,7 +105,8 @@ public sealed class FilesController(
             .Select(file => new FileRowViewModel(
                 file.Id,
                 file.Name,
-                DisplayFormats.Bytes(file.SizeBytes),
+                DisplayFormats.Bytes(
+                    lengths.TryGetValue(file.Id, out var plain) ? plain : file.SizeBytes),
                 DisplayFormats.Relative(file.ModifiedAt, now),
                 file.ActiveLinkCount,
                 file.Id == selected,
@@ -109,7 +117,8 @@ public sealed class FilesController(
                         : UiText.Files.RootFolder,
                 onFiles.TryGetValue(file.Id, out var mine)
                     ? [.. mine.Select(t => new TagViewModel(t.Id, t.Name, 0))]
-                    : []))
+                    : [],
+                lengths.ContainsKey(file.Id)))
             .ToList();
 
         var folderRows = everywhere
@@ -147,7 +156,16 @@ public sealed class FilesController(
         if (selected is { } selectedId)
         {
             var file = await catalog.GetAsync(tenantId, selectedId, cancellationToken);
-            if (file is not null) detail = ToDetail(file, now);
+
+            // The panel may be open on a file the table is not drawing — a search that has since
+            // narrowed past it — so this asks about the one file rather than reusing the page's map.
+            if (file is not null)
+            {
+                var forSelected = await encryption.PlaintextLengthsAsync(
+                    tenantId, [selectedId], cancellationToken);
+
+                detail = ToDetail(file, now, forSelected.TryGetValue(selectedId, out var real) ? real : null);
+            }
         }
 
         return View(new FilesPageViewModel(
@@ -458,17 +476,22 @@ public sealed class FilesController(
         UserRole = User.IsOperator() ? UiText.Shell.RoleOperator : UiText.Shell.RoleUser,
     };
 
-    private FileDetailViewModel ToDetail(FileDetail file, DateTimeOffset now)
+    /// <param name="plaintextLength">
+    /// The file's own length when it is encrypted, and null when it is not — which is also how this
+    /// method knows which of the two it is looking at.
+    /// </param>
+    private FileDetailViewModel ToDetail(FileDetail file, DateTimeOffset now, long? plaintextLength)
     {
         var baseUrl = PublicBaseUrl();
 
         return new FileDetailViewModel(
             file.Id,
             file.Name,
-            DisplayFormats.Bytes(file.SizeBytes),
+            DisplayFormats.Bytes(plaintextLength ?? file.SizeBytes),
             DisplayFormats.FileKind(file.Name, file.MimeType),
             DisplayFormats.PanelDateTime(file.CreatedAt),
-            [.. file.Links.Select(link => ToLink(link, baseUrl, now))]);
+            [.. file.Links.Select(link => ToLink(link, baseUrl, now))],
+            plaintextLength is not null);
     }
 
     private static ShareLinkViewModel ToLink(ShareLinkSummary link, string baseUrl, DateTimeOffset now)

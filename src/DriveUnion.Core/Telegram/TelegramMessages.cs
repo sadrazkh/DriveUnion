@@ -129,6 +129,17 @@ public static class TelegramMessages
     /// <summary>The second line of a card for a file the bot cannot carry. It does not apologise.</summary>
     public const string TooLargeToSend = "بزرگ‌تر از سقف تلگرام — با لینک بفرستید";
 
+    /// <summary>
+    /// A locked file, which this bot cannot send and must not appear to.
+    ///
+    /// <para>It names the remedy because there is one: the public link page asks for the key and does
+    /// the unlocking in the visitor's own browser, which is the only place it can happen. Neither
+    /// this process nor Telegram has anything to unlock it with, and a document delivered into a chat
+    /// as ciphertext would be a file nobody discovers is unreadable until they try to open it.</para>
+    /// </summary>
+    public const string FileIsLocked =
+        "این فایل قفل است و ربات نمی‌تواند بازش کند. با لینک بفرستید — گیرنده رمز را در مرورگر خودش وارد می‌کند.";
+
     public static string InboundTooLarge(string ceiling, string uploaderUrl) =>
         $"این فایل بزرگ‌تر از {ceiling} است و از راه تلگرام نمی‌آید.\n"
         + $"از بارگذارِ پنل بفرستید: {uploaderUrl}";

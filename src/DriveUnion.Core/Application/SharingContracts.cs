@@ -48,6 +48,19 @@ public interface IShareLinkService
 }
 
 /// <summary>What the public landing page shows. No account, no file id, no tenant.</summary>
+/// <param name="SizeBytes">
+/// What is stored, which for an encrypted file is the ciphertext and is longer than the file by one
+/// tag per segment. <c>Encryption.PlaintextLength</c> is the number to show when there is one.
+/// </param>
+/// <param name="Encryption">
+/// How to open it, for a file the uploader locked before sending — and null for every other file.
+///
+/// <para>Public, on an anonymous page, and that is not an oversight. None of it is secret: the salt
+/// and the nonce prefix are public by construction, and the wrapped key is a key only to somebody
+/// who also has the passphrase it is wrapped with. Whoever holds the link is who the owner meant to
+/// give the file to; making them ask a second endpoint for the header would be one more round trip
+/// protecting nothing.</para>
+/// </param>
 public sealed record PublicFileView(
     string Slug,
     string FileName,
@@ -56,7 +69,8 @@ public sealed record PublicFileView(
     DateTimeOffset CreatedAt,
     int DownloadCount,
     int? MaxDownloads,
-    DateTimeOffset? ExpiresAt);
+    DateTimeOffset? ExpiresAt,
+    EncryptionHeader? Encryption = null);
 
 /// <summary>
 /// Everything the streaming route needs. <see cref="GoogleAccountId"/> and

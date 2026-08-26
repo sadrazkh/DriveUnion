@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  type Bytes,
   SegmentSize,
   TagBytes,
   aadFor,
@@ -29,7 +30,7 @@ async function fastSeal(length: number) {
   return sealed;
 }
 
-function bytes(fill: number, length: number): Uint8Array {
+function bytes(fill: number, length: number): Bytes {
   return new Uint8Array(length).fill(fill);
 }
 

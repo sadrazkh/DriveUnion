@@ -294,6 +294,17 @@
                                 @* The term and the folder ride along, or opening a result is what
                                    ends the search that found it. *@
                                 <a href="@Url.Action("Index", "Files", new { q = Model.Query, folder = Model.Folder, tag = Model.Tag, selected = row.Id })">@row.Name</a>
+                                @if (row.IsEncrypted)
+                                {
+                                    @* A glyph with a word behind it. The padlock is what the eye
+                                       reads at a glance and the label is what a screen reader gets:
+                                       an unlabelled ideogram is a row that says nothing at all to
+                                       somebody listening to it. *@
+                                    <span class="badge" title="@UiText.Files.Locked">
+                                        <span aria-hidden="true">🔒</span>
+                                        <span class="visually-hidden">@UiText.Files.Locked</span>
+                                    </span>
+                                }
                                 @foreach (var label in row.Labels)
                                 {
                                     <span class="badge badge--muted">@label.Name</span>
@@ -386,6 +397,17 @@
                             <span class="muted">@UiText.Files.CreatedLabel</span>
                             <span class="push-end">@Model.Selected.CreatedText</span>
                         </div>
+
+                        @if (Model.Selected.IsEncrypted)
+                        {
+                            @* Said here rather than only drawn as a padlock, because this is where
+                               the consequences are: the share link below behaves differently and the
+                               bot will refuse the file, and both of those are better read now than
+                               discovered by someone waiting for a delivery. *@
+                            <p class="subcard muted" style="font-size: 12px; line-height: 1.8; margin-bottom: 14px;">
+                                🔒 @UiText.Files.LockedExplained
+                            </p>
+                        }
 
                         @if (Model.Selected.ActiveLink is { } link)
                         {

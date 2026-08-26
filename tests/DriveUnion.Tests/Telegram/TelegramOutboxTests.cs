@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
 using DriveUnion.Core.Telegram;
 using DriveUnion.Infrastructure.Telegram;
 using DriveUnion.Tests.Fakes;
@@ -268,6 +269,66 @@ public class TelegramOutboxTests
         // four times.
         row.Attempt.Should().Be(3);
         row.Status.Should().Be(TelegramOutboxStatus.Failed);
+    }
+
+    [Fact]
+    public async Task A_locked_file_is_refused_and_the_card_says_why()
+    {
+        await using var harness = TelegramTestHarness.Create();
+        await harness.SeedBotAsync();
+
+        var account = harness.SeedAccount();
+        var tenant = harness.SeedTenant();
+
+        // Deliberately readable: the point is that nothing reads it. A fixture with no bytes behind
+        // it would pass this test even if the refusal were removed.
+        var file = harness.SeedFile(
+            tenant.Id,
+            account.Id,
+            "passport.pdf",
+            content: FakeTelegramBotGateway.TestBytes(64));
+
+        harness.Db.FileEncryptions.Add(new FileEncryption
+        {
+            StoredFileId = file.Id,
+            TenantId = tenant.Id,
+            Scheme = 1,
+            SegmentSize = 1024 * 1024,
+            NoncePrefix = "AAAAAAAAAAA=",
+            PlaintextLength = 48,
+            KdfSalt = "BBBBBBBBBBBBBBBBBBBBBB==",
+            KdfIterations = 600_000,
+            WrappedKey = "Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M=",
+            CreatedAt = TelegramTestHarness.Now,
+        });
+        await harness.Db.SaveChangesAsync();
+
+        await harness.Outbox().EnqueueAsync(
+            tenant.Id,
+            senderUserId: null,
+            5001,
+            TelegramOutboxKind.SendDocument,
+            file.Id,
+            null,
+            file.SizeBytes,
+            null,
+            CancellationToken.None);
+
+        await harness.Processor().DrainOnceAsync(CancellationToken.None);
+
+        // Nothing was read out of storage and nothing was sent. This bot cannot decrypt and never
+        // will — the key is in somebody's browser — so a document delivered into a chat would be
+        // ciphertext wearing the right name, which is the one failure a program cannot detect.
+        harness.Drive.Calls.Should().BeEmpty();
+        harness.Telegram.Calls.Should().NotContain(c => c.Operation == FakeTelegramOperation.SendDocument);
+
+        // Permanent, not parked: a retry would find the same file, still encrypted.
+        var row = await harness.Db.TelegramOutbox.AsNoTracking().SingleAsync();
+        row.Status.Should().Be(TelegramOutboxStatus.Failed);
+
+        // And the customer is told what to do instead, which is the one thing that does work.
+        harness.Telegram.Calls
+            .Should().Contain(c => c.Text != null && c.Text.Contains(TelegramMessages.FileIsLocked));
     }
 
     [Fact]

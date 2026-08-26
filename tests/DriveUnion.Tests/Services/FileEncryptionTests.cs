@@ -123,13 +123,13 @@ public class FileEncryptionTests
         // database and somebody's passphrase — so reaching one through a guessed file id must not
         // work either. The tenant is on this table precisely for this.
         (await store.ForFileAsync(mine.Id, fileId, default)).Should().BeNull();
-        (await store.EncryptedAmongAsync(mine.Id, [fileId], default)).Should().BeEmpty();
+        (await store.PlaintextLengthsAsync(mine.Id, [fileId], default)).Should().BeEmpty();
 
-        (await store.EncryptedAmongAsync(theirs.Id, [fileId], default)).Should().Contain(fileId);
+        (await store.PlaintextLengthsAsync(theirs.Id, [fileId], default)).Should().ContainKey(fileId);
     }
 
     [Fact]
-    public async Task Asking_which_of_a_page_are_encrypted_returns_ids_and_nothing_else()
+    public async Task A_listing_gets_the_padlock_and_the_real_size_and_nothing_else()
     {
         await using var harness = ServiceTestHarness.Create();
         var tenant = harness.SeedTenant("acme");
@@ -143,15 +143,18 @@ public class FileEncryptionTests
         var progress = await harness.Uploads().WriteChunkAsync(
             tenant.Id, begun.SessionId, new MemoryStream(content), 0, content.Length, default);
 
-        var encrypted = await new FileEncryptionStore(harness.Db)
-            .EncryptedAmongAsync(tenant.Id, [plain.Id, progress.StoredFileId!.Value], default);
+        var lengths = await new FileEncryptionStore(harness.Db)
+            .PlaintextLengthsAsync(tenant.Id, [plain.Id, progress.StoredFileId!.Value], default);
 
-        // A listing draws a padlock and nothing more, so this answers with a set of ids. Sending
-        // every wrapped key to a screen that needed one bit per row would be handing out material
-        // for no reason at all.
-        encrypted.Should().ContainSingle().Which.Should().Be(progress.StoredFileId!.Value);
+        // Two columns and not the header. A row draws a padlock and a size; sending every wrapped
+        // key to a screen that needed neither would be handing out material for no reason at all.
+        lengths.Should().ContainSingle().Which.Key.Should().Be(progress.StoredFileId!.Value);
 
-        (await new FileEncryptionStore(harness.Db).EncryptedAmongAsync(tenant.Id, [], default))
+        // 48 bytes stored and 32 bytes of file, and it is the 32 the customer's list has to show —
+        // the same number the public download page shows for the very same file.
+        lengths[progress.StoredFileId!.Value].Should().Be(32);
+
+        (await new FileEncryptionStore(harness.Db).PlaintextLengthsAsync(tenant.Id, [], default))
             .Should().BeEmpty("an empty page asks nothing rather than everything");
     }
 
@@ -198,6 +201,55 @@ public class FileEncryptionTests
         // Nothing reserved and nothing started: the check runs ahead of the storage reserve, so a
         // refused upload spends none of the customer's quota.
         (await harness.Db.UploadSessions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_share_link_to_a_locked_file_carries_what_opens_it()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+        harness.SeedAccount();
+
+        var content = new byte[4112];
+        var begun = await harness.Uploads().BeginAsync(
+            tenant.Id,
+            Guid.NewGuid(),
+            new BeginUploadRequest("holiday.mp4", "video/mp4", content.Length, Header(4096)),
+            default);
+
+        var progress = await harness.Uploads().WriteChunkAsync(
+            tenant.Id, begun.SessionId, new MemoryStream(content), 0, content.Length, default);
+
+        harness.SeedLink(tenant.Id, progress.StoredFileId!.Value, "kx91mzq4");
+
+        var resolution = await harness.PublicLinks().ResolveAsync("kx91mzq4", default);
+
+        // Public on an anonymous page, and deliberately: none of it is secret, and the visitor who
+        // holds the link is who the owner meant to give the file to. Making them ask a second
+        // endpoint for it would be a round trip protecting nothing.
+        resolution.File!.Encryption.Should().BeEquivalentTo(Header(4096));
+
+        // The size on the card is the file's, not the ciphertext's — the visitor is about to receive
+        // the file, and the tags that make the stored figure larger are not part of it.
+        resolution.File.Encryption!.PlaintextLength.Should().Be(4096);
+        resolution.File.SizeBytes.Should().Be(4112);
+    }
+
+    [Fact]
+    public async Task A_share_link_to_an_ordinary_file_carries_nothing_extra()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+        var account = harness.SeedAccount();
+        var file = harness.SeedFile(tenant.Id, account.Id, "notes.txt", 4096);
+
+        harness.SeedLink(tenant.Id, file.Id, "kx91mzq4");
+
+        // Null and not an empty header. The download page decides which of two entirely different
+        // screens to draw from this one field, and an empty one would ask a visitor for the key to a
+        // file that does not have one.
+        (await harness.PublicLinks().ResolveAsync("kx91mzq4", default))
+            .File!.Encryption.Should().BeNull();
     }
 
     [Fact]

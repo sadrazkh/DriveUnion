@@ -41,7 +41,15 @@ public sealed class V1UploadsController(IUploadCoordinator coordinator) : Contro
         var result = await coordinator.BeginAsync(
             tenantId,
             User.GetUserId(),
-            new BeginUploadRequest(payload.FileName, payload.MimeType, payload.SizeBytes),
+            // A program may encrypt too, and the same three doors will refuse to hand back what it
+            // stored — including this API's own content route. Accepting the header is still right:
+            // dropping it would store ciphertext with nothing to open it by, which is worse than a
+            // 409 somebody can read.
+            new BeginUploadRequest(
+                payload.FileName,
+                payload.MimeType,
+                payload.SizeBytes,
+                payload.Encryption),
             cancellationToken);
 
         return Created(

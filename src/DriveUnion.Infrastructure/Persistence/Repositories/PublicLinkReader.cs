@@ -34,6 +34,22 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
         // revokes links as it soft-deletes. There is nothing to serve either way.
         if (file is null) return PublicLinkResolution.NotFound;
 
+        // Read only once the link is known to be available, so a revoked or spent one gives away
+        // nothing more than the identical card it already gives. Null for the ordinary file, which
+        // is nearly every file, and one query either way.
+        var encryption = await db.FileEncryptions
+            .AsNoTracking()
+            .Where(e => e.StoredFileId == file.Id)
+            .Select(e => new EncryptionHeader(
+                e.Scheme,
+                e.SegmentSize,
+                e.NoncePrefix,
+                e.PlaintextLength,
+                e.KdfSalt,
+                e.KdfIterations,
+                e.WrappedKey))
+            .FirstOrDefaultAsync(cancellationToken);
+
         return new PublicLinkResolution(
             true,
             ShareLinkAvailability.Available,
@@ -45,7 +61,8 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
                 link.CreatedAt,
                 link.DownloadCount,
                 link.MaxDownloads,
-                link.ExpiresAt));
+                link.ExpiresAt,
+                encryption));
     }
 
     public async Task<PublicDownloadTicket?> ResolveForDownloadAsync(

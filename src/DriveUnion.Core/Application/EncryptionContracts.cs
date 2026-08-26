@@ -48,13 +48,18 @@ public interface IFileEncryption
     Task<EncryptionHeader?> ForFileAsync(Guid tenantId, Guid fileId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Which of these files are encrypted.
+    /// Which of these files are encrypted, and how long each one really is.
     ///
-    /// <para>A set rather than a header per file: a listing draws a marker and nothing more, and
-    /// sending every wrapped key to a screen that only needed a padlock would be handing out
-    /// material for no reason.</para>
+    /// <para>Two columns and not the header: a listing draws a padlock and a size, and sending every
+    /// wrapped key to a screen that needed neither would be handing out material for no reason.
+    /// Membership is the padlock — a file with no row here is not encrypted.</para>
+    ///
+    /// <para>The length is here rather than left to <c>StoredFile.SizeBytes</c> because those are two
+    /// different numbers for an encrypted file, and the one beside a customer's file name has to be
+    /// the file they will get back. The stored figure is what the quota is spent on and is bigger by
+    /// one tag per segment; on a small file the difference is one somebody can see.</para>
     /// </summary>
-    Task<IReadOnlySet<Guid>> EncryptedAmongAsync(
+    Task<IReadOnlyDictionary<Guid, long>> PlaintextLengthsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> fileIds,
         CancellationToken cancellationToken);

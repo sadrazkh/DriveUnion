@@ -1,4 +1,7 @@
-import { computed, reactive, ref, type Ref } from 'vue';
+import { computed, markRaw, reactive, ref, type Ref } from 'vue';
+import { deriveWrapping, sealWith, type Secret, type Wrapping } from '../crypto/envelope';
+import { cipherLength, type EncryptionHeader } from '../crypto/format';
+import { cipherSource, plainSource, type ByteSource } from '../crypto/stream';
 
 /**
  * The upload queue, and the only place it lives.
@@ -30,6 +33,27 @@ export interface UploadItem {
   chunkSize: number;
   samples: { at: number; bytes: number }[];
   abort: AbortController;
+
+  /**
+   * Bytes on the wire, which is the file plus one tag per segment when it is encrypted.
+   *
+   * <p>Every number the transfer works in is this one — the chunk loop, the bar, the speed, what is
+   * left. The size shown beside the name stays <c>file.size</c>, because that is the file the
+   * person has. They differ by 0.0015% and they answer different questions.</p>
+   */
+  wireSize: number;
+
+  /**
+   * The derivation this file's key will be wrapped with, or null for a plain upload.
+   *
+   * <p>A function rather than a <c>Wrapping</c> because it is shared with the rest of the batch and
+   * must not run until something is actually being sent: ticking the box and choosing a file are
+   * two different moments, and a second of blocked CPU belongs to the second one.</p>
+   */
+  encrypt: (() => Promise<Wrapping>) | null;
+
+  /** Set at <c>begin</c>. The ciphertext when encrypting, the file itself otherwise. */
+  source: ByteSource | null;
 }
 
 export interface UploadConfig {
@@ -77,7 +101,7 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     const live = items.value.filter((i) => i.status !== 'cancelled');
     if (live.length === 0) return 0;
 
-    const total = live.reduce((sum, i) => sum + i.file.size, 0);
+    const total = live.reduce((sum, i) => sum + i.wireSize, 0);
     if (total === 0) return 0;
 
     return Math.min(100, (live.reduce((sum, i) => sum + sent(i), 0) / total) * 100);
@@ -98,8 +122,21 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     pump();
   }
 
-  function add(files: FileList | File[] | null) {
+  /**
+   * @param secret What these files are to be locked with, or null to send them as they are.
+   *
+   * <p>Taken per call rather than read from a setting the store holds, so that unticking the box
+   * cannot reach back and change what a file already queued is going to be. What was chosen when
+   * a file was dropped is what happens to that file.</p>
+   *
+   * <p>One derivation is shared by the call and made at most once — see <c>UploadItem.encrypt</c>.
+   * Nothing here is written anywhere: the secret lives in this closure and dies with the tab.</p>
+   */
+  function add(files: FileList | File[] | null, secret: Secret | null = null) {
     if (!files) return;
+
+    let derived: Promise<Wrapping> | null = null;
+    const encrypt = secret ? () => (derived ??= deriveWrapping(secret)) : null;
 
     for (const file of Array.from(files)) {
       items.value.push(reactive({
@@ -117,6 +154,9 @@ export function createUploadStore(readConfig: () => UploadConfig) {
         chunkSize: 0,
         samples: [],
         abort: new AbortController(),
+        wireSize: encrypt ? cipherLength(file.size) : file.size,
+        encrypt,
+        source: null,
       }) as UploadItem);
     }
 
@@ -177,6 +217,8 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     item.confirmed = 0;
     item.inFlight = 0;
     item.sessionId = null;
+    // A retry is a new upload, and an encrypted one gets a new content key when begin() runs again.
+    item.source = null;
     item.samples = [];
     item.bytesPerSecond = 0;
     item.error = '';
@@ -232,7 +274,11 @@ export function createUploadStore(readConfig: () => UploadConfig) {
       // the abort that paused it may have raced a chunk the server was already committing.
       if (!(await syncConfirmed(item))) return;
 
-      const total = item.file.size;
+      // begin() is what sets it, and begin() has either run or the session predates a pause.
+      const source = item.source;
+      if (!source) return;
+
+      const total = item.wireSize;
       const config = readConfig();
       const chunkUrl = `${config.beginUrl.replace(/\/$/, '')}/${item.sessionId}/chunk`;
 
@@ -242,7 +288,7 @@ export function createUploadStore(readConfig: () => UploadConfig) {
         const from = item.confirmed;
         const to = Math.min(from + item.chunkSize, total);
 
-        if (!(await sendChunk(item, chunkUrl, from, to, total))) return;
+        if (!(await sendChunk(item, source, chunkUrl, from, to, total))) return;
       }
 
       item.status = 'done';
@@ -257,6 +303,23 @@ export function createUploadStore(readConfig: () => UploadConfig) {
   async function begin(item: UploadItem): Promise<boolean> {
     const config = readConfig();
 
+    let encryption: EncryptionHeader | null = null;
+
+    if (item.encrypt) {
+      // Here rather than at add(): this is the first moment the file is genuinely on its way, and
+      // a queue of thirty files should not spend thirty seconds sealing before the first one moves.
+      const sealed = await sealWith(await item.encrypt(), item.file.size);
+
+      encryption = sealed.header;
+
+      // markRaw: the source holds a CryptoKey and a Blob, and Vue has no business proxying either.
+      item.source = markRaw(cipherSource(item.file, sealed.key, sealed.header));
+    } else {
+      item.source = markRaw(plainSource(item.file));
+    }
+
+    item.wireSize = item.source.size;
+
     const response = await fetch(config.beginUrl, {
       method: 'POST',
       headers: headers({ 'Content-Type': 'application/json' }),
@@ -264,7 +327,10 @@ export function createUploadStore(readConfig: () => UploadConfig) {
         fileName: item.file.name,
         // Browsers leave `type` empty for anything they do not recognise, and the server needs one.
         mimeType: item.file.type || 'application/octet-stream',
-        sizeBytes: item.file.size,
+        // The ciphertext's length, because that is what the operator stores and what the plan is
+        // measured against. The real one is in the header, and is what the panel shows.
+        sizeBytes: item.wireSize,
+        encryption,
       }),
       signal: item.abort.signal,
     });
@@ -312,6 +378,7 @@ export function createUploadStore(readConfig: () => UploadConfig) {
 
   async function sendChunk(
     item: UploadItem,
+    source: ByteSource,
     chunkUrl: string,
     from: number,
     to: number,
@@ -324,7 +391,9 @@ export function createUploadStore(readConfig: () => UploadConfig) {
       try {
         answer = await putChunk(
           chunkUrl,
-          item.file.slice(from, to),
+          // Encrypting happens here, a window at a time, and never before it is needed: a resumed
+          // upload seals the chunk it is about to send rather than the ones it already has.
+          await source.slice(from, to),
           headers({
             'Content-Type': 'application/octet-stream',
             'Content-Range': `bytes ${from}-${to - 1}/${total}`,
@@ -455,10 +524,10 @@ export function createUploadStore(readConfig: () => UploadConfig) {
 
 export type UploadStore = ReturnType<typeof createUploadStore>;
 
-export const sent = (item: UploadItem) => Math.min(item.confirmed + item.inFlight, item.file.size);
+export const sent = (item: UploadItem) => Math.min(item.confirmed + item.inFlight, item.wireSize);
 
 export const percentOf = (item: UploadItem) =>
-  item.file.size === 0 ? 0 : Math.min(100, (sent(item) / item.file.size) * 100);
+  item.wireSize === 0 ? 0 : Math.min(100, (sent(item) / item.wireSize) * 100);
 
 /**
  * Decimal, because every operating system's file properties dialog is decimal and this number is

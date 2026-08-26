@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { newRecoveryKey, type Secret } from '../crypto/envelope';
 import {
   ConcurrencyChoices,
   bytes,
@@ -52,6 +53,71 @@ const dragging = ref(false);
 const input = ref<HTMLInputElement | null>(null);
 
 /**
+ * The lock, and everything it needs before it can be used.
+ *
+ * <p>Per upload rather than a workspace setting, because the answer is not the same for a holiday
+ * video and a scan of a passport, and a setting somebody turned on in March is not a decision they
+ * are making now. None of this is sent anywhere or written anywhere: what leaves the tab is the
+ * wrapped key, and what wraps it never exists outside these refs.</p>
+ */
+const locking = ref(false);
+const custody = ref<'passphrase' | 'recoveryKey'>('passphrase');
+const passphrase = ref('');
+const confirmation = ref('');
+const recoveryKey = ref('');
+const kept = ref(false);
+const copied = ref(false);
+
+/** Eight characters is not a policy, it is the floor below which the KDF is the only defence left. */
+const MinPassphrase = 8;
+
+const tooShort = computed(() =>
+  passphrase.value.length > 0 && passphrase.value.length < MinPassphrase);
+
+const mismatched = computed(() =>
+  confirmation.value.length > 0 && passphrase.value !== confirmation.value);
+
+/**
+ * Whether a file dropped now could actually be locked.
+ *
+ * <p>The generated key has to be acknowledged as saved before it will encrypt anything. It is the
+ * only copy in the world and it exists for about four seconds before the upload starts — a tick box
+ * is a thin thing to hang that on, and it is still better than the alternative, which is somebody
+ * discovering the requirement after the file is already unopenable.</p>
+ */
+const ready = computed(() => {
+  if (!locking.value) return true;
+
+  return custody.value === 'passphrase'
+    ? passphrase.value.length >= MinPassphrase && passphrase.value === confirmation.value
+    : recoveryKey.value.length > 0 && kept.value;
+});
+
+const secret = (): Secret | null =>
+  !locking.value
+    ? null
+    : custody.value === 'passphrase'
+      ? { kind: 'passphrase', value: passphrase.value }
+      : { kind: 'recoveryKey', value: recoveryKey.value };
+
+function chooseCustody(kind: 'passphrase' | 'recoveryKey') {
+  custody.value = kind;
+  // Generated once and then left alone: regenerating on every click would quietly invalidate a key
+  // somebody had already written down.
+  if (kind === 'recoveryKey' && !recoveryKey.value) recoveryKey.value = newRecoveryKey();
+}
+
+async function copyKey() {
+  try {
+    await navigator.clipboard.writeText(recoveryKey.value);
+    copied.value = true;
+    setTimeout(() => (copied.value = false), 1600);
+  } catch {
+    // Clipboard permission refused, or an insecure origin. The field is selectable either way.
+  }
+}
+
+/**
  * The store's own list, spread into a plain array for `v-for`.
  *
  * Not a second list of numbers: how many files may move at once is the store's decision to hold,
@@ -98,6 +164,25 @@ function text() {
         backToFiles: 'Go to files',
         remaining: 'left',
         select: 'Select this file',
+        lock: 'Lock these files',
+        lockHint:
+          'The file is encrypted on this machine before any of it is sent, so what we store is unreadable to us and to anyone who reaches it. You are the only one who can open it again.',
+        lockWarning:
+          'There is no way to recover a locked file without its key. We do not have a copy and cannot make one — a lost key is a lost file.',
+        custody: 'How you unlock it',
+        byPassphrase: 'A passphrase you choose',
+        byKey: 'A key we generate',
+        passphrase: 'Passphrase',
+        confirmation: 'Type it again',
+        atLeast: 'At least',
+        characters: 'characters.',
+        mismatch: 'The two do not match.',
+        yourKey: 'Your key',
+        copy: 'Copy',
+        copiedIt: 'Copied',
+        keptIt: 'I have saved this key somewhere safe',
+        notReady: 'Finish the lock above before choosing files.',
+        lockedBadge: 'Locked',
       }
     : {
         drop: 'فایل‌ها را این‌جا رها کنید',
@@ -126,22 +211,42 @@ function text() {
         backToFiles: 'رفتن به فایل‌ها',
         remaining: 'باقی‌مانده',
         select: 'انتخاب این فایل',
+        lock: 'قفل کردن این فایل‌ها',
+        lockHint:
+          'فایل روی همین دستگاه و پیش از آن‌که بایتی از آن برود رمز می‌شود، پس چیزی که ما ذخیره می‌کنیم برای خودِ ما و برای هرکس دیگری که به آن برسد ناخواناست. فقط شما می‌توانید بازش کنید.',
+        lockWarning:
+          'فایل قفل‌شده بدون کلیدش به هیچ راهی برنمی‌گردد. ما نسخه‌ای از آن نداریم و نمی‌توانیم بسازیم — کلید گم‌شده یعنی فایل گم‌شده.',
+        custody: 'با چه چیزی باز شود',
+        byPassphrase: 'رمزی که خودتان می‌گذارید',
+        byKey: 'کلیدی که ما می‌سازیم',
+        passphrase: 'رمز',
+        confirmation: 'یک‌بار دیگر بنویسید',
+        atLeast: 'دست‌کم',
+        characters: 'کاراکتر.',
+        mismatch: 'این دو یکی نیستند.',
+        yourKey: 'کلید شما',
+        copy: 'کپی',
+        copiedIt: 'کپی شد',
+        keptIt: 'این کلید را جای امنی ذخیره کردم',
+        notReady: 'پیش از انتخاب فایل، قفل بالا را کامل کنید.',
+        lockedBadge: 'قفل‌شده',
       };
 }
 
 const statusWord = (item: UploadItem) => text()[item.status];
 
 const eta = (item: UploadItem) =>
-  item.bytesPerSecond > 0 ? duration((item.file.size - sent(item)) / item.bytesPerSecond) : '';
+  item.bytesPerSecond > 0 ? duration((item.wireSize - sent(item)) / item.bytesPerSecond) : '';
 
 function onDrop(event: DragEvent) {
   dragging.value = false;
-  add(event.dataTransfer?.files ?? null);
+  if (!ready.value) return;
+  add(event.dataTransfer?.files ?? null, secret());
 }
 
 function onPicked(event: Event) {
   const el = event.target as HTMLInputElement;
-  add(el.files);
+  add(el.files, secret());
   // Cleared so choosing the same file twice in a row still raises `change`.
   el.value = '';
 }
@@ -155,9 +260,102 @@ function toggleAll() {
 
 <template>
   <div class="uploader">
+    <!--
+      Above the dropzone, and one line tall until it is switched on.
+
+      The order is the point. This is a decision that has to be made before the file is chosen, not
+      after — it changes what happens to the bytes rather than what happens to them next — and a
+      control placed below the drop target is one that gets read after it has stopped mattering.
+    -->
+    <div class="lockbox" :class="{ 'lockbox--on': locking }">
+      <label class="upload-check">
+        <input type="checkbox" v-model="locking" @change="chooseCustody(custody)" />
+        <span class="lockbox-title">{{ text().lock }}</span>
+      </label>
+
+      <p class="upload-note">{{ text().lockHint }}</p>
+
+      <div v-if="locking" class="lockbox-body">
+        <p class="upload-warning">{{ text().lockWarning }}</p>
+
+        <span class="field-label">{{ text().custody }}</span>
+        <div class="seg">
+          <button
+            type="button"
+            class="seg-option"
+            :class="{ 'is-active': custody === 'passphrase' }"
+            :aria-pressed="custody === 'passphrase'"
+            @click="chooseCustody('passphrase')"
+          >{{ text().byPassphrase }}</button>
+          <button
+            type="button"
+            class="seg-option"
+            :class="{ 'is-active': custody === 'recoveryKey' }"
+            :aria-pressed="custody === 'recoveryKey'"
+            @click="chooseCustody('recoveryKey')"
+          >{{ text().byKey }}</button>
+        </div>
+
+        <div v-if="custody === 'passphrase'" class="lockbox-fields">
+          <label class="field-label" for="lock-pass">{{ text().passphrase }}</label>
+          <!-- new-password, so no manager offers the account password for a thing that is not one. -->
+          <input
+            id="lock-pass"
+            v-model="passphrase"
+            type="password"
+            class="control"
+            autocomplete="new-password"
+          />
+
+          <label class="field-label" for="lock-again">{{ text().confirmation }}</label>
+          <input
+            id="lock-again"
+            v-model="confirmation"
+            type="password"
+            class="control"
+            autocomplete="new-password"
+          />
+
+          <!--
+            The figure carries its own direction, like every other number in this file. «دست‌کم ۸
+            کاراکتر.» is a Persian sentence with one Latin digit in it, and a bare digit run at a
+            boundary is reordered by the same rule that laid «0 B / 202 MB» out backwards.
+          -->
+          <p v-if="tooShort" class="upload-error">
+            {{ text().atLeast }}
+            <span class="mono" dir="ltr">{{ MinPassphrase }}</span>
+            {{ text().characters }}
+          </p>
+          <p v-else-if="mismatched" class="upload-error">{{ text().mismatch }}</p>
+        </div>
+
+        <div v-else class="lockbox-fields">
+          <span class="field-label">{{ text().yourKey }}</span>
+          <!-- dir="ltr": base64url in groups of six, which RTL would otherwise rearrange. -->
+          <div class="field" dir="ltr">
+            <input
+              class="control mono lockbox-key"
+              readonly
+              :value="recoveryKey"
+              :aria-label="text().yourKey"
+              @focus="($event.target as HTMLInputElement).select()"
+            />
+            <button type="button" class="btn btn--sm" @click="copyKey()">
+              {{ copied ? text().copiedIt : text().copy }}
+            </button>
+          </div>
+
+          <label class="upload-check">
+            <input type="checkbox" v-model="kept" />
+            <span>{{ text().keptIt }}</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
     <div
       class="dropzone"
-      :class="{ 'dropzone--over': dragging }"
+      :class="{ 'dropzone--over': dragging && ready }"
       @dragenter.prevent="dragging = true"
       @dragover.prevent="dragging = true"
       @dragleave.prevent="dragging = false"
@@ -165,9 +363,15 @@ function toggleAll() {
     >
       <p class="dropzone-title">{{ text().drop }}</p>
       <p class="dropzone-or">{{ text().or }}</p>
-      <button type="button" class="btn btn--primary" @click="input?.click()">
+      <button type="button" class="btn btn--primary" :disabled="!ready" @click="input?.click()">
         {{ text().choose }}
       </button>
+      <!--
+        Said rather than only shown by a greyed button: an upload the person believed was locked and
+        was not is the failure this whole screen exists to prevent, so refusing is not enough — it
+        has to be refused out loud.
+      -->
+      <p v-if="!ready" class="upload-warning">{{ text().notReady }}</p>
       <p class="dropzone-hint">{{ text().hint }}</p>
       <input ref="input" type="file" multiple hidden @change="onPicked" />
     </div>
@@ -257,6 +461,8 @@ function toggleAll() {
           </label>
           <!-- dir="auto": the name is whatever the person called it. See UploadDock.vue. -->
           <span class="upload-name" dir="auto" :title="item.file.name">{{ item.file.name }}</span>
+          <!-- Which of these went out locked, once several batches are in one list. -->
+          <span v-if="item.encrypt" class="badge">{{ text().lockedBadge }}</span>
           <span class="upload-state">{{ statusWord(item) }}</span>
         </div>
 
@@ -335,6 +541,46 @@ function toggleAll() {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* One line high while it is off, and the same card as the rest of the screen when it is on: this is
+   a choice on the way to uploading, not a section of its own. */
+.lockbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+
+.lockbox--on {
+  border-color: var(--accent);
+}
+
+.lockbox-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lockbox-body,
+.lockbox-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lockbox-body {
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* The key is read character by character off the screen, so it gets the spacing that makes that
+   possible rather than the panel's ordinary line height. */
+.lockbox-key {
+  flex: 1;
+  letter-spacing: 0.04em;
 }
 
 .dropzone {

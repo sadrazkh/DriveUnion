@@ -33,6 +33,16 @@
  * browser can. Those are stated so that «encrypted» is not read as more than it is.
  */
 
+/**
+ * A view over a buffer this tab owns.
+ *
+ * <p>A bare <c>Uint8Array</c> also admits one backed by a <c>SharedArrayBuffer</c>, and <c>Blob</c>,
+ * <c>FileSystemWritableFileStream</c> and the rest of the platform refuse those — every byte on this
+ * path ends up in one of them, so the narrower type is named once here instead of cast at each
+ * boundary.</p>
+ */
+export type Bytes = Uint8Array<ArrayBuffer>;
+
 /** The one scheme there is. A file records which it was written with, so a second can be added. */
 export const Scheme = 1;
 
@@ -105,7 +115,7 @@ export function segmentSpan(
  * <p>Big-endian because it is the order every wire format uses and the order somebody debugging a hex
  * dump will assume.</p>
  */
-export function nonceFor(prefix: Uint8Array, index: number): Uint8Array {
+export function nonceFor(prefix: Bytes, index: number): Bytes {
   const nonce = new Uint8Array(12);
 
   nonce.set(prefix.subarray(0, NoncePrefixBytes), 0);
@@ -120,7 +130,7 @@ export function nonceFor(prefix: Uint8Array, index: number): Uint8Array {
  * <p>`du1`, the index, and whether this is the last segment. See the file's own summary for what each
  * of those prevents — reordering and truncation, both of which decrypt cleanly without them.</p>
  */
-export function aadFor(index: number, isFinal: boolean): Uint8Array {
+export function aadFor(index: number, isFinal: boolean): Bytes {
   const aad = new Uint8Array(8);
 
   aad.set([0x64, 0x75, 0x31], 0); // "du1"
@@ -130,7 +140,7 @@ export function aadFor(index: number, isFinal: boolean): Uint8Array {
   return aad;
 }
 
-export function toBase64(bytes: Uint8Array): string {
+export function toBase64(bytes: Bytes): string {
   let binary = '';
 
   // Chunked, because String.fromCharCode(...array) blows the argument limit somewhere around a
@@ -142,7 +152,7 @@ export function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export function fromBase64(value: string): Uint8Array {
+export function fromBase64(value: string): Bytes {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
 

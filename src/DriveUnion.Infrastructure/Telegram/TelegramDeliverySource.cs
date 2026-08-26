@@ -29,7 +29,8 @@ public sealed class TelegramDeliverySource(DriveUnionDbContext db) : ITelegramDe
                 f.DriveFileId,
                 f.Name,
                 f.MimeType,
-                f.SizeBytes))
+                f.SizeBytes,
+                db.FileEncryptions.Any(e => e.StoredFileId == f.Id)))
             .FirstOrDefaultAsync(cancellationToken);
     }
 }
