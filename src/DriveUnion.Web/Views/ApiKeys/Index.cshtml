@@ -132,6 +132,97 @@
         </div>
     </div>
 
+    @*
+        S3, and the custody difference stated where the choice is made rather than buried.
+
+        A customer picking between the two credentials is picking between «they keep only a
+        fingerprint» and «they can read this, because the protocol requires it». That is a real
+        decision and it belongs next to the button, not in a document nobody opens.
+    *@
+    <div class="card card--pad">
+        <div class="stack" style="gap: 12px;">
+            <div class="card-title">@UiText.ApiKeys.S3Heading</div>
+            <p class="hint" style="margin: 0;">@UiText.ApiKeys.S3Subtitle</p>
+            <p class="hint warn" style="margin: 0;">@UiText.ApiKeys.S3Custody</p>
+
+            @if (Model.S3Secret is { Length: > 0 } pair)
+            {
+                <div class="stack" style="gap: 6px;" role="status">
+                    <div class="card-title warn">@UiText.ApiKeys.CopyItNow</div>
+                    <div class="field" data-island="copy-link" data-copy-value="@pair">
+                        <textarea class="control mono" dir="ltr" readonly rows="2"
+                                  aria-label="@UiText.ApiKeys.ColumnKey" data-copy-source>@pair</textarea>
+                        <button type="button" class="btn btn--sm" data-copy-button>@UiText.ApiKeys.Copy</button>
+                    </div>
+                </div>
+            }
+
+            <form method="post" class="row" style="gap: 10px; flex-wrap: wrap; align-items: flex-end;"
+                  action="@Url.Action("MintS3", "ApiKeys")">
+                @Html.AntiForgeryToken()
+
+                <span class="stack" style="gap: 4px; flex: 1 1 220px;">
+                    <label class="hint" for="s3-name">@UiText.ApiKeys.KeyName</label>
+                    <input id="s3-name" name="name" class="control" required dir="auto"
+                           maxlength="@S3Credential.MaxNameLength" autocomplete="off" />
+                </span>
+
+                <span class="stack" style="gap: 4px; flex: 0 1 180px;">
+                    <label class="hint" for="s3-scope">@UiText.ApiKeys.Scope</label>
+                    <select id="s3-scope" name="scope" class="control">
+                        <option value="@nameof(ApiScope.Read)">@UiText.ApiKeys.ScopeRead</option>
+                        <option value="@nameof(ApiScope.Write)">@UiText.ApiKeys.ScopeWrite</option>
+                    </select>
+                </span>
+
+                <button type="submit" class="btn btn--primary">@UiText.ApiKeys.S3NewKey</button>
+            </form>
+
+            @if (Model.S3Keys.Count == 0)
+            {
+                <p class="hint" style="margin: 0;">@UiText.ApiKeys.S3EmptyHeading</p>
+            }
+            else
+            {
+                <div class="dtable" style="--cols: minmax(var(--name-min),1.4fr) 200px 118px 110px 110px 96px">
+                    <div class="dtable-head">
+                        <div>@UiText.ApiKeys.ColumnName</div>
+                        <div>@UiText.ApiKeys.S3ColumnAccessKey</div>
+                        <div>@UiText.ApiKeys.ColumnScope</div>
+                        <div>@UiText.ApiKeys.ColumnLastUsed</div>
+                        <div>@UiText.ApiKeys.ColumnState</div>
+                        <div class="cell-pin"></div>
+                    </div>
+
+                    @foreach (var key in Model.S3Keys)
+                    {
+                        <div class="dtable-row">
+                            <div class="cell-name" title="@key.Name">@key.Name</div>
+                            <div class="cell-slug" dir="ltr">@key.AccessKeyId</div>
+                            <div class="cell-muted">@key.ScopeText</div>
+                            <div class="cell-muted">@key.LastUsedText</div>
+                            <div class="@(key.IsLive ? "cell-muted" : "danger")">@key.StateText</div>
+                            <div class="cell-pin">
+                                @if (key.IsLive)
+                                {
+                                    <form method="post" action="@Url.Action("RevokeS3", "ApiKeys", new { id = key.Id })">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn--sm btn--danger">@UiText.ApiKeys.Revoke</button>
+                                    </form>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <p class="hint" style="margin: 0;">@UiText.ApiKeys.S3EndpointHint</p>
+            <p class="hint" style="margin: 0;">@UiText.ApiKeys.S3BucketHint</p>
+            <p class="hint warn" style="margin: 0;">@UiText.ApiKeys.S3Limits</p>
+            <code class="mono" dir="ltr" style="font-size: 12px;">@UiText.ApiKeys.S3Example(Model.S3EndpointUrl, "…")</code>
+        </div>
+    </div>
+
     <div class="card card--pad">
         <div class="stack" style="gap: 8px;">
             <div class="card-title">@UiText.ApiKeys.HowToHeading</div>

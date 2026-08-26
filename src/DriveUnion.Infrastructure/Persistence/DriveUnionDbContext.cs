@@ -41,6 +41,9 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     /// <summary>The customer's API keys. Hashes, never secrets — see <see cref="ApiToken"/>.</summary>
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
+    /// <summary>S3 access keys. Encrypted and not hashed — see <see cref="S3Credential"/>.</summary>
+    public DbSet<S3Credential> S3Credentials => Set<S3Credential>();
+
     public DbSet<Tag> Tags => Set<Tag>();
 
     public DbSet<FileTag> FileTags => Set<FileTag>();
@@ -278,6 +281,18 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
                 .WithMany()
                 .HasForeignKey(f => f.ParentFolderId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<S3Credential>(e =>
+        {
+            e.Property(c => c.Name).HasMaxLength(S3Credential.MaxNameLength);
+            e.Property(c => c.AccessKeyId).HasMaxLength(S3Credential.AccessKeyIdLength);
+
+            // The lookup every signed request makes, and unique: an access key id is the name a
+            // client is configured with, and two rows answering to one would make which workspace
+            // a request reached a matter of row order.
+            e.HasIndex(c => c.AccessKeyId).IsUnique();
+            e.HasIndex(c => c.TenantId);
         });
 
         builder.Entity<ApiToken>(e =>

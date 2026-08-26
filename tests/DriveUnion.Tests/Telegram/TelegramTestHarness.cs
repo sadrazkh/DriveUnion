@@ -425,30 +425,4 @@ public sealed class TelegramTestHarness : IAsyncDisposable
         public long? FreeBytesOn(string path) => FreeBytes;
     }
 
-    /// <summary>
-    /// Reversible, and deliberately not encryption — what the tests need is a wrapper that does not
-    /// contain its own input, so "the bot token is not sitting in the column" is a real assertion
-    /// rather than a tautology about ciphertext.
-    ///
-    /// <see cref="Broken"/> makes every stored value undecryptable, which is what a lost Data
-    /// Protection key looks like from here.
-    /// </summary>
-    public sealed class ReversibleProtector : ITokenProtector
-    {
-        private const string Prefix = "wrapped:";
-
-        /// <summary>Set to true to simulate a key that no longer exists.</summary>
-        public bool Broken { get; set; }
-
-        public string Protect(string plaintext) =>
-            Prefix + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(plaintext));
-
-        public string? Unprotect(string protectedValue)
-        {
-            if (Broken || !protectedValue.StartsWith(Prefix, StringComparison.Ordinal)) return null;
-
-            return System.Text.Encoding.UTF8.GetString(
-                Convert.FromBase64String(protectedValue[Prefix.Length..]));
-        }
-    }
 }

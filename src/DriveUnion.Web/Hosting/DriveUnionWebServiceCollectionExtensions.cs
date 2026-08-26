@@ -19,6 +19,9 @@ public static class DriveUnionWebServiceCollectionExtensions
         // hasher would give every request its own key and every download its own "party".
         services.AddSingleton<IDownloadIpHasher, DownloadIpHasher>();
 
+        // The S3 gateway's signature check. Scoped because it resolves a credential per request.
+        services.AddScoped<S3.S3RequestAuthenticator>();
+
         services.AddAuthorization(options =>
         {
             options.AddPolicy(

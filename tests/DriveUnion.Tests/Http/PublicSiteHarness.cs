@@ -77,6 +77,17 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
     public FakeDriveClient Drive { get; } = new();
 
     /// <summary>
+    /// What the pipeline resolves for <see cref="ITokenProtector"/>.
+    ///
+    /// <para>Substituted for the same reason the Drive is: the real one is Data Protection over a
+    /// key ring this harness does not stand up. It is exposed because a test that seeds an
+    /// encrypted column — an S3 access key, a bot token — has to write it with the very protector
+    /// the pipeline will read it with, or the row is unreadable and the failure reads as «that
+    /// credential does not exist».</para>
+    /// </summary>
+    public ReversibleProtector Protector { get; } = new();
+
+    /// <summary>
     /// What the pipeline resolves for <see cref="IDriveClient"/>. Assign before the first request to
     /// wrap <see cref="Drive"/> — the mid-download failure test needs a body that dies after a few
     /// bytes, which the fake alone cannot produce.
@@ -244,6 +255,9 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
             ReplaceNpgsqlWithSqlite(services);
 
             RemoveAllOf(services, typeof(IDriveClient));
+            RemoveAllOf(services, typeof(ITokenProtector));
+
+            services.AddSingleton<ITokenProtector>(Protector);
 
             // Resolved through the property so a test can wrap the fake after construction but
             // before the first request.

@@ -103,6 +103,65 @@ public static partial class UiText
 
         // ---------------------------------------------------------------- using it
 
+        // ---------------------------------------------------------------- the S3 gateway
+
+        public static string S3Heading => Pick("دسترسی S3", "S3 access");
+
+        public static string S3Subtitle => Pick(
+            "برای ابزارهایی که با S3 حرف می‌زنند — aws-cli، rclone، هر SDKای که endpoint دلخواه می‌گیرد.",
+            "For anything that speaks S3 — aws-cli, rclone, any SDK that takes a custom endpoint.");
+
+        /// <summary>
+        /// The disclosure, and it is not small print.
+        ///
+        /// <para>An API key is hashed and we cannot read it back. An S3 secret is encrypted and we
+        /// can, because verifying a signature means recomputing the customer's own HMAC — there is
+        /// no version of the protocol a one-way hash satisfies. Somebody choosing between the two
+        /// credentials is choosing between «they cannot read this» and «they can, because it has to
+        /// work», and that is theirs to decide knowingly.</para>
+        /// </summary>
+        public static string S3Custody => Pick(
+            "برخلاف کلید API که فقط اثر انگشتش را نگه می‌داریم، راز S3 باید قابل بازخوانی باشد — بررسی امضا یعنی همان محاسبه را دوباره انجام دهیم، و با یک هش یک‌طرفه نمی‌شود. پس رمزنگاری‌شده ذخیره می‌شود، با همان کلیدی که توکن‌های گوگل اپراتور با آن رمز می‌شوند. اگر این را نمی‌خواهید، کلید API بالا همان کارها را می‌کند.",
+            "Unlike an API key, where we keep only a fingerprint, an S3 secret has to be readable back: checking a signature means recomputing it, and a one-way hash cannot. So it is stored encrypted, with the same key ring that protects the operator's Google tokens. If you would rather we could not, the API key above does the same jobs.");
+
+        public static string S3NewKey => Pick("کلید S3 جدید", "New S3 key");
+
+        /// <summary>The column header, and it is the same word in both: it is what every S3 config
+        /// file, every SDK and every AWS document calls this field, and a translated column above an
+        /// untranslatable value is a heading that stops matching what it heads.</summary>
+        [VerbatimText("the field is called this in every S3 client there is")]
+        public static string S3ColumnAccessKey => "Access key ID";
+
+        public static string S3Minted => Pick("کلید S3 ساخته شد.", "The S3 key was made.");
+
+        public static string S3EmptyHeading => Pick(
+            "هنوز کلید S3 نساخته‌اید.",
+            "You have not made an S3 key yet.");
+
+        /// <summary>
+        /// The endpoint with its path, and the path is not optional.
+        ///
+        /// <para>The panel owns the root of this host, so the gateway lives under <c>/s3</c>. Every
+        /// S3 client takes a path in its endpoint, and a customer who drops it gets the panel's HTML
+        /// back and an error about XML.</para>
+        /// </summary>
+        public static string S3EndpointHint => Pick(
+            "مسیر /s3 حتماً باید باشد — ریشه‌ی این دامنه خود پنل است.",
+            "The /s3 path is required — the root of this host is the panel itself.");
+
+        public static string S3BucketHint => Pick(
+            "نام باکت، همان اسم کوتاه فضای کاری شماست و یکی بیشتر ندارید.",
+            "The bucket is your workspace's slug, and there is exactly one.");
+
+        /// <summary>What is and is not implemented, where somebody will read it before hitting it.</summary>
+        public static string S3Limits => Pick(
+            "این نسخه ls، cp، rm و فهرست‌کردن را می‌دهد. آپلود چندبخشی (multipart) هنوز نیست، پس aws-cli فایل‌های بزرگ‌تر از حد آستانه‌اش را نمی‌فرستد؛ برای آن‌ها فعلاً از پنل یا از API استفاده کنید.",
+            "This cut does ls, cp, rm and listing. Multipart upload is not in it yet, so the AWS CLI will not send anything past its threshold — use the panel or the API for those for now.");
+
+        [VerbatimText("a shell session is a command, not a sentence")]
+        public static string S3Example(string endpoint, string bucket) =>
+            $"aws --endpoint-url {endpoint} s3 ls s3://{bucket}/";
+
         public static string HowToHeading => Pick("چطور استفاده کنید", "How to use it");
 
         /// <summary>

@@ -50,6 +50,10 @@ public static class ServiceCollectionExtensions
         // from — see IStoredFileBytes for why that is not a method on IFileCatalog.
         services.TryAddScoped<IApiTokens, ApiTokenStore>();
         services.TryAddScoped<IStoredFileBytes, StoredFileBytesReader>();
+
+        // The S3 gateway: access keys, and object keys over the folder tree.
+        services.TryAddScoped<IS3Credentials, S3CredentialStore>();
+        services.TryAddScoped<IS3Objects, S3ObjectReader>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();
