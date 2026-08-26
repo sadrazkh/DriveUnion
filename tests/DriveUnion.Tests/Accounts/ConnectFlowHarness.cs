@@ -98,6 +98,11 @@ public sealed class ConnectFlowHarness
             directory,
             credentials,
             usage,
+
+            // The connect flow is the OAuth round trip and nothing else. Reaching the pool from here
+            // would be a call this harness has no database behind, so it refuses rather than
+            // returning empty lists that would let a missing screen pass as an empty one.
+            new UnreachableMigrations(),
             NullLogger<AccountsController>.Instance)
         {
             ControllerContext = new ControllerContext(
@@ -366,4 +371,34 @@ public sealed class NoOpTempDataProvider : ITempDataProvider
     public void SaveTempData(HttpContext context, IDictionary<string, object> values)
     {
     }
+}
+
+/// <summary>
+/// An empty pool, so the accounts screen renders on a harness that has no database.
+///
+/// <para>The two reads answer «nothing», because <c>Index</c> genuinely needs them now and this
+/// harness is about the OAuth round trip. What that costs is stated rather than hidden: no test on
+/// this lane can tell a screen that renders an empty pool from one that has stopped rendering the
+/// pool at all, so that question belongs to <c>AccountPoolScreenTests</c>, which has real rows
+/// behind it.</para>
+///
+/// <para>The two writes throw. Nothing in a consent flow drains an account, and a silent success
+/// there would be a route quietly doing nothing.</para>
+/// </summary>
+internal sealed class UnreachableMigrations : IAccountMigrations
+{
+    public Task<IReadOnlyList<AccountInventory>> InventoryAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AccountInventory>>([]);
+
+    public Task<IReadOnlyList<AccountMigrationView>> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AccountMigrationView>>([]);
+
+    public Task<MigrationStartResult> StartAsync(
+        Guid sourceAccountId,
+        Guid targetAccountId,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The connect flow has no business draining an account.");
+
+    public Task<bool> CancelAsync(Guid migrationId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The connect flow has no business cancelling a migration.");
 }

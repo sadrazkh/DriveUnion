@@ -466,6 +466,12 @@ public sealed class GoogleAccountDirectoryTests : IDisposable
             CancellationToken cancellationToken) =>
             throw new NotSupportedException("The directory has no business deleting a file.");
 
+        public Task<DriveFileMetadata?> GetFileAsync(
+            Guid accountId,
+            string driveFileId,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("The directory has no business reading a file.");
+
         public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken)
         {
             _askedFor.Add(accountId);

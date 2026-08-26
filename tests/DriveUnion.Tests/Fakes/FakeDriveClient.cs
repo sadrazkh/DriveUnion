@@ -14,6 +14,7 @@ public enum FakeDriveOperation
     GetStorageQuota,
     Move,
     Delete,
+    GetFile,
 }
 
 /// <summary>
@@ -170,7 +171,13 @@ public sealed class FakeDriveClient : IDriveClient
         byte[] content)
     {
         var now = Clock.GetUtcNow();
-        var metadata = new DriveFileMetadata(fileId, name, mimeType, content.LongLength, now, now);
+
+        // A real checksum of the real bytes, because the migration's whole verification is comparing
+        // what it streamed against what Drive says landed — a fake that returned a constant would
+        // pass that check no matter what it had actually stored.
+        var metadata = new DriveFileMetadata(
+            fileId, name, mimeType, content.LongLength, now, now, Md5Of(content));
+
         _files[fileId] = new FakeDriveFile { Metadata = metadata, AccountId = accountId, Content = content };
         return metadata;
     }
@@ -234,19 +241,22 @@ public sealed class FakeDriveClient : IDriveClient
 
         var now = Clock.GetUtcNow();
         var fileId = $"drive-file-{Next()}";
+        var landed = session.Received.ToArray();
+
         var metadata = new DriveFileMetadata(
             fileId,
             session.Request.FileName,
             session.Request.MimeType,
             session.ConfirmedLength,
             now,
-            now);
+            now,
+            Md5Of(landed));
 
         _files[fileId] = new FakeDriveFile
         {
             Metadata = metadata,
             AccountId = session.AccountId,
-            Content = session.Received.ToArray(),
+            Content = landed,
         };
         session.CompletedFileId = fileId;
 
@@ -345,6 +355,44 @@ public sealed class FakeDriveClient : IDriveClient
 
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Makes the next verification disagree with what was actually stored.
+    ///
+    /// <para>The one failure a migration exists to survive: storage reports an upload complete and
+    /// then says something else about it. Contrived on purpose — it is not a thing Drive does often,
+    /// and it is the thing that costs somebody their only copy if the code believes it.</para>
+    /// </summary>
+    public bool CorruptNextVerification { get; set; }
+
+    public Task<DriveFileMetadata?> GetFileAsync(
+        Guid accountId,
+        string driveFileId,
+        CancellationToken cancellationToken)
+    {
+        Record(FakeDriveOperation.GetFile, accountId, driveFileId, 0, 0);
+
+        if (CorruptNextVerification)
+        {
+            CorruptNextVerification = false;
+
+            return Task.FromResult<DriveFileMetadata?>(
+                _files.TryGetValue(driveFileId, out var suspect) && suspect.AccountId == accountId
+                    ? suspect.Metadata with { Md5Checksum = new string('0', 32) }
+                    : null);
+        }
+
+        // Scoped to the account, like the real one: a file id belonging to another account is not
+        // this account's file, and answering otherwise would let a migration «verify» a copy it
+        // never made.
+        return Task.FromResult(
+            _files.TryGetValue(driveFileId, out var file) && file.AccountId == accountId
+                ? file.Metadata
+                : null);
+    }
+
+    private static string Md5Of(byte[] content) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.MD5.HashData(content));
 
     public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken)
     {

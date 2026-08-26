@@ -41,6 +41,12 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
 
     public DbSet<TenantUsageDay> TenantUsageDays => Set<TenantUsageDay>();
 
+    /// <summary>Draining one pool account into another. See <see cref="AccountMigration"/>.</summary>
+    public DbSet<AccountMigration> AccountMigrations => Set<AccountMigration>();
+
+    /// <summary>One file's move, and where its old copy still is.</summary>
+    public DbSet<FileRelocation> FileRelocations => Set<FileRelocation>();
+
     /// <summary>The customer's API keys. Hashes, never secrets — see <see cref="ApiToken"/>.</summary>
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
@@ -442,6 +448,43 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
                 .WithMany()
                 .HasForeignKey(l => l.StoredFileId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<AccountMigration>(e =>
+        {
+            e.Property(m => m.FailureReason).HasMaxLength(AccountMigration.MaxFailureReasonLength);
+
+            // «Is one already running for this source» — asked before every start, because two
+            // drains of one account would fight over the same files.
+            e.HasIndex(m => new { m.SourceAccountId, m.Status });
+
+            // No foreign key to GoogleAccount, and that is deliberate: disconnecting an account the
+            // operator has finished draining must not take the record of the drain with it. What it
+            // moved and what it failed on is exactly the history somebody needs after the account
+            // is gone.
+        });
+
+        builder.Entity<FileRelocation>(e =>
+        {
+            e.Property(r => r.SourceDriveFileId).HasMaxLength(512);
+            e.Property(r => r.TargetDriveFileId).HasMaxLength(512);
+            e.Property(r => r.FailureReason).HasMaxLength(AccountMigration.MaxFailureReasonLength);
+
+            // The worker's own question: what has this migration already dealt with.
+            e.HasIndex(r => new { r.MigrationId, r.Status });
+
+            // The sweeper's: which source copies are old enough to delete. Status first, because
+            // the overwhelming majority of rows are SourceRemoved and are skipped on it alone.
+            e.HasIndex(r => new { r.Status, r.MovedAt });
+
+            e.HasOne<AccountMigration>()
+                .WithMany()
+                .HasForeignKey(r => r.MigrationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // No cascade from StoredFile. A file purged while its old copy is still standing would
+            // otherwise take the only record of where that copy is, and the bytes would sit in the
+            // operator's pool for ever with nothing left that knows about them.
         });
 
         builder.Entity<ShareLinkKey>(e =>

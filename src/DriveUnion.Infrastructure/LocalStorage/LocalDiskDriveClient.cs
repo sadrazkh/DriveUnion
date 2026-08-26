@@ -474,6 +474,35 @@ public sealed class LocalDiskDriveClient : IDriveClient
     /// from the limit and compares it against the upload — so the pair reported here is the volume's
     /// total and the volume's used space, including everything on it that is not this product's.
     /// </summary>
+    /// <summary>
+    /// What is on the disk for this file, with a checksum computed from the bytes themselves.
+    ///
+    /// <para>Drive publishes an md5Checksum it maintains; this backend has no such record, so it
+    /// reads the file. That is the honest implementation rather than the cheap one — the caller is
+    /// about to delete somebody's only other copy on the strength of this answer, and returning null
+    /// there would either stop every migration on this backend or, worse, be treated as «no
+    /// objection».</para>
+    /// </summary>
+    public async Task<DriveFileMetadata?> GetFileAsync(
+        Guid accountId,
+        string driveFileId,
+        CancellationToken cancellationToken)
+    {
+        if (!LocalDiskLayout.TryParseFileId(driveFileId, out var fileId)) return null;
+
+        var record = await _store.ReadFileAsync(accountId, fileId, cancellationToken).ConfigureAwait(false);
+        if (record is null) return null;
+
+        var content = LocalDiskLayout.ContentPath(RootPath, accountId, fileId);
+        if (!File.Exists(content)) return null;
+
+        await using var stream = File.OpenRead(content);
+        var hash = await System.Security.Cryptography.MD5.HashDataAsync(stream, cancellationToken)
+            .ConfigureAwait(false);
+
+        return ToMetadata(record) with { Md5Checksum = Convert.ToHexStringLower(hash) };
+    }
+
     public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken)
     {
         try

@@ -701,6 +701,95 @@ public static partial class UiText
 
         public static string AddAccount => Pick("+ افزودن اکانت با OAuth", "+ Add an account with OAuth");
 
+        // ─────────────────────────────────────────────────────────────────── the pool, and draining it
+
+        public static string PoolHeading => Pick("چه چیزی روی کدام اکانت است", "What is on which account");
+
+        public static string PoolHint => Pick(
+            "فایل‌های تازه به اکانتی می‌روند که بیشترین فضای خالی را دارد. این جدول می‌گوید نتیجه‌اش چه شده.",
+            "New files go to whichever account has the most room. This is where that has left things.");
+
+        public static string ColumnAccount => Pick("اکانت", "Account");
+
+        public static string ColumnStatus => Pick("وضعیت", "Status");
+
+        public static string ColumnFiles => Pick("فایل", "Files");
+
+        public static string ColumnHeld => Pick("اشغال‌شده", "Held");
+
+        public static string ColumnFree => Pick("خالی", "Free");
+
+        public static string ColumnWorkspaces => Pick("ورک‌اسپیس", "Workspaces");
+
+        public static string Unknown => Pick("نامشخص", "Unknown");
+
+        public static string EmptyAccount => Pick("خالی", "Empty");
+
+        public static string MoveEverything => Pick("انتقال همه‌ی فایل‌ها به…", "Move everything to…");
+
+        public static string StartDrain => Pick("شروع انتقال", "Start moving");
+
+        /// <summary>
+        /// Said beside the button, because pressing it changes two things and only one is obvious.
+        /// </summary>
+        public static string DrainWarning => Pick(
+            "این اکانت متوقف می‌شود تا فایل تازه‌ای رویش نیاید، و فایل‌هایش یکی‌یکی منتقل می‌شوند. نسخه‌ی قدیمی هر فایل تا شش ساعت بعد از انتقال می‌ماند و بعد پاک می‌شود.",
+            "This account is paused so nothing new lands on it, and its files move one at a time. Each old copy stays for six hours after its file has moved, then goes.");
+
+        public static string DrainsHeading => Pick("انتقال‌ها", "Moves");
+
+        public static string NoDrains => Pick("تا حالا انتقالی انجام نشده.", "Nothing has been moved yet.");
+
+        public static string DrainStarted => Pick(
+            "انتقال شروع شد. اکانت مبدأ متوقف شد تا فایل تازه‌ای رویش نیاید.",
+            "The move has started. The source account is paused so nothing new lands on it.");
+
+        public static string DrainCancelled => Pick(
+            "انتقال متوقف شد. آن‌چه تا حالا منتقل شده سر جایش می‌ماند و اکانت مبدأ متوقف باقی می‌ماند.",
+            "The move has stopped. What has already moved stays moved, and the source account stays paused.");
+
+        public static string Cancel => Pick("توقف", "Stop");
+
+        public static string DrainMoved => Pick("منتقل‌شده", "moved");
+
+        public static string DrainFailed => Pick("ناموفق", "failed");
+
+        public static string DrainRemaining => Pick("باقی‌مانده", "left");
+
+        public static string RefusalSameAccount => Pick(
+            "مبدأ و مقصد یکی است.",
+            "The source and the target are the same account.");
+
+        public static string RefusalUnknownAccount => Pick(
+            "این اکانت پیدا نشد.",
+            "That account was not found.");
+
+        public static string RefusalTargetNotHealthy => Pick(
+            "اکانت مقصد فایل قبول نمی‌کند — یا قطع است یا خودتان متوقفش کرده‌اید.",
+            "The target account is not accepting files — it is disconnected, or you paused it.");
+
+        public static string RefusalTargetTooSmall => Pick(
+            "اکانت مقصد جای این‌همه فایل را ندارد.",
+            "The target account does not have room for this much.");
+
+        public static string RefusalAlreadyRunning => Pick(
+            "یک انتقال از این اکانت همین حالا در جریان است.",
+            "A move off this account is already running.");
+
+        // One entry per state rather than a method taking the enum, and not by preference: the
+        // catalogue test renders every entry in both languages and cannot invent an enum value, so a
+        // method taking one is an entry nothing checks. The same reason StatusHealthy and its two
+        // siblings are properties with the switch in the view model.
+        public static string DrainQueued => Pick("در صف", "Queued");
+
+        public static string DrainMoving => Pick("در حال انتقال", "Moving");
+
+        public static string DrainDone => Pick("تمام شد", "Done");
+
+        public static string DrainStopped => Pick("متوقف شد", "Stopped");
+
+        public static string DrainBroken => Pick("ناموفق", "Failed");
+
         /// <summary>
         /// The same action once the pool is not empty, named for what it actually does.
         ///

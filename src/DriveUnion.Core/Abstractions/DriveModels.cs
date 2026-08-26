@@ -10,13 +10,27 @@ public sealed record DriveResumableSession(
     Uri SessionUri,
     DateTimeOffset ExpiresAt);
 
+/// <param name="Md5Checksum">
+/// Drive's own fingerprint of the stored bytes, lowercase hex — and null whenever Drive did not say.
+///
+/// <para>Null is the ordinary case rather than a failure: what a resumable upload returns depends on
+/// the fields its session was opened with, and Drive omits this entirely for its own document types.
+/// It is here for one caller — the migration, which compares what it streamed against what actually
+/// landed before it deletes the only other copy of somebody's file. Everywhere else it is ignored.
+/// </para>
+///
+/// <para>MD5 because it is what Drive publishes. It is an integrity check against truncation and
+/// corruption, not a defence against anybody choosing the bytes — nothing here treats it as one.
+/// </para>
+/// </param>
 public sealed record DriveFileMetadata(
     string FileId,
     string Name,
     string MimeType,
     long SizeBytes,
     DateTimeOffset CreatedTime,
-    DateTimeOffset ModifiedTime);
+    DateTimeOffset ModifiedTime,
+    string? Md5Checksum = null);
 
 /// <summary>
 /// What Google said after a chunk. <see cref="Completed"/> is non-null only on the chunk that

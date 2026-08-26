@@ -99,6 +99,24 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     /// </summary>
     public FolderTree Tree(DriveUnionDbContext? context = null) => new(context ?? Db, Clock);
 
+    /// <summary>The operator's pool screen: what is on each account, and starting a drain.</summary>
+    public AccountMigrations Migrations(DriveUnionDbContext? context = null) =>
+        new(context ?? Db, Clock);
+
+    /// <summary>
+    /// The thing that actually moves a file, driven directly.
+    ///
+    /// <para>The hosted service around it is a <c>while</c> loop and a timer; everything worth
+    /// asserting is here, which is exactly why the two are separate types.</para>
+    /// </summary>
+    public AccountMigrator Migrator(DriveUnionDbContext? context = null) =>
+        new(
+            context ?? Db,
+            Drive,
+            Folders(context ?? Db),
+            Clock,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AccountMigrator>.Instance);
+
     /// <summary>
     /// The workspace's labels — <c>Labels()</c> and not <c>Tags()</c>, so it reads as the thing on
     /// the screen rather than as the table underneath it.
@@ -151,12 +169,21 @@ public sealed class ServiceTestHarness : IAsyncDisposable
         return account;
     }
 
+    /// <param name="content">
+    /// The bytes, put into the fake Drive as well as the catalogue.
+    ///
+    /// <para>Null leaves a row with nothing behind it, which is the right fixture for everything that
+    /// only reads the catalogue — and the wrong one for anything that moves or serves a file. A
+    /// migration test seeded without this would «move» a file the fake never had.</para>
+    /// </param>
     public StoredFile SeedFile(
         Guid tenantId,
         Guid accountId,
         string name = "quarterly.mp4",
         long sizeBytes = 1024,
-        DateTimeOffset? deletedAt = null)
+        DateTimeOffset? deletedAt = null,
+        byte[]? content = null,
+        Guid? ownerUserId = null)
     {
         var file = new StoredFile
         {
@@ -166,16 +193,31 @@ public sealed class ServiceTestHarness : IAsyncDisposable
             DriveFileId = $"drive-{Guid.NewGuid():N}",
             Name = name,
             MimeType = "video/mp4",
-            SizeBytes = sizeBytes,
+            SizeBytes = content?.LongLength ?? sizeBytes,
             CreatedAt = Now,
             ModifiedAt = Now,
             DeletedAt = deletedAt,
+            OwnerUserId = ownerUserId,
         };
 
         Db.StoredFiles.Add(file);
         Db.SaveChanges();
 
+        if (content is not null)
+        {
+            Drive.SeedFile(accountId, file.DriveFileId, name, file.MimeType, content);
+        }
+
         return file;
+    }
+
+    /// <summary>Bytes a test can recognise again after they have been through a copy.</summary>
+    public static byte[] Bytes(int length, byte seed = 7)
+    {
+        var content = new byte[length];
+        for (var i = 0; i < length; i++) content[i] = (byte)((i * seed + 11) % 251);
+
+        return content;
     }
 
     public ShareLink SeedLink(

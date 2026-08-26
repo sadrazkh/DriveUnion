@@ -401,6 +401,38 @@ public sealed class GoogleDriveClient : IDriveClient, IGoogleAboutReader
                 : null;
     }
 
+    public async Task<DriveFileMetadata?> GetFileAsync(
+        Guid accountId,
+        string driveFileId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(driveFileId);
+
+        using var message = new HttpRequestMessage(
+            HttpMethod.Get,
+            QueryHelpers.AddQueryString(
+                $"{FilesEndpoint}/{Uri.EscapeDataString(driveFileId)}",
+                "fields",
+                // Named explicitly: the default file resource carries neither size nor md5Checksum,
+                // and this method exists for those two.
+                "id,name,mimeType,size,md5Checksum,createdTime,modifiedTime"));
+
+        await AuthorizeAsync(message, accountId, cancellationToken).ConfigureAwait(false);
+
+        using var response = await _http.SendAsync(message, cancellationToken).ConfigureAwait(false);
+
+        // Gone is an answer, not a failure — the caller is asking whether a copy exists, and «no» is
+        // one of the two things it is prepared for.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+
+        await EnsureSuccessAsync(response, "reading a file's metadata", cancellationToken)
+            .ConfigureAwait(false);
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+        return ParseFileMetadata(body, uploadedSize: 0);
+    }
+
     public async Task<DriveStorageQuota> GetStorageQuotaAsync(
         Guid accountId,
         CancellationToken cancellationToken)
@@ -664,7 +696,11 @@ public sealed class GoogleDriveClient : IDriveClient, IGoogleAboutReader
             mimeType ?? "application/octet-stream",
             ReadInt64(root, "size") ?? uploadedSize,
             ReadTimestamp(root, "createdTime") ?? _timeProvider.GetUtcNow(),
-            ReadTimestamp(root, "modifiedTime") ?? _timeProvider.GetUtcNow());
+            ReadTimestamp(root, "modifiedTime") ?? _timeProvider.GetUtcNow(),
+            // Null unless it was asked for, which only GetFileAsync does. A completed upload's
+            // response carries whatever fields its session was opened with, and that is one round
+            // trip away from here — so this reads what is there and never insists.
+            root.TryGetProperty("md5Checksum", out var md5) ? md5.GetString() : null);
     }
 
     private static (long Limit, long Usage) ParseStorageQuota(string body)

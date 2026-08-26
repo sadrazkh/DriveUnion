@@ -73,6 +73,12 @@ internal sealed class DyingStreamDriveClient(IDriveClient inner, int bytesBefore
     public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken) =>
         inner.GetStorageQuotaAsync(accountId, cancellationToken);
 
+    public Task<DriveFileMetadata?> GetFileAsync(
+        Guid accountId,
+        string driveFileId,
+        CancellationToken cancellationToken) =>
+        inner.GetFileAsync(accountId, driveFileId, cancellationToken);
+
     /// <summary>
     /// Serves at most <c>budget</c> bytes on the first read and throws on the next one, whatever
     /// buffer size the copy uses. A budget expressed as "fail after n total bytes" would be silently

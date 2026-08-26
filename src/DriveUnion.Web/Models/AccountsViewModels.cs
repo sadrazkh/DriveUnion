@@ -91,7 +91,49 @@ public sealed record AccountsPageViewModel(
     string? Notice,
     string? Error,
     bool ConsentConfigured,
-    GoogleSetupViewModel Setup);
+    GoogleSetupViewModel Setup,
+    IReadOnlyList<AccountHoldingViewModel>? Holdings = null,
+    IReadOnlyList<MigrationRowViewModel>? Migrations = null)
+{
+    public IReadOnlyList<AccountHoldingViewModel> Pool => Holdings ?? [];
+
+    public IReadOnlyList<MigrationRowViewModel> Drains => Migrations ?? [];
+
+    /// <summary>Somewhere to send a drain: any account that is still accepting files.</summary>
+    public IReadOnlyList<AccountHoldingViewModel> DrainTargets => [.. Pool.Where(h => h.IsHealthy)];
+}
+
+/// <summary>What one pool account is holding, for an operator deciding whether to retire it.</summary>
+/// <param name="TenantsText">
+/// How many workspaces have something here.
+///
+/// <para>It is on the screen because it is blast radius: draining an account that serves one
+/// customer is a different decision from draining one that serves forty, and no other figure on this
+/// card says which of those it is.</para>
+/// </param>
+public sealed record AccountHoldingViewModel(
+    Guid Id,
+    string Name,
+    string StatusText,
+    bool IsHealthy,
+    string FilesText,
+    string HeldText,
+    string FreeText,
+    string TenantsText,
+    bool IsEmpty,
+    bool IsDraining);
+
+public sealed record MigrationRowViewModel(
+    Guid Id,
+    string FromName,
+    string ToName,
+    string StatusText,
+    bool IsLive,
+    string MovedText,
+    string FailedText,
+    string RemainingText,
+    string? FailureReason,
+    string StartedText);
 
 /// <summary>
 /// What the operator types to give the panel a Google OAuth client.

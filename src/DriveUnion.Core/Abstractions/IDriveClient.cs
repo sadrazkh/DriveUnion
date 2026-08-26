@@ -96,6 +96,22 @@ public interface IDriveClient
         string driveFileId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// What Drive currently holds for a file, or null when it holds nothing.
+    ///
+    /// <para>One request, spent at one moment: immediately before a migration would delete a
+    /// customer's file from the account it is being moved off. Everything else in this product
+    /// already knows what it wrote down and has no business asking Google to confirm it — but «is
+    /// the copy I just made actually there, and is it the same bytes» is a question the row cannot
+    /// answer, and the consequence of guessing is a file that no longer exists anywhere.</para>
+    ///
+    /// <para>Asks explicitly for size and md5Checksum, which the default file resource omits.</para>
+    /// </summary>
+    Task<DriveFileMetadata?> GetFileAsync(
+        Guid accountId,
+        string driveFileId,
+        CancellationToken cancellationToken);
+
     Task<DriveStorageQuota> GetStorageQuotaAsync(
         Guid accountId,
         CancellationToken cancellationToken);

@@ -265,6 +265,12 @@ public class PublicDownloadCountingTests
         public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken) =>
             inner.GetStorageQuotaAsync(accountId, cancellationToken);
 
+        public Task<DriveFileMetadata?> GetFileAsync(
+            Guid accountId,
+            string driveFileId,
+            CancellationToken cancellationToken) =>
+            inner.GetFileAsync(accountId, driveFileId, cancellationToken);
+
         private static TaskCompletionSource[] Gates(int count) =>
             [.. Enumerable.Range(0, count)
                 .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))];

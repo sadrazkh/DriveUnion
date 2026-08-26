@@ -252,3 +252,139 @@
         </div>
     }
 </div>
+
+@*
+    The pool as a table, under the cards.
+
+    The cards say what Google reports about each account — a quota bar and a status. None of them
+    says what is actually on the account, which is the one thing an operator needs before deciding
+    to retire one: how many files, whose, and how much of somebody's data is about to move.
+
+    Drawn only when there are accounts. On a fresh deployment the screen above is a single «connect
+    an account» button, and a table of nothing under it would be furniture.
+*@
+@if (Model.Pool.Count > 0)
+{
+    <div class="card card--pad stack" style="gap: 12px;">
+        <div>
+            <h2 class="card-title">@UiText.Accounts.PoolHeading</h2>
+            <p class="muted" style="font-size: 12px; line-height: 1.8; margin: 4px 0 0; max-width: 68ch;">
+                @UiText.Accounts.PoolHint
+            </p>
+        </div>
+
+        @* Six tracks: account · status · files · held · free · workspaces, then the drain form. *@
+        <div class="dtable" style="--cols: minmax(160px,2fr) 96px 82px 96px 96px 104px;">
+            <div class="dtable-head">
+                <div>@UiText.Accounts.ColumnAccount</div>
+                <div>@UiText.Accounts.ColumnStatus</div>
+                <div class="cell-num">@UiText.Accounts.ColumnFiles</div>
+                <div class="cell-num">@UiText.Accounts.ColumnHeld</div>
+                <div class="cell-num">@UiText.Accounts.ColumnFree</div>
+                <div class="cell-num">@UiText.Accounts.ColumnWorkspaces</div>
+            </div>
+
+            @foreach (var held in Model.Pool)
+            {
+                <div class="dtable-row">
+                    <div class="cell-name" dir="auto" title="@held.Name">@held.Name</div>
+                    <div class="cell-muted">@held.StatusText</div>
+                    @* dir="ltr" on every figure, for the reason UploadPanel.vue spells out: an
+                       RTL container reorders a run of digits beside a Latin unit. *@
+                    <div class="cell-num" dir="ltr">@held.FilesText</div>
+                    <div class="cell-num" dir="ltr">@held.HeldText</div>
+                    <div class="cell-num" dir="ltr">@held.FreeText</div>
+                    <div class="cell-num" dir="ltr">@held.TenantsText</div>
+                </div>
+            }
+        </div>
+
+        @*
+            Moving everything off an account.
+
+            One form per account with something on it, and none for an empty one — there is nothing
+            to move and the control would be a button that does nothing. It is a <details> because
+            it is a rare, consequential action that should not sit open beside five accounts, and
+            the warning is inside it because the two things it does are not both obvious: the source
+            gets paused, and each old copy is deleted six hours after its file has moved.
+        *@
+        @if (Model.DrainTargets.Count > 1)
+        {
+            foreach (var held in Model.Pool.Where(h => !h.IsEmpty && !h.IsDraining))
+            {
+                <details class="disclose">
+                    <summary class="btn btn--sm">
+                        @held.Name — @UiText.Accounts.MoveEverything
+                    </summary>
+                    <div class="disclose-body">
+                        <form method="post"
+                              class="stack"
+                              style="gap: 8px;"
+                              action="@Url.Action("Drain", "Accounts", new { id = held.Id })">
+                            @Html.AntiForgeryToken()
+
+                            <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0;">
+                                @UiText.Accounts.DrainWarning
+                            </p>
+
+                            <label class="visually-hidden" for="drain-target-@held.Id">
+                                @UiText.Accounts.MoveEverything
+                            </label>
+                            <select id="drain-target-@held.Id" name="target" class="control">
+                                @foreach (var target in Model.DrainTargets.Where(t => t.Id != held.Id))
+                                {
+                                    <option value="@target.Id">@target.Name — @target.FreeText</option>
+                                }
+                            </select>
+
+                            <button type="submit" class="btn btn--danger btn--block">
+                                @UiText.Accounts.StartDrain
+                            </button>
+                        </form>
+                    </div>
+                </details>
+            }
+        }
+    </div>
+}
+
+@if (Model.Drains.Count > 0)
+{
+    <div class="card card--pad stack" style="gap: 12px;">
+        <h2 class="card-title">@UiText.Accounts.DrainsHeading</h2>
+
+        @foreach (var drain in Model.Drains)
+        {
+            <div class="subcard stack" style="gap: 7px;">
+                <div class="row" style="gap: 10px; flex-wrap: wrap;">
+                    <span style="font-size: 12.5px; font-weight: 700;" dir="auto">
+                        @drain.FromName → @drain.ToName
+                    </span>
+                    <span class="badge push-end">@drain.StatusText</span>
+                </div>
+
+                <div class="row mono muted" style="gap: 14px; font-size: 11px; flex-wrap: wrap;" dir="ltr">
+                    <span>@drain.MovedText @UiText.Accounts.DrainMoved</span>
+                    <span>@drain.RemainingText @UiText.Accounts.DrainRemaining</span>
+                    <span>@drain.FailedText @UiText.Accounts.DrainFailed</span>
+                    <span>@drain.StartedText</span>
+                </div>
+
+                @if (drain.FailureReason is { Length: > 0 } why)
+                {
+                    @* The operator's own error, verbatim. It names Drive and it names ids, and it
+                       is on the one screen in the product no customer can reach. *@
+                    <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 0;" dir="auto">@why</p>
+                }
+
+                @if (drain.IsLive)
+                {
+                    <form method="post" action="@Url.Action("CancelDrain", "Accounts", new { id = drain.Id })">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn--sm">@UiText.Accounts.Cancel</button>
+                    </form>
+                }
+            </div>
+        }
+    </div>
+}

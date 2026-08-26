@@ -140,6 +140,7 @@ builder.Services.AddDriveUnionTrashPanel();
 // unrelated suites into «database is locked». Without this line an abandoned multipart upload's
 // parts sit on the operator's volume until somebody notices.
 builder.Services.AddDriveUnionS3Sweeper();
+builder.Services.AddDriveUnionAccountMigrations();
 
 // The two dashboards behind «/». After the three lines above and AddGoogleDrive: the customer's
 // reader is built on ITenantPlanService and ITrash, the operator's on IGoogleAccountDirectory, and a

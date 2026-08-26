@@ -359,6 +359,12 @@ public class PublicDownloadStreamTests
             CancellationToken cancellationToken) =>
             inner.GetStorageQuotaAsync(accountId, cancellationToken);
 
+        public Task<DriveFileMetadata?> GetFileAsync(
+            Guid accountId,
+            string driveFileId,
+            CancellationToken cancellationToken) =>
+            inner.GetFileAsync(accountId, driveFileId, cancellationToken);
+
         private sealed class AbandonedStream(Stream inner, int budget) : Stream
         {
             private bool served;

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
 using DriveUnion.Infrastructure.Google;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
@@ -26,6 +27,7 @@ public sealed class AccountsController(
     IGoogleAccountDirectory directory,
     IGoogleOAuthCredentials credentials,
     IGoogleClientUsageReader usage,
+    IAccountMigrations migrations,
     ILogger<AccountsController> logger) : Controller
 {
     private const string StateCookie = "du_google_oauth_state";
@@ -71,6 +73,17 @@ public sealed class AccountsController(
             UserRole = UiText.Shell.RoleOperator,
         };
 
+        // What each account is actually holding, which the cards above have never said. An operator
+        // deciding whether to retire an account needs the file count and the workspace count, and
+        // neither of those is anywhere else on this screen.
+        var inventory = await migrations.InventoryAsync(cancellationToken);
+        var drains = await migrations.ListAsync(cancellationToken);
+
+        var draining = drains
+            .Where(m => m.Status is AccountMigrationStatus.Pending or AccountMigrationStatus.Running)
+            .Select(m => m.SourceAccountId)
+            .ToHashSet();
+
         return View(new AccountsPageViewModel(
             [.. accounts.Select(a => AccountCardViewModel.From(
                 a,
@@ -81,8 +94,103 @@ public sealed class AccountsController(
             GoogleSetupViewModel.From(
                 credentials.Describe(),
                 SuggestedRedirectUri(),
-                clients.AccountsPerClientId)));
+                clients.AccountsPerClientId),
+            [.. inventory.Select(i => ToHolding(i, draining.Contains(i.AccountId)))],
+            [.. drains.Select(ToDrainRow)]));
     }
+
+    /// <summary>
+    /// Moves everything off one account and onto another.
+    ///
+    /// <para>Queued rather than done: a drain is a file at a time through this server, and forty
+    /// thousand of them is not something a form post waits for. The worker picks it up; this screen
+    /// shows how far it has got.</para>
+    /// </summary>
+    [HttpPost("{id:guid}/drain")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Drain(Guid id, Guid target, CancellationToken cancellationToken)
+    {
+        var result = await migrations.StartAsync(id, target, cancellationToken);
+
+        if (result.Started)
+        {
+            TempData["Notice"] = UiText.Accounts.DrainStarted;
+
+            logger.LogInformation(
+                "An operator started draining account {SourceAccountId} into {TargetAccountId}.",
+                id,
+                target);
+        }
+        else
+        {
+            // Every refusal here is something the operator can see and fix, so it is a sentence on
+            // the screen rather than a status code.
+            TempData["Error"] = result.Refusal switch
+            {
+                MigrationRefusal.SameAccount => UiText.Accounts.RefusalSameAccount,
+                MigrationRefusal.TargetNotHealthy => UiText.Accounts.RefusalTargetNotHealthy,
+                MigrationRefusal.TargetTooSmall => UiText.Accounts.RefusalTargetTooSmall,
+                MigrationRefusal.AlreadyRunning => UiText.Accounts.RefusalAlreadyRunning,
+                _ => UiText.Accounts.RefusalUnknownAccount,
+            };
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost("drains/{id:guid}/cancel")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelDrain(Guid id, CancellationToken cancellationToken)
+    {
+        if (await migrations.CancelAsync(id, cancellationToken))
+        {
+            TempData["Notice"] = UiText.Accounts.DrainCancelled;
+        }
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    private static AccountHoldingViewModel ToHolding(AccountInventory account, bool isDraining) =>
+        new(
+            account.AccountId,
+            string.IsNullOrWhiteSpace(account.Label) ? account.Email : account.Label,
+            account.Status switch
+            {
+                GoogleAccountStatus.Healthy => UiText.Accounts.StatusHealthy,
+                GoogleAccountStatus.Paused => UiText.Accounts.StatusPaused,
+                _ => UiText.Accounts.StatusDisconnected,
+            },
+            account.Status == GoogleAccountStatus.Healthy,
+            Numerals.Count(account.FileCount),
+            DisplayFormats.Bytes(account.LiveBytes),
+
+            // «Unknown» and not «0 B». Nobody has asked Google yet for an account that has never had
+            // its quota refreshed, and reporting that as no free space would read as an account
+            // that is full.
+            account.FreeBytes is { } free ? DisplayFormats.Bytes(free) : UiText.Accounts.Unknown,
+            Numerals.Count(account.TenantCount),
+            account.FileCount == 0,
+            isDraining);
+
+    private static MigrationRowViewModel ToDrainRow(AccountMigrationView drain) =>
+        new(
+            drain.Id,
+            drain.SourceLabel,
+            drain.TargetLabel,
+            drain.Status switch
+            {
+                AccountMigrationStatus.Pending => UiText.Accounts.DrainQueued,
+                AccountMigrationStatus.Running => UiText.Accounts.DrainMoving,
+                AccountMigrationStatus.Completed => UiText.Accounts.DrainDone,
+                AccountMigrationStatus.Cancelled => UiText.Accounts.DrainStopped,
+                _ => UiText.Accounts.DrainBroken,
+            },
+            drain.Status is AccountMigrationStatus.Pending or AccountMigrationStatus.Running,
+            Numerals.Count(drain.FilesMoved),
+            Numerals.Count(drain.FilesFailed),
+            Numerals.Count(drain.FilesRemaining),
+            drain.FailureReason,
+            DisplayFormats.PanelDateTime(drain.CreatedAt));
 
     /// <summary>
     /// The OAuth client, typed in rather than deployed.

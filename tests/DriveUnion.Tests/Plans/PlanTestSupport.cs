@@ -147,4 +147,11 @@ internal sealed class OverAcknowledgingDriveClient(long acknowledgedLength) : ID
 
     public Task<DriveStorageQuota> GetStorageQuotaAsync(Guid accountId, CancellationToken cancellationToken) =>
         Task.FromResult(new DriveStorageQuota(5L * 1024 * 1024 * 1024 * 1024, 0));
+
+    /// <summary>Nothing about plans reads a file back, so reaching this is a bug worth hearing.</summary>
+    public Task<DriveFileMetadata?> GetFileAsync(
+        Guid accountId,
+        string driveFileId,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The plan fixtures never read a file's metadata back.");
 }

@@ -247,6 +247,24 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
         return await client.PostAsync("/accounts/google-credentials", new FormUrlEncodedContent(fields));
     }
 
+    /// <summary>Any form post on this screen, with the token the real browser would carry.</summary>
+    public static async Task<HttpResponseMessage> PostAsync(
+        HttpClient client,
+        string path,
+        IDictionary<string, string> fields)
+    {
+        var all = new Dictionary<string, string>(fields, StringComparer.Ordinal)
+        {
+            ["__RequestVerificationToken"] = await AntiforgeryTokenAsync(client),
+        };
+
+        return await client.PostAsync(new Uri(path, UriKind.Relative), new FormUrlEncodedContent(all));
+    }
+
+    /// <summary>The same database the host is using, for asserting what a post actually wrote.</summary>
+    public DriveUnionDbContext NewDbContext() =>
+        new(new DbContextOptionsBuilder<DriveUnionDbContext>().UseSqlite(_connection).Options);
+
     /// <summary>
     /// Keeps a cookie jar and follows nothing. The jar is the point: the antiforgery cookie, the
     /// OAuth state cookie and the response's redirect are one conversation, and a handler that
@@ -457,6 +475,11 @@ public sealed class OperatorPanelHarness : WebApplicationFactory<Program>
 
         public Task<DriveStorageQuota> GetStorageQuotaAsync(
             Guid accountId,
+            CancellationToken cancellationToken) => throw Refuse();
+
+        public Task<DriveFileMetadata?> GetFileAsync(
+            Guid accountId,
+            string driveFileId,
             CancellationToken cancellationToken) => throw Refuse();
     }
 }

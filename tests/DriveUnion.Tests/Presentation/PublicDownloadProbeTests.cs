@@ -316,6 +316,11 @@ public class PublicDownloadProbeTests
             Guid accountId,
             CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public Task<DriveFileMetadata?> GetFileAsync(
+            Guid accountId,
+            string driveFileId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
         private sealed class NoopOwner : IAsyncDisposable
         {
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;

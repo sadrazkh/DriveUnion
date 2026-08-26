@@ -46,6 +46,12 @@ public static class ServiceCollectionExtensions
         // What a browser needs to open an encrypted file — and nothing that opens one.
         services.TryAddScoped<IFileEncryption, FileEncryptionStore>();
 
+        // The operator's pool: what is on each account, and the one thing that can move a file
+        // between two of them. The background loop that drives the second is registered separately
+        // — see AccountMigrationWorker for why a hosted service must not come out of here.
+        services.TryAddScoped<IAccountMigrations, AccountMigrations>();
+        services.TryAddScoped<IAccountMigrator, AccountMigrator>();
+
         // The egress counter. Written on the public download path and read by the capacity card and
         // both dashboards — the three places that said «— / ۵۰۰ GB» because nothing counted.
         services.TryAddScoped<ITrafficMeter, TrafficMeter>();
