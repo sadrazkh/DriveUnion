@@ -10,7 +10,8 @@
     "prebuild": "npm run fonts",
     "build": "vite build",
     "watch": "vite build --watch",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "vue": "^3.5.13"
@@ -21,6 +22,7 @@
     "typescript": "^5.7.3",
     "vazirmatn": "^33.0.3",
     "vite": "^6.0.7",
+    "vitest": "^3.2.7",
     "vue-tsc": "^2.2.0"
   }
 }

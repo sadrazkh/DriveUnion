@@ -40,7 +40,10 @@ export function mountFileGrid(root: HTMLElement): Wiring {
   const count = grid.querySelector<HTMLElement>('[data-selection-count]');
   const lang = document.documentElement.lang === 'en' ? 'en' : 'fa';
 
-  function say(): void {
+  // A const arrow and not a `function`, which is what it was and what failed `npm run typecheck`:
+  // a hoisted declaration could be called before the null check above it, so TypeScript will not
+  // carry that narrowing of `grid` inside one. The arrow is evaluated after the check, so it does.
+  const say = (): void => {
     if (count === null) return;
 
     const n = ticked().length;
@@ -63,7 +66,7 @@ export function mountFileGrid(root: HTMLElement): Wiring {
       all.checked = n > 0 && n === total;
       all.indeterminate = n > 0 && n < total;
     }
-  }
+  };
 
   // The header's select-all, drawn hidden by the view so that a reader with no script never meets a
   // control that does nothing.
