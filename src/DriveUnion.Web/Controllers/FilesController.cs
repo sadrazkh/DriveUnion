@@ -458,6 +458,15 @@ public sealed class FilesController(
             secret?.Trim() is { Length: > 0 } typed ? typed : null,
             cancellationToken);
 
+        if (WantsJson())
+        {
+            return Json(new
+            {
+                started = result.Started,
+                error = result.Started ? null : RefusalText(result),
+            });
+        }
+
         if (result.Started)
         {
             TempData["Notice"] = UiText.Files.FetchQueued;
@@ -467,18 +476,28 @@ public sealed class FilesController(
             // Every refusal is something the customer can see and fix, so it is a sentence rather
             // than a status code. «queue_full» is not about the link at all, which is why it is a
             // detail beside the refusal rather than another value of it.
-            TempData["Error"] = result.Detail == "queue_full"
-                ? UiText.Files.FetchQueueFull
-                : result.Refusal switch
-                {
-                    RemoteSourceRefusal.UnsupportedScheme => UiText.Files.FetchBadScheme,
-                    RemoteSourceRefusal.CarriesCredentials => UiText.Files.FetchHasCredentials,
-                    _ => UiText.Files.FetchMalformed,
-                };
+            TempData["Error"] = RefusalText(result);
         }
 
         return RedirectToAction(nameof(Upload));
     }
+
+    /// <summary>
+    /// Why a link was refused, in one place so the form and the island cannot word it differently.
+    ///
+    /// <para>«queue_full» is not about the link at all — the customer's next action is to wait rather
+    /// than to fix what they typed — which is why it is a detail beside the refusal rather than
+    /// another value of it.</para>
+    /// </summary>
+    private static string RefusalText(RemoteFetchStartResult result) =>
+        result.Detail == "queue_full"
+            ? UiText.Files.FetchQueueFull
+            : result.Refusal switch
+            {
+                RemoteSourceRefusal.UnsupportedScheme => UiText.Files.FetchBadScheme,
+                RemoteSourceRefusal.CarriesCredentials => UiText.Files.FetchHasCredentials,
+                _ => UiText.Files.FetchMalformed,
+            };
 
     [HttpPost("fetch/{id:guid}/cancel")]
     [ValidateAntiForgeryToken]
@@ -486,13 +505,67 @@ public sealed class FilesController(
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
-        if (await fetches.CancelAsync(tenantId, id, cancellationToken))
-        {
-            TempData["Notice"] = UiText.Files.FetchCancelled;
-        }
+        var stopped = await fetches.CancelAsync(tenantId, id, cancellationToken);
+
+        if (WantsJson()) return Json(new { stopped });
+
+        if (stopped) TempData["Notice"] = UiText.Files.FetchCancelled;
 
         return RedirectToAction(nameof(Upload));
     }
+
+    /// <summary>
+    /// This workspace's link fetches, for the upload screen to poll.
+    ///
+    /// <para>The island draws these in the same list as the browser's own uploads, so it needs the
+    /// same thing it has for those: a figure that moves. A fetch is carried out by a worker in
+    /// another process-wide loop, so there is nothing to observe locally and the only honest source
+    /// is the row.</para>
+    /// </summary>
+    [HttpGet("fetches")]
+    public async Task<IActionResult> Fetches(CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var rows = await fetches.ListAsync(tenantId, cancellationToken);
+
+        return Json(new
+        {
+            fetches = rows.Select(f =>
+            {
+                var view = ToFetchRow(f);
+
+                return new
+                {
+                    id = f.Id,
+                    url = f.Url,
+                    name = view.Name,
+                    status = f.Status.ToString(),
+                    statusText = view.StatusText,
+                    live = view.IsLive,
+                    progress = view.ProgressText,
+
+                    // Percent rather than a pair of byte counts, because the bar wants one number
+                    // and «unknown until the source has been asked» is a real state here.
+                    percent = f.SizeBytes > 0
+                        ? Math.Min(100d, f.BytesFetched * 100d / f.SizeBytes)
+                        : 0d,
+                    known = f.SizeBytes > 0,
+                    error = view.FailureReason,
+                };
+            }),
+        });
+    }
+
+    /// <summary>
+    /// Whether the caller is the upload island rather than a browser posting a form.
+    ///
+    /// <para>One pair of routes for both, because they do exactly the same thing and a second pair
+    /// would be a second place for the refusals to be worded. The form still works with no script at
+    /// all — that is the whole reason it is a form.</para>
+    /// </summary>
+    private bool WantsJson() =>
+        Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase);
 
     private static RemoteFetchRowViewModel ToFetchRow(RemoteFetchView fetch)
     {

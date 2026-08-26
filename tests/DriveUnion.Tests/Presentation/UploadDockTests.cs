@@ -220,11 +220,28 @@ public class UploadDockTests
 
         source.Should().Contain("../uploads/store", $"{island} is a view onto the shared queue");
 
-        foreach (var machinery in new[] { "XMLHttpRequest", "new AbortController", "fetch(", "function pump" })
+        foreach (var machinery in new[] { "XMLHttpRequest", "new AbortController", "function pump" })
         {
             source.Should().NotContain(
                 machinery,
                 "{0} would be sending its own bytes, and a queue a page owns is a queue that page ends",
+                island);
+        }
+
+        // Named rather than the bare word «fetch», which this used to forbid and can no longer.
+        //
+        // The upload screen now also asks the server to pull a link, and that is three small
+        // requests — start, stop, and a poll for progress — over a queue the server owns and that
+        // outlives this page by design. None of them carry a byte of anybody's file.
+        //
+        // What must never appear is a request at the chunk endpoint: that is the one that sends the
+        // bytes, and a view that sent them would own the transfer and end it on the way out, which
+        // is the defect this whole arrangement exists to have fixed.
+        foreach (var ownsTheTransfer in new[] { "/chunk", "beginUrl" })
+        {
+            source.Should().NotContain(
+                ownsTheTransfer,
+                "{0} would be running the upload itself rather than reading the shared queue",
                 island);
         }
     }

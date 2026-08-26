@@ -30,8 +30,9 @@
             header and token, and the language. The token in particular has to come from there,
             because it is per-response and an upload outlives many responses.
 
-            What this screen adds to the corner dock is room: the concurrency choice, the
-            checkboxes, and the sentence about what a reload costs.
+            Both ways in live inside it now — sending a file and asking the server to fetch one —
+            because they are the same act to the person doing them and were two entirely different
+            screens. One tab strip, one lock over both, one list of what is arriving.
         *@
         <div data-island="upload-panel">
             <div class="empty">
@@ -42,110 +43,77 @@
     </div>
 
     @*
-        The other way in, and the one that needs no script at all.
+        The link form for a reader with no script, and nothing else.
 
-        A plain form post, deliberately: the whole promise here is that the customer's machine is
-        not involved, so a control that only works while a tab is open would be the wrong shape for
-        it. Paste, press, close the browser — the worker does the rest.
+        Sending a file genuinely needs JavaScript — the browser will not read one without it — but
+        fetching a link does not, and a feature that works without script should not be switched off
+        because its neighbour cannot be. It posts to the same two routes the island calls; they
+        answer JSON when asked for JSON and redirect here otherwise, so there is one pair of routes
+        and one wording of every refusal.
+
+        Inside <noscript> so it does not appear twice for everybody else.
     *@
-    <div class="card card--pad stack" style="gap: 12px;">
-        <div>
-            <h2 class="card-title">@UiText.Files.FetchHeading</h2>
-            <p class="muted" style="font-size: 12px; line-height: 1.8; margin: 4px 0 0; max-width: 66ch;">
-                @UiText.Files.FetchHint
-            </p>
-        </div>
+    <noscript>
+        <div class="card card--pad stack" style="gap: 12px;">
+            <div>
+                <h2 class="card-title">@UiText.Files.FetchHeading</h2>
+                <p class="muted" style="font-size: 12px; line-height: 1.8; margin: 4px 0 0; max-width: 66ch;">
+                    @UiText.Files.FetchHint
+                </p>
+            </div>
 
-        <form method="post" class="stack" style="gap: 8px;" action="@Url.Action("Fetch", "Files")">
-            @Html.AntiForgeryToken()
+            <form method="post" class="stack" style="gap: 8px;" action="@Url.Action("Fetch", "Files")">
+                @Html.AntiForgeryToken()
 
-            <label class="field-label" for="fetch-url">@UiText.Files.FetchUrlLabel</label>
-            @*
-                type="url" so a phone offers the right keyboard and the browser catches the obvious
-                mistakes first. It is not the check that matters — that one is on the server, and
-                the address this resolves to is checked again at the moment a socket is opened.
+                <label class="field-label" for="fetch-url-plain">@UiText.Files.FetchUrlLabel</label>
+                <input id="fetch-url-plain"
+                       name="url"
+                       type="url"
+                       class="control mono"
+                       dir="ltr"
+                       required
+                       maxlength="@DriveUnion.Core.Uploads.RemoteSource.MaxUrlLength"
+                       autocomplete="off"
+                       placeholder="https://…" />
 
-                dir="ltr" because a URL is a Latin run, and in an RTL page it is reordered into
-                something unreadable otherwise.
-            *@
-            <input id="fetch-url"
-                   name="url"
-                   type="url"
-                   class="control mono"
-                   dir="ltr"
-                   required
-                   maxlength="@DriveUnion.Core.Uploads.RemoteSource.MaxUrlLength"
-                   autocomplete="off"
-                   placeholder="https://…" />
+                <label class="field-label" for="fetch-secret-plain">@UiText.Files.FetchSecretLabel</label>
+                <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0; max-width: 62ch;">
+                    @UiText.Files.FetchLockWarning
+                </p>
+                <input id="fetch-secret-plain"
+                       name="secret"
+                       type="password"
+                       class="control"
+                       autocomplete="new-password" />
 
-            @*
-                Optional, and the warning is inside it rather than beside the tick.
+                <button type="submit" class="btn btn--primary">@UiText.Files.FetchStart</button>
+            </form>
 
-                The two kinds of encryption in this product are the same format and very different
-                promises, and this is the weaker one — the server is the thing fetching the file, so
-                it sees the contents while it does. Somebody who ticks this without reading that has
-                been misled by the product, so the sentence sits where the choice is made and names
-                the other option by the words on its own control.
-            *@
-            <details class="disclose">
-                <summary class="btn btn--sm">@UiText.Files.FetchLock</summary>
-                <div class="disclose-body stack" style="gap: 8px;">
-                    <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0; max-width: 62ch;">
-                        @UiText.Files.FetchLockWarning
-                    </p>
+            @if (Model.Fetches.Count > 0)
+            {
+                <div class="stack" style="gap: 8px;">
+                    @foreach (var fetch in Model.Fetches)
+                    {
+                        <div class="subcard stack" style="gap: 6px;">
+                            <div class="row" style="gap: 10px; flex-wrap: wrap;">
+                                <span style="font-size: 12.5px; font-weight: 600;" dir="auto">@fetch.Name</span>
+                                <span class="badge push-end">@fetch.StatusText</span>
+                            </div>
 
-                    <label class="field-label" for="fetch-secret">@UiText.Files.FetchSecretLabel</label>
-                    <input id="fetch-secret"
-                           name="secret"
-                           type="password"
-                           class="control"
-                           autocomplete="new-password" />
-                </div>
-            </details>
+                            <span class="mono muted" dir="ltr"
+                                  style="font-size: 11px; overflow-wrap: anywhere;">@fetch.Url</span>
 
-            <button type="submit" class="btn btn--primary">@UiText.Files.FetchStart</button>
-        </form>
-
-        @if (Model.Fetches.Count == 0)
-        {
-            <p class="muted" style="font-size: 12px; margin: 0;">@UiText.Files.FetchNothingYet</p>
-        }
-        else
-        {
-            <div class="stack" style="gap: 8px;">
-                @foreach (var fetch in Model.Fetches)
-                {
-                    <div class="subcard stack" style="gap: 6px;">
-                        <div class="row" style="gap: 10px; flex-wrap: wrap;">
-                            <span style="font-size: 12.5px; font-weight: 600;" dir="auto">@fetch.Name</span>
-                            <span class="badge push-end">@fetch.StatusText</span>
-                        </div>
-
-                        @* The address as typed, which is Latin and must state its own direction. *@
-                        <span class="mono muted" dir="ltr"
-                              style="font-size: 11px; overflow-wrap: anywhere;">@fetch.Url</span>
-
-                        <div class="row" style="gap: 12px; flex-wrap: wrap;">
                             <span class="mono muted" dir="ltr" style="font-size: 11px;">@fetch.ProgressText</span>
 
-                            @if (fetch.IsLive)
+                            @if (fetch.FailureReason is { Length: > 0 } why)
                             {
-                                <form method="post" class="push-end"
-                                      action="@Url.Action("CancelFetch", "Files", new { id = fetch.Id })">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" class="btn btn--sm">@UiText.Accounts.Cancel</button>
-                                </form>
+                                <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 0;"
+                                   dir="auto">@why</p>
                             }
                         </div>
-
-                        @if (fetch.FailureReason is { Length: > 0 } why)
-                        {
-                            <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 0;"
-                               dir="auto">@why</p>
-                        }
-                    </div>
-                }
-            </div>
-        }
-    </div>
+                    }
+                </div>
+            }
+        </div>
+    </noscript>
 </div>

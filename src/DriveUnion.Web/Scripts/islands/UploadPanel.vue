@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { newRecoveryKey, type Secret } from '../crypto/envelope';
 import {
   ConcurrencyChoices,
@@ -51,6 +51,37 @@ const {
 
 const dragging = ref(false);
 const input = ref<HTMLInputElement | null>(null);
+
+/**
+ * Which way a file is arriving, and the reason this is a tab rather than a second screen.
+ *
+ * <p>Sending a file and asking the server to go and get one are the same act to the person doing it:
+ * something of theirs ends up in their workspace. They were two entirely different screens — a Vue
+ * dropzone with a lock and a progress bar, and a Razor form with a password box hidden inside a
+ * disclosure — and the second one read as a feature bolted to the side of the first. One control
+ * chooses between them, one lock covers both, and one list shows what is arriving either way.</p>
+ */
+const via = ref<'file' | 'link'>('file');
+
+const url = ref('');
+const linkError = ref('');
+const sending = ref(false);
+
+/** What the server is fetching, polled — see the note on `poll`. */
+interface FetchRow {
+  id: string;
+  url: string;
+  name: string;
+  status: string;
+  statusText: string;
+  live: boolean;
+  progress: string;
+  percent: number;
+  known: boolean;
+  error: string | null;
+}
+
+const fetches = ref<FetchRow[]>([]);
 
 /**
  * The lock, and everything it needs before it can be used.
@@ -183,6 +214,18 @@ function text() {
         keptIt: 'I have saved this key somewhere safe',
         notReady: 'Finish the lock above before choosing files.',
         lockedBadge: 'Locked',
+        viaFile: 'Send a file',
+        viaLink: 'Fetch a link',
+        linkTitle: 'Paste a direct download link',
+        linkHint:
+          'The server fetches it for you. Your own connection is not used and this page does not have to stay open.',
+        linkLabel: 'The file’s address',
+        linkSend: 'Fetch it',
+        linkSending: 'Asking…',
+        linkFailed: 'That could not be started.',
+        linkLockNote:
+          'On a link the encryption happens on our server, because our server is the one fetching the file — so it sees the contents while it does. That protects it from Google and from a stolen database, and not from us. A file you send from this machine is locked before it leaves it.',
+        arriving: 'Arriving',
       }
     : {
         drop: 'فایل‌ها را این‌جا رها کنید',
@@ -230,6 +273,18 @@ function text() {
         keptIt: 'این کلید را جای امنی ذخیره کردم',
         notReady: 'پیش از انتخاب فایل، قفل بالا را کامل کنید.',
         lockedBadge: 'قفل‌شده',
+        viaFile: 'فرستادن فایل',
+        viaLink: 'آوردن از لینک',
+        linkTitle: 'لینک دانلود مستقیم را بگذارید',
+        linkHint:
+          'سرور خودش آن را می‌آورد. اینترنت شما درگیر نمی‌شود و لازم نیست این صفحه باز بماند.',
+        linkLabel: 'نشانی فایل',
+        linkSend: 'بیاورش',
+        linkSending: 'در حال پرسیدن…',
+        linkFailed: 'شروع نشد.',
+        linkLockNote:
+          'در حالت لینک، رمزگذاری روی سرور ما انجام می‌شود — چون خودِ سرور فایل را می‌آورد و در همان لحظه محتوایش را می‌بیند. این در برابر گوگل و پایگاه‌داده‌ی دزدیده‌شده محافظت می‌کند، و در برابر ما نه. فایلی که از همین دستگاه می‌فرستید پیش از رفتن قفل می‌شود.',
+        arriving: 'در راه',
       };
 }
 
@@ -237,6 +292,106 @@ const statusWord = (item: UploadItem) => text()[item.status];
 
 const eta = (item: UploadItem) =>
   item.bytesPerSecond > 0 ? duration((item.wireSize - sent(item)) / item.bytesPerSecond) : '';
+
+/** The antiforgery pair every write from this island carries. See UploadDock.vue. */
+function headers(extra: Record<string, string> = {}): Record<string, string> {
+  const config = props.config();
+
+  return { [config.antiforgeryHeader]: config.antiforgeryToken, ...extra };
+}
+
+/**
+ * Asks the server to go and get the link, and puts it in the same list as everything else.
+ *
+ * <p>The same endpoint the no-script form posts to, answering JSON because this asked for JSON —
+ * one pair of routes for both, so the refusals cannot be worded differently in two places.</p>
+ */
+async function sendLink() {
+  if (!ready.value || url.value.trim().length === 0) return;
+
+  linkError.value = '';
+  sending.value = true;
+
+  try {
+    const response = await fetch('/files/fetch', {
+      method: 'POST',
+      headers: headers({
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      }),
+      body: new URLSearchParams({
+        url: url.value.trim(),
+
+        // The secret from the same lockbox the file tab uses. On this side the server does the
+        // encrypting, which the box says out loud while this tab is the one showing.
+        secret: locking.value && custody.value === 'passphrase'
+          ? passphrase.value
+          : locking.value
+            ? recoveryKey.value
+            : '',
+      }),
+    });
+
+    const answer = (await response.json()) as { started: boolean; error: string | null };
+
+    if (answer.started) {
+      url.value = '';
+      await poll();
+    } else {
+      linkError.value = answer.error ?? text().linkFailed;
+    }
+  } catch {
+    linkError.value = text().linkFailed;
+  } finally {
+    sending.value = false;
+  }
+}
+
+async function stopFetch(id: string) {
+  try {
+    await fetch(`/files/fetch/${id}/cancel`, {
+      method: 'POST',
+      headers: headers({ Accept: 'application/json' }),
+    });
+
+    await poll();
+  } catch {
+    // The row will say what it says at the next poll. A cancellation that did not reach the server
+    // is a fetch that carries on, and inventing a stopped row here would be the screen lying.
+  }
+}
+
+/**
+ * Reads what the server is fetching.
+ *
+ * <p>Polled rather than pushed, and rarely: a fetch is carried out by a loop in this process with no
+ * connection to this tab, so there is nothing local to observe. Two seconds while something is
+ * moving is enough for a bar that reads as live, and the poll stops entirely when nothing is — a
+ * screen left open on a finished list should not be a request every two seconds for ever.</p>
+ */
+async function poll() {
+  try {
+    const response = await fetch('/files/fetches', { headers: { Accept: 'application/json' } });
+    if (!response.ok) return;
+
+    fetches.value = ((await response.json()) as { fetches: FetchRow[] }).fetches;
+  } catch {
+    // Offline, or the session ended. The last list stays on screen rather than emptying, because an
+    // empty list is a statement and «I could not ask» is not one.
+  }
+}
+
+let timer: number | undefined;
+
+onMounted(() => {
+  void poll();
+
+  timer = window.setInterval(() => {
+    if (fetches.value.some((f) => f.live)) void poll();
+  }, 2000);
+});
+
+onBeforeUnmount(() => window.clearInterval(timer));
 
 function onDrop(event: DragEvent) {
   dragging.value = false;
@@ -261,7 +416,31 @@ function toggleAll() {
 <template>
   <div class="uploader">
     <!--
-      Above the dropzone, and one line tall until it is switched on.
+      Which way the file is arriving. The same segmented control the concurrency choice uses, so it
+      reads as a setting on this screen rather than as navigation to another one — which is what the
+      two used to be, and the reason the link half read as a bolted-on feature.
+    -->
+    <div class="seg" role="tablist">
+      <button
+        type="button"
+        class="seg-option"
+        role="tab"
+        :class="{ 'is-active': via === 'file' }"
+        :aria-selected="via === 'file'"
+        @click="via = 'file'"
+      >{{ text().viaFile }}</button>
+      <button
+        type="button"
+        class="seg-option"
+        role="tab"
+        :class="{ 'is-active': via === 'link' }"
+        :aria-selected="via === 'link'"
+        @click="via = 'link'"
+      >{{ text().viaLink }}</button>
+    </div>
+
+    <!--
+      Above whichever tab is showing, and one line tall until it is switched on.
 
       The order is the point. This is a decision that has to be made before the file is chosen, not
       after — it changes what happens to the bytes rather than what happens to them next — and a
@@ -277,6 +456,16 @@ function toggleAll() {
 
       <div v-if="locking" class="lockbox-body">
         <p class="upload-warning">{{ text().lockWarning }}</p>
+
+        <!--
+          One lock control, two promises, and the difference said exactly when it applies.
+
+          The same secret encrypts either way and the recipient opens both the same. What differs is
+          who could have read the file on the way in — and on the link tab the honest answer is «we
+          could, while we were fetching it». That used to be buried in a disclosure on a separate
+          form; here it is beside the switch that makes it true.
+        -->
+        <p v-if="via === 'link'" class="upload-warning">{{ text().linkLockNote }}</p>
 
         <span class="field-label">{{ text().custody }}</span>
         <div class="seg">
@@ -354,6 +543,7 @@ function toggleAll() {
     </div>
 
     <div
+      v-if="via === 'file'"
       class="dropzone"
       :class="{ 'dropzone--over': dragging && ready }"
       @dragenter.prevent="dragging = true"
@@ -377,12 +567,49 @@ function toggleAll() {
     </div>
 
     <!--
+      The same card as the dropzone, deliberately: it is the same act and it should be the same
+      shape. A field where the drop target is, the button where «Choose files» is, the same refusal
+      when the lock is unfinished, and the same hint underneath.
+    -->
+    <div v-else class="dropzone">
+      <p class="dropzone-title">{{ text().linkTitle }}</p>
+
+      <label class="visually-hidden" for="fetch-url">{{ text().linkLabel }}</label>
+      <!-- dir="ltr": a URL is a Latin run, and an RTL page reorders it into something unreadable. -->
+      <input
+        id="fetch-url"
+        v-model="url"
+        type="url"
+        class="control mono linkbox-url"
+        dir="ltr"
+        autocomplete="off"
+        placeholder="https://…"
+        :disabled="sending"
+        @keydown.enter.prevent="sendLink()"
+      />
+
+      <button
+        type="button"
+        class="btn btn--primary"
+        :disabled="!ready || sending || url.trim().length === 0"
+        @click="sendLink()"
+      >{{ sending ? text().linkSending : text().linkSend }}</button>
+
+      <p v-if="!ready" class="upload-warning">{{ text().notReady }}</p>
+      <p v-if="linkError" class="upload-error">{{ linkError }}</p>
+      <p class="dropzone-hint">{{ text().linkHint }}</p>
+    </div>
+
+    <!--
       Said here, before the first file is chosen, because the alternative is finding it out with
       90 GB sent. The queue outlives every navigation inside the panel and outlives nothing else:
       a File handle belongs to the page that opened it, and closing or reloading the tab takes it
       back. No worker can rescue one either — it would have to copy the bytes first.
+
+      Only on the file tab. A fetch is the server's and survives this page being closed, which is
+      the whole point of it — telling somebody otherwise would be the opposite of true.
     -->
-    <p class="upload-warning">{{ text().tabWarning }}</p>
+    <p v-if="via === 'file'" class="upload-warning">{{ text().tabWarning }}</p>
 
     <div class="upload-concurrency">
       <span class="field-label">{{ text().atOnce }}</span>
@@ -447,7 +674,58 @@ function toggleAll() {
       </span>
     </div>
 
-    <ul v-if="items.length" class="upload-list">
+    <!--
+      One list, both ways in.
+
+      Two loops rather than one over a merged model, because the actions genuinely differ — a
+      browser upload can be paused and a server fetch cannot — and a shared shape that had to carry
+      both would be a worse lie than two loops that produce the same row. What matters to the person
+      reading it is that a thing arriving looks like a thing arriving, whichever way it came.
+    -->
+    <ul v-if="items.length || fetches.length" class="upload-list">
+      <li
+        v-for="fetch in fetches"
+        :key="fetch.id"
+        class="upload-row"
+        :class="{ 'upload-row--failed': fetch.status === 'Failed' }"
+      >
+        <div class="upload-head">
+          <span class="upload-name" dir="auto" :title="fetch.url">{{ fetch.name }}</span>
+          <span class="badge">{{ text().viaLink }}</span>
+          <span class="upload-state">{{ fetch.statusText }}</span>
+        </div>
+
+        <div
+          class="bar"
+          role="progressbar"
+          :aria-valuenow="Math.round(fetch.percent)"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span class="bar-fill" :style="{ width: `${fetch.percent}%` }"></span>
+        </div>
+
+        <div class="upload-meta">
+          <span v-if="fetch.known" class="upload-percent mono" dir="ltr">
+            {{ Math.round(fetch.percent) }}%
+          </span>
+          <span class="mono" dir="ltr">{{ fetch.progress }}</span>
+          <!-- The address, so two fetches of files with the same name are tellable apart. -->
+          <span class="mono upload-source" dir="ltr" :title="fetch.url">{{ fetch.url }}</span>
+
+          <span class="push-end upload-actions">
+            <button
+              v-if="fetch.live"
+              type="button"
+              class="btn btn--sm btn--danger"
+              @click="stopFetch(fetch.id)"
+            >{{ text().cancel }}</button>
+          </span>
+        </div>
+
+        <p v-if="fetch.error" class="upload-error">{{ fetch.error }}</p>
+      </li>
+
       <li
         v-for="item in items"
         :key="item.id"
@@ -574,6 +852,22 @@ function toggleAll() {
 .lockbox-body {
   gap: 10px;
   margin-top: 4px;
+}
+
+/* The URL sits where the drop target does, so it needs the width the card has rather than a
+   field.s default. */
+.linkbox-url {
+  width: 100%;
+  max-width: 46ch;
+}
+
+/* The address under a fetch row: one line, and the end of it cut rather than wrapped into three.
+   Somebody scanning a list is matching the start of a URL, not reading it. */
+.upload-source {
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The key is read character by character off the screen, so it gets the spacing that makes that
