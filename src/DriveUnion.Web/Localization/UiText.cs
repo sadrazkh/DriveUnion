@@ -467,6 +467,29 @@ public static partial class UiText
             "اختیاری. هرکسی که این لینک را باز کند این را می‌بیند.",
             "Optional. Anyone who opens this link will see it.");
 
+        /// <summary>
+        /// The one thing on this screen that genuinely cannot work without script, said where the
+        /// button would be.
+        /// </summary>
+        public static string ShareLockedNeedsScript => Pick(
+            "ساختن لینک برای فایل قفل‌شده به جاوااسکریپت نیاز دارد: کلید باید در همین مرورگر بازبسته‌بندی شود، چون تنها جایی که کلید فایل وجود دارد همین‌جاست.",
+            "Making a link to a locked file needs JavaScript: the key has to be re-wrapped in this browser, because this browser is the only place the file's key exists.");
+
+        /// <summary>
+        /// Said when the re-wrapped key did not survive the trip. No link is made — a link without
+        /// the key it was meant to have is one that hands out the owner's own instead.
+        /// </summary>
+        public static string ShareKeyRefused => Pick(
+            "کلید این لینک درست به دست ما نرسید و لینکی ساخته نشد. دوباره تلاش کنید.",
+            "The key for this link did not arrive intact, so no link was made. Try again.");
+
+        /// <summary>Which of the two kinds of link this is — see <c>ShareLinkKey</c>.</summary>
+        public static string LinkHasOwnKey => Pick("با کلید مخصوص خودش", "Has its own key");
+
+        public static string LinkUsesYourPassphrase => Pick(
+            "با رمز خودتان باز می‌شود",
+            "Opens with your own passphrase");
+
         /// <summary>The padlock's label, for a reader who is hearing the row rather than seeing it.</summary>
         public static string Locked => Pick("قفل‌شده", "Locked");
 

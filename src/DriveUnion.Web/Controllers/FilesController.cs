@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DriveUnion.Core.Application;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
@@ -159,12 +160,17 @@ public sealed class FilesController(
 
             // The panel may be open on a file the table is not drawing — a search that has since
             // narrowed past it — so this asks about the one file rather than reusing the page's map.
+            //
+            // The whole header and not just the length, because the panel is where an owner shares a
+            // locked file: doing that means opening it here, in this browser, and re-wrapping its key
+            // for the link. Their own file, in their own authenticated panel, and the same header the
+            // public page already publishes to anyone holding a link.
             if (file is not null)
             {
-                var forSelected = await encryption.PlaintextLengthsAsync(
-                    tenantId, [selectedId], cancellationToken);
-
-                detail = ToDetail(file, now, forSelected.TryGetValue(selectedId, out var real) ? real : null);
+                detail = ToDetail(
+                    file,
+                    now,
+                    await encryption.ForFileAsync(tenantId, selectedId, cancellationToken));
             }
         }
 
@@ -442,20 +448,50 @@ public sealed class FilesController(
     /// turns an empty one into null. A 400 on a sentence that ran three characters long would lose
     /// somebody the link they were making.</para>
     /// </param>
+    /// <param name="key">
+    /// The file's content key re-wrapped for this link, as JSON, for a locked file — and absent for
+    /// every other file and for a browser with no script.
+    ///
+    /// <para>A string and not a bound model, because it arrives as one form field written by the
+    /// sharing island. Unparseable is refused rather than dropped: a link created without the key it
+    /// was meant to have is one that hands out the owner's own wrapped key instead, which quietly
+    /// widens what the recipient can open.</para>
+    /// </param>
     [HttpPost("{id:guid}/links")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateLink(
         Guid id,
         string? note,
+        string? key,
         string? q,
         Guid? folder,
         CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
+        LinkKeyMaterial? material = null;
+
+        if (key?.Trim() is { Length: > 0 } payload)
+        {
+            try
+            {
+                material = JsonSerializer.Deserialize<LinkKeyMaterial>(payload, PanelJson);
+            }
+            catch (JsonException)
+            {
+                material = null;
+            }
+
+            if (material is null || !material.IsWellFormed)
+            {
+                TempData["Notice"] = UiText.Files.ShareKeyRefused;
+                return RedirectToAction(nameof(Index), new { q, folder, selected = id });
+            }
+        }
+
         var link = await shareLinks.CreateAsync(
             tenantId,
-            new CreateShareLinkRequest(id, null, null, note),
+            new CreateShareLinkRequest(id, null, null, note, material),
             cancellationToken);
 
         TempData["Notice"] = UiText.Files.LinkCreated(PublicLinkFormatter.Display(PublicBaseUrl(), link.Slug));
@@ -488,23 +524,30 @@ public sealed class FilesController(
         UserRole = User.IsOperator() ? UiText.Shell.RoleOperator : UiText.Shell.RoleUser,
     };
 
-    /// <param name="plaintextLength">
-    /// The file's own length when it is encrypted, and null when it is not — which is also how this
+    /// <param name="header">
+    /// How to open the file when it is locked, and null when it is not — which is also how this
     /// method knows which of the two it is looking at.
     /// </param>
-    private FileDetailViewModel ToDetail(FileDetail file, DateTimeOffset now, long? plaintextLength)
+    private FileDetailViewModel ToDetail(FileDetail file, DateTimeOffset now, EncryptionHeader? header)
     {
         var baseUrl = PublicBaseUrl();
 
         return new FileDetailViewModel(
             file.Id,
             file.Name,
-            DisplayFormats.Bytes(plaintextLength ?? file.SizeBytes),
+            DisplayFormats.Bytes(header?.PlaintextLength ?? file.SizeBytes),
             DisplayFormats.FileKind(file.Name, file.MimeType),
             DisplayFormats.PanelDateTime(file.CreatedAt),
             [.. file.Links.Select(link => ToLink(link, baseUrl, now))],
-            plaintextLength is not null);
+            header is not null,
+            header is null ? null : JsonSerializer.Serialize(header, PanelJson));
     }
+
+    /// <summary>
+    /// camelCase, because the only reader is the sharing island and the format's field names live in
+    /// <c>Scripts/crypto/format.ts</c>. Nothing on this side reads it back.
+    /// </summary>
+    private static readonly JsonSerializerOptions PanelJson = new(JsonSerializerDefaults.Web);
 
     private static ShareLinkViewModel ToLink(ShareLinkSummary link, string baseUrl, DateTimeOffset now)
     {
@@ -527,7 +570,8 @@ public sealed class FilesController(
             PublicLinkFormatter.Absolute(baseUrl, link.Slug),
             downloads,
             expiry,
-            link.IsActive);
+            link.IsActive,
+            link.HasOwnKey);
     }
 
     // The customer copies this address and sends it to somebody else, so it is the product's own

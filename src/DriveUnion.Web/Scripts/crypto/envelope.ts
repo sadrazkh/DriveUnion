@@ -154,6 +154,35 @@ export async function sealWith(
  * failed unwrap and nothing else, so there is no oracle here beyond «yes or no».</p>
  */
 export async function unseal(secret: Secret, header: EncryptionHeader): Promise<CryptoKey | null> {
+  return unwrap(secret, header, false, ['decrypt']);
+}
+
+/**
+ * The content key back, and readable by this script.
+ *
+ * <p>Only the sharing path may call this, and it is a separate function rather than a flag so that
+ * calling it is a decision somebody made rather than a default they inherited. <c>unseal</c> returns
+ * a key Web Crypto will not export — the download path can decrypt with it and cannot read it, which
+ * is the right shape for a key that only has to open a file.</p>
+ *
+ * <p>Re-wrapping needs the opposite: <c>wrapKey</c> has to read the key to encrypt it, and Web Crypto
+ * has no other way. So this hands back an extractable key, and the window in which the raw bytes are
+ * reachable is the few lines in <c>rewrap</c> between the two calls. That is the cost of being able
+ * to share a file without sharing the passphrase, and it is worth naming rather than burying.</p>
+ */
+export async function unsealForRewrap(
+  secret: Secret,
+  header: EncryptionHeader,
+): Promise<CryptoKey | null> {
+  return unwrap(secret, header, true, ['decrypt', 'encrypt']);
+}
+
+async function unwrap(
+  secret: Secret,
+  header: EncryptionHeader,
+  extractable: boolean,
+  usages: KeyUsage[],
+): Promise<CryptoKey | null> {
   if (header.scheme !== Scheme) return null;
 
   const envelope = fromBase64(header.wrappedKey);
@@ -166,12 +195,54 @@ export async function unseal(secret: Secret, header: EncryptionHeader): Promise<
       wrapper,
       { name: 'AES-GCM', iv: envelope.subarray(0, 12) as BufferSource },
       { name: 'AES-GCM', length: 256 },
-      false,
-      ['decrypt'],
+      extractable,
+      usages,
     );
   } catch {
     return null;
   }
+}
+
+/** The three fields that constitute custody. The rest of a header describes the ciphertext. */
+export interface LinkKeyMaterial {
+  readonly kdfSalt: string;
+  readonly kdfIterations: number;
+  readonly wrappedKey: string;
+}
+
+/**
+ * The same content key, wrapped again under a different secret.
+ *
+ * <p>This is the whole of sharing an encrypted file. Nothing is re-encrypted and nothing is
+ * re-uploaded — the ciphertext on disk is untouched and is the same ciphertext both secrets open.
+ * What is made is a second wrapped copy of one 32-byte key, which is why sharing a 40 GB film costs
+ * one request and no bytes.</p>
+ *
+ * <p>A fresh salt per link, so two links to one file derive two unrelated wrappers and neither tells
+ * you anything about the other.</p>
+ */
+export async function rewrap(key: CryptoKey, secret: Secret): Promise<LinkKeyMaterial> {
+  const wrapping = await deriveWrapping(secret);
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+
+  const wrapped = new Uint8Array(
+    await crypto.subtle.wrapKey('raw', key, wrapping.key, {
+      name: 'AES-GCM',
+      iv: nonce as BufferSource,
+    }),
+  );
+
+  // Nonce in front of the wrapped key, exactly as `sealWith` writes it — this has to be readable by
+  // the same `unseal` on the other end, and a second layout would be a second thing to get wrong.
+  const envelope = new Uint8Array(nonce.length + wrapped.length);
+  envelope.set(nonce, 0);
+  envelope.set(wrapped, nonce.length);
+
+  return {
+    kdfSalt: toBase64(wrapping.salt),
+    kdfIterations: wrapping.iterations,
+    wrappedKey: toBase64(envelope),
+  };
 }
 
 /** One segment, sealed. `isFinal` is bound into the tag — see <c>aadFor</c>. */

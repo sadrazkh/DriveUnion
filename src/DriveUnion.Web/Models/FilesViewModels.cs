@@ -65,7 +65,18 @@ public sealed record ShareLinkViewModel(
     string PublicUrl,
     string DownloadsText,
     string ExpiryText,
-    bool IsActive);
+    bool IsActive,
+
+    /// <summary>
+    /// Whether this link carries its own wrapped key, for a locked file.
+    ///
+    /// <para>The panel has to tell the two apart. A link with one is opened by a secret made for it;
+    /// a link without one is opened by the owner's own passphrase — which also opens everything
+    /// uploaded in the same batch. Those are very different things to have given somebody, and a
+    /// screen that showed them identically would leave the owner no way to know which they had
+    /// done.</para>
+    /// </summary>
+    bool HasOwnKey = false);
 
 public sealed record FileDetailViewModel(
     Guid Id,
@@ -74,7 +85,18 @@ public sealed record FileDetailViewModel(
     string KindText,
     string CreatedText,
     IReadOnlyList<ShareLinkViewModel> Links,
-    bool IsEncrypted = false)
+    bool IsEncrypted = false,
+
+    /// <summary>
+    /// The file's header as JSON, for the island that shares it — and null for a file that is not
+    /// locked.
+    ///
+    /// <para>It is the owner's own file in their own authenticated panel, and it is the same header
+    /// <c>/d/{slug}</c> already hands to anyone holding a link: none of it opens anything without
+    /// the secret it is wrapped with. It is here because sharing a locked file means opening it in
+    /// this browser and re-wrapping its key, and that cannot happen anywhere else.</para>
+    /// </summary>
+    string? EncryptionJson = null)
 {
     public ShareLinkViewModel? ActiveLink => Links.FirstOrDefault(link => link.IsActive);
 }

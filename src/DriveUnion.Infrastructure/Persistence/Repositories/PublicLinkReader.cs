@@ -50,6 +50,33 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
                 e.WrappedKey))
             .FirstOrDefaultAsync(cancellationToken);
 
+        if (encryption is not null)
+        {
+            // The link's own copy of the key, when the owner made one. Three fields replaced and four
+            // left alone: the scheme, the segment size, the nonce prefix and the plaintext length
+            // describe the ciphertext that is actually on disk, and swapping any of them for a
+            // link's would be describing a different file.
+            //
+            // Absent, and the file's own wrapped key travels instead — which is what shipped with
+            // the format and is still correct: the recipient needs the owner's passphrase, and the
+            // panel said so when the link was made.
+            var linkKey = await db.ShareLinkKeys
+                .AsNoTracking()
+                .Where(k => k.ShareLinkId == link.Id)
+                .Select(k => new LinkKeyMaterial(k.KdfSalt, k.KdfIterations, k.WrappedKey))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (linkKey is not null)
+            {
+                encryption = encryption with
+                {
+                    KdfSalt = linkKey.KdfSalt,
+                    KdfIterations = linkKey.KdfIterations,
+                    WrappedKey = linkKey.WrappedKey,
+                };
+            }
+        }
+
         // The name on the card. Read by the file's tenant rather than the link's — they are the same
         // row and always have been, and the file is what is being shown.
         var sharedBy = await db.Tenants

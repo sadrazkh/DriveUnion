@@ -66,6 +66,8 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     public DbSet<OperatorSettings> OperatorSettings => Set<OperatorSettings>();
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
+
+    public DbSet<ShareLinkKey> ShareLinkKeys => Set<ShareLinkKey>();
     public DbSet<DownloadEvent> DownloadEvents => Set<DownloadEvent>();
 
     /// <summary>
@@ -439,6 +441,25 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.HasOne<StoredFile>()
                 .WithMany()
                 .HasForeignKey(l => l.StoredFileId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ShareLinkKey>(e =>
+        {
+            // The link is the key, for the same reason the file is FileEncryption's: one re-wrap per
+            // link or none, and no second way for two rows to claim one link.
+            e.HasKey(x => x.ShareLinkId);
+
+            // The same ceiling as the file's own fields — it is the same wrapped key, wrapped again.
+            e.Property(x => x.KdfSalt).HasMaxLength(FileEncryption.MaxFieldLength);
+            e.Property(x => x.WrappedKey).HasMaxLength(FileEncryption.MaxFieldLength);
+
+            // Revoking a link is what takes the recipient's copy of the key away, so the row must go
+            // when the link does. This is the half of «revoke» that makes it mean anything for an
+            // encrypted file: the bytes stay reachable to whoever kept a copy, and the key does not.
+            e.HasOne<ShareLink>()
+                .WithMany()
+                .HasForeignKey(x => x.ShareLinkId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

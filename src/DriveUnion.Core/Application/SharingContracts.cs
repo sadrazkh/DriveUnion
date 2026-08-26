@@ -9,18 +9,37 @@ public sealed record ShareLinkSummary(
     int? MaxDownloads,
     int DownloadCount,
     bool IsActive,
-    string? Note = null);
+    string? Note = null,
+
+    /// <summary>
+    /// Whether this link carries its own copy of the file's key.
+    ///
+    /// <para>The panel needs to tell the two apart: a link with one is opened by a secret the owner
+    /// handed out for it, and a link without one is opened by the owner's own passphrase — which
+    /// also opens everything else uploaded in that batch. Those are different things to have
+    /// given somebody, and the screen says which.</para>
+    /// </summary>
+    bool HasOwnKey = false);
 
 /// <param name="Note">
 /// A line for whoever opens the link. Trimmed and cut to <c>ShareLink.MaxNoteLength</c> by the
 /// service rather than refused: this is a sentence somebody typed into a box beside a button, and
 /// losing the link because the sentence ran long would be the wrong trade.
 /// </param>
+/// <param name="Key">
+/// The file's content key re-wrapped for this link, for a locked file the owner has just opened in
+/// their browser — and null for everything else.
+///
+/// <para>Refused rather than trimmed when it is malformed, unlike <c>Note</c>: a note that lost its
+/// last three characters is still a note, and a wrapped key that lost anything is a link nobody can
+/// ever open. The two are different kinds of field and are treated differently on purpose.</para>
+/// </param>
 public sealed record CreateShareLinkRequest(
     Guid StoredFileId,
     DateTimeOffset? ExpiresAt,
     int? MaxDownloads,
-    string? Note = null);
+    string? Note = null,
+    LinkKeyMaterial? Key = null);
 
 /// <summary>The owner's side of a link. Tenant-scoped, like everything else in the panel.</summary>
 public interface IShareLinkService

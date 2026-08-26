@@ -38,6 +38,32 @@ public sealed record EncryptionHeader(
 }
 
 /// <summary>
+/// One file's content key, wrapped again under a secret made for one link.
+///
+/// <para>Three fields and not seven: the scheme, the segment size, the nonce prefix and the plaintext
+/// length describe the ciphertext and are the same for every link to it. Only custody is duplicated —
+/// see <see cref="Sharing.ShareLinkKey"/> for what that buys.</para>
+/// </summary>
+public sealed record LinkKeyMaterial(string KdfSalt, int KdfIterations, string WrappedKey)
+{
+    /// <summary>
+    /// Whether this is shaped like a re-wrap.
+    ///
+    /// <para>The same judgement <see cref="EncryptionHeader.IsWellFormed"/> makes and for the same
+    /// reason: the server cannot tell whether these bytes unwrap to anything, but it can tell that a
+    /// field will not fit its column or that an iteration count is a number nobody would choose. A
+    /// malformed one stored is a link that looks fine and opens nothing.</para>
+    /// </summary>
+    public bool IsWellFormed =>
+        KdfIterations is >= 100_000 and <= 10_000_000
+        && Fits(KdfSalt)
+        && Fits(WrappedKey);
+
+    private static bool Fits(string? value) =>
+        value is { Length: > 0 } and { Length: <= Storage.FileEncryption.MaxFieldLength };
+}
+
+/// <summary>
 /// Reading and writing what a file needs to be opened.
 ///
 /// <para><c>tenantId</c> is explicit on every call, like everywhere else in this product.</para>

@@ -1593,10 +1593,10 @@ audio.preview-media {
    card in _PublicLayout, and a second rule under one name is two things fighting over one selector
    with the later one winning by position.
 
-   It is a .subcard and not a quotation bar down one edge. The first version of this had
-   `border-inline-start: 3px solid var(--accent)`, which was the only rule of its kind in this
-   stylesheet — every other aside in the product is this box, and inventing a second idiom for one
-   paragraph makes it read as a component from somewhere else. What marks it as somebody's words is
+   It is a .subcard and not a quotation bar down one edge. The first version of this had a
+   three-pixel accent border along its inline edge — the only rule of its kind in this stylesheet,
+   where every other aside in the product is this box. Inventing a second idiom for one paragraph
+   makes it read as a component borrowed from somewhere else. What marks it as somebody's words is
    that it is prose in a card otherwise made of labels and figures, which is enough. */
 .sender-note {
   margin: 0 0 18px;

@@ -1,4 +1,5 @@
 import { createApp } from 'vue';
+import ShareLockedFile from './islands/ShareLockedFile.vue';
 import ThemeLanguageToggle from './islands/ThemeLanguageToggle.vue';
 import UnlockDownload from './islands/UnlockDownload.vue';
 import UploadDock from './islands/UploadDock.vue';
@@ -130,6 +131,22 @@ const islands: Record<string, Island> = {
         header: JSON.parse(el.dataset.header ?? '{}'),
         downloadUrl: el.dataset.downloadUrl ?? '',
         fileName: el.dataset.fileName ?? 'download',
+        lang: el.dataset.lang === 'en' ? 'en' : 'fa',
+      });
+
+      app.mount(el);
+      return () => app.unmount();
+    },
+  },
+
+  'share-locked-file': {
+    // Inside the detail panel, which is inside the swapped region — so it is mounted when a file is
+    // selected and unmounted when the reader navigates away, like the table beside it.
+    region: 'content',
+    mount: (el) => {
+      const app = createApp(ShareLockedFile, {
+        header: JSON.parse(el.dataset.header ?? '{}'),
+        fileName: el.dataset.fileName ?? '',
         lang: el.dataset.lang === 'en' ? 'en' : 'fa',
       });
 

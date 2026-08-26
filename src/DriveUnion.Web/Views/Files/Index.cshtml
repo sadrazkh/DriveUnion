@@ -428,6 +428,18 @@
                                     <span>@link.DownloadsText</span>
                                     <span>@link.ExpiryText</span>
                                 </div>
+
+                                @if (Model.Selected.IsEncrypted)
+                                {
+                                    @* Which secret this link needs. The two are very different
+                                       things to have handed somebody, and without this the owner has
+                                       no way to tell one link from the other afterwards. *@
+                                    <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 9px 0 0;">
+                                        🔒 @(link.HasOwnKey
+                                            ? UiText.Files.LinkHasOwnKey
+                                            : UiText.Files.LinkUsesYourPassphrase)
+                                    </p>
+                                }
                             </div>
 
                             <div class="row" style="gap: 8px;">
@@ -466,7 +478,43 @@
                                 <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 6px 0 10px;">
                                     @UiText.Files.LinkNoteHint
                                 </p>
-                                <button type="submit" class="btn btn--primary btn--block">@UiText.Files.CreateLink</button>
+
+                                @if (Model.Selected.EncryptionJson is { } fileHeader)
+                                {
+                                    @*
+                                        Sharing a locked file is not a form post. The key has to be
+                                        re-wrapped in this browser, because this browser is the only
+                                        place the content key can exist — so the island below does
+                                        that and fills in the one field that gets posted.
+
+                                        The button is rendered disabled and the island enables it.
+                                        Pressing it beforehand would make a link carrying the file's
+                                        original wrapped key, which needs the owner's own passphrase
+                                        — the passphrase that also opens everything uploaded in the
+                                        same batch. That link would work, for the wrong secret, and
+                                        the owner would learn about it from the person they sent it
+                                        to. So it is refused, and the noscript below says why.
+                                    *@
+                                    <div data-island="share-locked-file"
+                                         data-header="@fileHeader"
+                                         data-file-name="@Model.Selected.Name"
+                                         data-lang="@(PanelCulture.IsPersian ? "fa" : "en")"></div>
+
+                                    <noscript>
+                                        <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0 0 10px;">
+                                            @UiText.Files.ShareLockedNeedsScript
+                                        </p>
+                                    </noscript>
+
+                                    <button type="submit"
+                                            class="btn btn--primary btn--block"
+                                            data-share-submit
+                                            disabled>@UiText.Files.CreateLink</button>
+                                }
+                                else
+                                {
+                                    <button type="submit" class="btn btn--primary btn--block">@UiText.Files.CreateLink</button>
+                                }
                             </form>
                         }
                     </div>

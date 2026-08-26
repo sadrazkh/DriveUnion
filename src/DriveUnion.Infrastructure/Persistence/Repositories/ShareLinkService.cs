@@ -38,6 +38,15 @@ public sealed class ShareLinkService(
             throw new KeyNotFoundException($"File {request.StoredFileId} was not found.");
         }
 
+        if (request.Key is { } key && !key.IsWellFormed)
+        {
+            // Before the slug is allocated, so a refused re-wrap leaves no link behind at all.
+            // Storing it would make a link that resolves, renders and asks for a secret that cannot
+            // possibly work — and the owner would find out from the person they sent it to.
+            throw new ArgumentException(
+                "The re-wrapped key is not shaped like one.", nameof(request));
+        }
+
         var now = clock.GetUtcNow();
 
         for (var attempt = 1; attempt <= MaxSlugAttempts; attempt++)
@@ -62,19 +71,43 @@ public sealed class ShareLinkService(
 
             db.ShareLinks.Add(link);
 
+            if (request.Key is { } material)
+            {
+                // Same SaveChanges as the link. A link that exists without the key it was made for
+                // is one that hands out the owner's own wrapped key instead — silently widening what
+                // the recipient can open, which is the exact thing this feature exists to stop.
+                db.ShareLinkKeys.Add(new ShareLinkKey
+                {
+                    ShareLinkId = link.Id,
+                    TenantId = tenantId,
+                    KdfSalt = material.KdfSalt,
+                    KdfIterations = material.KdfIterations,
+                    WrappedKey = material.WrappedKey,
+                    CreatedAt = now,
+                });
+            }
+
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
 
                 return new ShareLinkSummary(
                     link.Id, link.Slug, link.ExpiresAt, link.MaxDownloads, link.DownloadCount,
-                    link.IsActive, link.Note);
+                    link.IsActive, link.Note, request.Key is not null);
             }
             catch (DbUpdateException) when (attempt < MaxSlugAttempts)
             {
                 // The failed insert is still tracked as Added; leaving it would replay the same
-                // colliding slug on the next SaveChanges.
+                // colliding slug on the next SaveChanges. The key row goes with it — it names the
+                // link id that is being abandoned, and a retry builds a fresh one.
                 db.Entry(link).State = EntityState.Detached;
+
+                foreach (var orphan in db.ChangeTracker.Entries<ShareLinkKey>()
+                    .Where(e => e.Entity.ShareLinkId == link.Id)
+                    .ToList())
+                {
+                    orphan.State = EntityState.Detached;
+                }
 
                 // Which constraint fired is a provider-specific error code, and this product runs on
                 // Postgres in production and SQLite in the tests. Asking whether the slug is now
@@ -102,7 +135,10 @@ public sealed class ShareLinkService(
             .Where(l => l.TenantId == tenantId && l.StoredFileId == fileId)
             .Select(l => new LinkRow(
                 l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive, l.CreatedAt,
-                l.Note))
+                l.Note,
+                // Whether it has one, never what it is. A listing draws a word; the wrapped key has
+                // no business on a screen that needed one bit — the same rule the padlock follows.
+                db.ShareLinkKeys.Any(k => k.ShareLinkId == l.Id)))
             .ToListAsync(cancellationToken);
 
         // Newest first, sorted in memory: SQLite refuses ORDER BY on a DateTimeOffset and this code
@@ -127,7 +163,8 @@ public sealed class ShareLinkService(
                 {
                     Row = new LinkRow(
                         l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive,
-                        l.CreatedAt, l.Note),
+                        l.CreatedAt, l.Note,
+                        db.ShareLinkKeys.Any(k => k.ShareLinkId == l.Id)),
                     FileId = f.Id,
                     f.Name,
                 })

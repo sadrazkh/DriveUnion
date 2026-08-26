@@ -113,7 +113,11 @@ public sealed class FileCatalog(
             .AsNoTracking()
             .Where(l => l.StoredFileId == fileId && l.TenantId == tenantId)
             .Select(l => new LinkRow(
-                l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive, l.CreatedAt))
+                l.Id, l.Slug, l.ExpiresAt, l.MaxDownloads, l.DownloadCount, l.IsActive, l.CreatedAt,
+                l.Note,
+                // The detail panel is where the two kinds of link are told apart, so this is where
+                // the bit has to arrive. Whether there is one, never what it holds.
+                db.ShareLinkKeys.Any(k => k.ShareLinkId == l.Id)))
             .ToListAsync(cancellationToken);
 
         return new FileDetail(
