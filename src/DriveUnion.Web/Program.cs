@@ -8,6 +8,7 @@ using DriveUnion.Infrastructure.S3;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Infrastructure.Telegram;
+using DriveUnion.Infrastructure.Uploads;
 using DriveUnion.Infrastructure.Tenancy;
 using DriveUnion.Infrastructure.Trash;
 using DriveUnion.Web.Hosting;
@@ -141,6 +142,12 @@ builder.Services.AddDriveUnionTrashPanel();
 // parts sit on the operator's volume until somebody notices.
 builder.Services.AddDriveUnionS3Sweeper();
 builder.Services.AddDriveUnionAccountMigrations();
+
+// Fetching a file from a URL the customer supplies. The registration wires the one HTTP client
+// either half is allowed to use to GuardedFetchHandler — see there for what that closes — and the
+// worker is a second line because a test host must be able to have the queue without the loop.
+builder.Services.AddDriveUnionRemoteFetch();
+builder.Services.AddDriveUnionRemoteFetchWorker();
 
 // The two dashboards behind «/». After the three lines above and AddGoogleDrive: the customer's
 // reader is built on ITenantPlanService and ITrash, the operator's on IGoogleAccountDirectory, and a

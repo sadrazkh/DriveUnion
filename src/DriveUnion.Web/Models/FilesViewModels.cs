@@ -175,3 +175,22 @@ public sealed record ErrorViewModel(string? RequestId)
 {
     public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
 }
+
+/// <summary>One queued or finished «fetch this for me», as the upload screen draws it.</summary>
+public sealed record RemoteFetchRowViewModel(
+    Guid Id,
+    string Url,
+    string Name,
+    string StatusText,
+    bool IsLive,
+    string ProgressText,
+    string? FailureReason);
+
+/// <summary>
+/// The upload screen: the antiforgery pair the island needs, and the links the server is pulling.
+/// </summary>
+public sealed record UploadPageViewModel(
+    AntiforgeryTokenViewModel Antiforgery,
+    IReadOnlyList<RemoteFetchRowViewModel> Fetches,
+    string? Notice,
+    string? Error);

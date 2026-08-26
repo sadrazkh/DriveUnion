@@ -454,6 +454,56 @@ public static partial class UiText
             "اول فایل‌ها را انتخاب کن.",
             "Pick some files first.");
 
+        // ─────────────────────────────────────────────── «go and get this», rather than sending it
+
+        public static string FetchHeading => Pick("افزودن از لینک", "Add from a link");
+
+        public static string FetchHint => Pick(
+            "لینک دانلود مستقیم را بگذارید و سرور خودش فایل را می‌آورد. لازم نیست این صفحه باز بماند و اینترنت شما درگیر نمی‌شود.",
+            "Paste a direct download link and the server fetches it. This page does not have to stay open and your own connection is not used.");
+
+        public static string FetchUrlLabel => Pick("نشانی فایل", "The file's address");
+
+        public static string FetchStart => Pick("بیاورش", "Fetch it");
+
+        public static string FetchQueued => Pick(
+            "در صف قرار گرفت. می‌توانید این صفحه را ببندید.",
+            "Queued. You can close this page.");
+
+        public static string FetchCancelled => Pick("متوقف شد.", "Stopped.");
+
+        public static string FetchNothingYet => Pick(
+            "هنوز چیزی از لینک نیاورده‌اید.",
+            "Nothing has been fetched from a link yet.");
+
+        public static string FetchNameUnknown => Pick("در حال پرسیدن…", "Asking…");
+
+        public static string FetchStateQueued => Pick("در صف", "Queued");
+
+        public static string FetchStateRunning => Pick("در حال آوردن", "Fetching");
+
+        public static string FetchStateDone => Pick("آمد", "Done");
+
+        public static string FetchStateStopped => Pick("متوقف شد", "Stopped");
+
+        public static string FetchStateFailed => Pick("ناموفق", "Failed");
+
+        public static string FetchBadScheme => Pick(
+            "فقط نشانی‌های http و https پذیرفته می‌شوند.",
+            "Only http and https addresses are accepted.");
+
+        public static string FetchHasCredentials => Pick(
+            "نشانی نباید نام کاربری و رمز داشته باشد.",
+            "The address must not carry a username and password.");
+
+        public static string FetchMalformed => Pick(
+            "این یک نشانی کامل نیست.",
+            "That is not a complete address.");
+
+        public static string FetchQueueFull => Pick(
+            "چند لینک در صف دارید. وقتی یکی تمام شد دوباره تلاش کنید.",
+            "You have several links in the queue. Try again when one has finished.");
+
         public static string LinkNoteLabel => Pick("یادداشت برای گیرنده", "A note for whoever opens it");
 
         public static string LinkNotePlaceholder => Pick(

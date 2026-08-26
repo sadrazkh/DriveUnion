@@ -71,6 +71,9 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     /// </summary>
     public DbSet<OperatorSettings> OperatorSettings => Set<OperatorSettings>();
     public DbSet<UploadSession> UploadSessions => Set<UploadSession>();
+
+    /// <summary>Files the customer asked the server to go and get. See <see cref="RemoteFetch"/>.</summary>
+    public DbSet<RemoteFetch> RemoteFetches => Set<RemoteFetch>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
 
     public DbSet<ShareLinkKey> ShareLinkKeys => Set<ShareLinkKey>();
@@ -448,6 +451,28 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
                 .WithMany()
                 .HasForeignKey(l => l.StoredFileId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<RemoteFetch>(e =>
+        {
+            e.Property(f => f.Url).HasMaxLength(RemoteSource.MaxUrlLength);
+            e.Property(f => f.FileName).HasMaxLength(RemoteFetch.MaxFileNameLength);
+            e.Property(f => f.FailureReason).HasMaxLength(RemoteFetch.MaxFailureReasonLength);
+
+            // The worker's question — what is queued — and the screen's, which is this workspace's
+            // fetches. Status first: nearly every row is finished and is skipped on it alone.
+            e.HasIndex(f => f.Status);
+            e.HasIndex(f => new { f.TenantId, f.CreatedAt });
+
+            // No foreign key to Tenant, and that is not an omission — UploadSession, which this row
+            // sits directly beside, deliberately has none either.
+            //
+            // TenantStorageMeter reserves quota with ExecuteUpdate and then detaches the Tenant it
+            // went round, or the next SaveChanges writes a stale counter back over the reservation.
+            // Detaching a principal detaches its tracked dependents with it, so a fetch row related
+            // to that tenant by a real FK is silently detached in the middle of its own job — every
+            // write after the reserve is a no-op, the file lands, and the row still says «running».
+            // Which is exactly what a foreign key here did before it was taken out again.
         });
 
         builder.Entity<AccountMigration>(e =>

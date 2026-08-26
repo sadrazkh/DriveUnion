@@ -103,6 +103,28 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     public AccountMigrations Migrations(DriveUnionDbContext? context = null) =>
         new(context ?? Db, Clock);
 
+    /// <summary>The queue behind «fetch this URL for me».</summary>
+    public Infrastructure.Uploads.RemoteFetches Fetches(DriveUnionDbContext? context = null) =>
+        new(context ?? Db, Clock);
+
+    /// <summary>
+    /// The half that pulls, pointed at a stub far end.
+    ///
+    /// <para>The handler is supplied rather than the guarded one, because what is under test here is
+    /// how a response is read — not which addresses may be dialled, which is
+    /// <c>RemoteAddressPolicyTests</c>' question and needs no network at all.</para>
+    /// </summary>
+    public Infrastructure.Uploads.RemoteFetcher Fetcher(
+        HttpMessageHandler source,
+        DriveUnionDbContext? context = null) =>
+        new(
+            context ?? Db,
+            Uploads(context),
+            new SingleClientFactory(source),
+            Clock,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Uploads.RemoteFetcher>
+                .Instance);
+
     /// <summary>
     /// The thing that actually moves a file, driven directly.
     ///
@@ -257,4 +279,17 @@ public sealed class ServiceTestHarness : IAsyncDisposable
 
         await _connection.DisposeAsync();
     }
+}
+
+/// <summary>
+/// An <see cref="IHttpClientFactory"/> that hands out one client over one handler.
+///
+/// <para>The real registration names its client and wires it to the guarded handler; a test needs to
+/// point the fetcher at a stub far end instead, and this is the smallest thing that does it without
+/// standing up the whole factory.</para>
+/// </summary>
+internal sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+{
+    public HttpClient CreateClient(string name) =>
+        new(handler, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan };
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Uploads;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
@@ -28,6 +29,7 @@ public sealed class FilesController(
     ITags tags,
     IShareLinkService shareLinks,
     IFileEncryption encryption,
+    IRemoteFetches fetches,
     IAntiforgery antiforgery,
     IOptions<DriveUnionWebOptions> options) : Controller
 {
@@ -410,10 +412,100 @@ public sealed class FilesController(
     /// of what it needs.
     /// </summary>
     [HttpGet("upload")]
-    public IActionResult Upload()
+    public async Task<IActionResult> Upload(CancellationToken cancellationToken)
     {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
         SetShell();
-        return View(Tokens());
+
+        var pulls = await fetches.ListAsync(tenantId, cancellationToken);
+
+        return View(new UploadPageViewModel(
+            Tokens(),
+            [.. pulls.Select(ToFetchRow)],
+            TempData["Notice"] as string,
+            TempData["Error"] as string));
+    }
+
+    /// <summary>
+    /// Asks the server to go and get a file, so the customer's own connection is not involved.
+    ///
+    /// <para>Queued rather than done: a 40 GB pull is not something a form post waits for, and the
+    /// browser that asked for it is expected to be closed long before it finishes. That is the whole
+    /// point of the feature.</para>
+    /// </summary>
+    [HttpPost("fetch")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Fetch(string? url, CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var result = await fetches.StartAsync(tenantId, User.GetUserId(), url ?? string.Empty, cancellationToken);
+
+        if (result.Started)
+        {
+            TempData["Notice"] = UiText.Files.FetchQueued;
+        }
+        else
+        {
+            // Every refusal is something the customer can see and fix, so it is a sentence rather
+            // than a status code. «queue_full» is not about the link at all, which is why it is a
+            // detail beside the refusal rather than another value of it.
+            TempData["Error"] = result.Detail == "queue_full"
+                ? UiText.Files.FetchQueueFull
+                : result.Refusal switch
+                {
+                    RemoteSourceRefusal.UnsupportedScheme => UiText.Files.FetchBadScheme,
+                    RemoteSourceRefusal.CarriesCredentials => UiText.Files.FetchHasCredentials,
+                    _ => UiText.Files.FetchMalformed,
+                };
+        }
+
+        return RedirectToAction(nameof(Upload));
+    }
+
+    [HttpPost("fetch/{id:guid}/cancel")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelFetch(Guid id, CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        if (await fetches.CancelAsync(tenantId, id, cancellationToken))
+        {
+            TempData["Notice"] = UiText.Files.FetchCancelled;
+        }
+
+        return RedirectToAction(nameof(Upload));
+    }
+
+    private static RemoteFetchRowViewModel ToFetchRow(RemoteFetchView fetch)
+    {
+        var live = fetch.Status is RemoteFetchStatus.Queued or RemoteFetchStatus.Running;
+
+        return new RemoteFetchRowViewModel(
+            fetch.Id,
+            fetch.Url,
+
+            // The name is only known once the source has been asked. While that is still coming,
+            // saying so is right; on a row that has already failed it reads as something still in
+            // progress — and the address underneath already says which fetch this is.
+            fetch.FileName ?? (live ? UiText.Files.FetchNameUnknown : "—"),
+            fetch.Status switch
+            {
+                RemoteFetchStatus.Queued => UiText.Files.FetchStateQueued,
+                RemoteFetchStatus.Running => UiText.Files.FetchStateRunning,
+                RemoteFetchStatus.Completed => UiText.Files.FetchStateDone,
+                RemoteFetchStatus.Cancelled => UiText.Files.FetchStateStopped,
+                _ => UiText.Files.FetchStateFailed,
+            },
+            live,
+
+            // «—» while the size is still unknown, which it is until the source has been asked. A
+            // zero there would read as a file of no size rather than a question not yet put.
+            fetch.SizeBytes > 0
+                ? $"{DisplayFormats.Bytes(fetch.BytesFetched)} / {DisplayFormats.Bytes(fetch.SizeBytes)}"
+                : "—",
+            fetch.FailureReason);
     }
 
     /// <param name="q">
