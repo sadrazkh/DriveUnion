@@ -153,6 +153,41 @@ public class S3GatewayTests
     }
 
     [Fact]
+    public void A_completion_body_is_read_the_way_a_client_writes_one()
+    {
+        // The body the AWS CLI sends, quoted ETags and all. This started life passing a unit test
+        // that never existed and failing every real request: ReadElementContentAsString consumes the
+        // element's end tag, so a parser keyed on «</Part>» never sees one and reports that a body
+        // plainly naming three parts named none.
+        var parsed = S3Xml.ParseCompletion(
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+              <Part><PartNumber>1</PartNumber><ETag>"aaa"</ETag></Part>
+              <Part><PartNumber>2</PartNumber><ETag>"bbb"</ETag></Part>
+              <Part><PartNumber>3</PartNumber><ETag>ccc</ETag></Part>
+            </CompleteMultipartUpload>
+            """);
+
+        parsed.Should().Equal([(1, "aaa"), (2, "bbb"), (3, "ccc")]);
+    }
+
+    [Fact]
+    public void A_completion_body_may_not_talk_the_parser_into_reading_a_file()
+    {
+        // A stranger's XML. A DTD is how an entity is talked into resolving something off the
+        // server or expanding until the process dies, so the reader prohibits both.
+        var hostile = S3Xml.ParseCompletion(
+            """
+            <?xml version="1.0"?>
+            <!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]>
+            <CompleteMultipartUpload><Part><PartNumber>1</PartNumber><ETag>&e;</ETag></Part></CompleteMultipartUpload>
+            """);
+
+        hostile.Should().BeEmpty("a body carrying a DTD is refused rather than resolved");
+    }
+
+    [Fact]
     public void The_aws_chunked_decoder_returns_the_object_and_not_its_framing()
     {
         // The failure this prevents is silent: framing left in the body stores a file that is a few

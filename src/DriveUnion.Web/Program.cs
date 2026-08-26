@@ -4,6 +4,7 @@ using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.LocalStorage;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Plans;
+using DriveUnion.Infrastructure.S3;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Infrastructure.Telegram;
@@ -132,6 +133,13 @@ builder.Services.AddDriveUnionTrashSweeper();
 // The trash screen's own reader, plus the capacity card the layout draws for a tenant. After
 // AddDriveUnionTrash, whose ITrash it reads, and AddDriveUnionPlans, whose figures it puts beside it.
 builder.Services.AddDriveUnionTrashPanel();
+
+// The S3 gateway's staging sweeper. Separate from the gateway itself for the reason the trash
+// sweeper and the Telegram drainer are separate: every in-process test host boots this pipeline
+// over one shared SQLite connection, and a background loop opening scopes against it turns
+// unrelated suites into «database is locked». Without this line an abandoned multipart upload's
+// parts sit on the operator's volume until somebody notices.
+builder.Services.AddDriveUnionS3Sweeper();
 
 // The two dashboards behind «/». After the three lines above and AddGoogleDrive: the customer's
 // reader is built on ITenantPlanService and ITrash, the operator's on IGoogleAccountDirectory, and a

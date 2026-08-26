@@ -155,8 +155,8 @@ public static partial class UiText
 
         /// <summary>What is and is not implemented, where somebody will read it before hitting it.</summary>
         public static string S3Limits => Pick(
-            "این نسخه ls، cp، rm و فهرست‌کردن را می‌دهد. آپلود چندبخشی (multipart) هنوز نیست، پس aws-cli فایل‌های بزرگ‌تر از حد آستانه‌اش را نمی‌فرستد؛ برای آن‌ها فعلاً از پنل یا از API استفاده کنید.",
-            "This cut does ls, cp, rm and listing. Multipart upload is not in it yet, so the AWS CLI will not send anything past its threshold — use the panel or the API for those for now.");
+            "ls، cp، rm، فهرست‌کردن و آپلود چندبخشی. لینک‌های presigned، نسخه‌بندی و ACL نیست. آپلود چندبخشی به یک مسیر موقت روی سرور نیاز دارد؛ اگر اپراتور تنظیمش نکرده باشد، فایل بزرگ رد می‌شود با پیام روشن نه با خرابی بی‌صدا.",
+            "ls, cp, rm, listing and multipart upload. No presigned URLs, versioning or ACLs. Multipart needs a staging path on the server; without one a large file is refused with a clear message rather than failing quietly.");
 
         [VerbatimText("a shell session is a command, not a sentence")]
         public static string S3Example(string endpoint, string bucket) =>

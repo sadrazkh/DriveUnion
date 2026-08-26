@@ -2,6 +2,7 @@ using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Sharing;
 using DriveUnion.Infrastructure.Persistence.Repositories;
+using DriveUnion.Infrastructure.S3;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -54,6 +55,12 @@ public static class ServiceCollectionExtensions
         // The S3 gateway: access keys, and object keys over the folder tree.
         services.TryAddScoped<IS3Credentials, S3CredentialStore>();
         services.TryAddScoped<IS3Objects, S3ObjectReader>();
+
+        // Multipart, and the volume it stages on. Off unless a staging directory is configured —
+        // see S3StagingOptions for why that is not defaulted to a temporary path.
+        services.AddOptions<S3StagingOptions>().BindConfiguration(S3StagingOptions.SectionName);
+        services.TryAddSingleton<S3StagingDirectory>();
+        services.TryAddScoped<IS3Multipart, S3MultipartStore>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();

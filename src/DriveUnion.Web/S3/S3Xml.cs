@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Xml;
+using System.Xml.Linq;
 using DriveUnion.Core.Application;
 
 namespace DriveUnion.Web.S3;
@@ -88,6 +89,109 @@ public static class S3Xml
 
             writer.WriteEndElement();
         });
+
+    public static string InitiateMultipartUpload(string bucket, string key, Guid uploadId) =>
+        Write(writer =>
+        {
+            writer.WriteStartElement("InitiateMultipartUploadResult", Namespace);
+            writer.WriteElementString("Bucket", bucket);
+            writer.WriteElementString("Key", key);
+            writer.WriteElementString("UploadId", uploadId.ToString("N"));
+            writer.WriteEndElement();
+        });
+
+    public static string CompleteMultipartUpload(string location, string bucket, string key, string etag) =>
+        Write(writer =>
+        {
+            writer.WriteStartElement("CompleteMultipartUploadResult", Namespace);
+            writer.WriteElementString("Location", location);
+            writer.WriteElementString("Bucket", bucket);
+            writer.WriteElementString("Key", key);
+            writer.WriteElementString("ETag", $"\"{etag}\"");
+            writer.WriteEndElement();
+        });
+
+    public static string ListParts(string bucket, string key, Guid uploadId, IReadOnlyList<S3PartSummary> parts) =>
+        Write(writer =>
+        {
+            ArgumentNullException.ThrowIfNull(parts);
+
+            writer.WriteStartElement("ListPartsResult", Namespace);
+            writer.WriteElementString("Bucket", bucket);
+            writer.WriteElementString("Key", key);
+            writer.WriteElementString("UploadId", uploadId.ToString("N"));
+            writer.WriteElementString("IsTruncated", "false");
+
+            foreach (var part in parts)
+            {
+                writer.WriteStartElement("Part");
+                writer.WriteElementString("PartNumber", part.PartNumber.ToString(CultureInfo.InvariantCulture));
+                writer.WriteElementString("LastModified", Utc(part.UploadedAt));
+                writer.WriteElementString("ETag", $"\"{part.ETag}\"");
+                writer.WriteElementString("Size", part.SizeBytes.ToString(CultureInfo.InvariantCulture));
+                writer.WriteEndElement();
+            }
+
+            writer.WriteEndElement();
+        });
+
+    /// <summary>
+    /// The parts a <c>CompleteMultipartUpload</c> body names, in the order it names them.
+    ///
+    /// <para>Order is the client's and is taken as given rather than sorted: S3 requires ascending
+    /// part numbers and refuses otherwise, and a gateway that quietly sorted would assemble an
+    /// object the client did not ask for out of a request that should have been refused.</para>
+    ///
+    /// <para>Parsed with <see cref="XmlReaderSettings.DtdProcessing"/> prohibited, because this is a
+    /// document a stranger sends: a DTD is how an XML parser is talked into reading a file off the
+    /// server or hanging on an entity expansion.</para>
+    /// </summary>
+    public static IReadOnlyList<(int PartNumber, string ETag)> ParseCompletion(string body)
+    {
+        // Loaded as a document rather than walked with a streaming reader.
+        //
+        // The streaming version was written first and was wrong twice in the same way:
+        // ReadElementContentAsString consumes its element's end tag and leaves the reader on the
+        // node after it, so a loop that calls Read() at the top skips whatever follows — first
+        // «</Part>», then «<ETag>» itself. Both bugs presented identically, as «MalformedXML: the
+        // completion named no parts» against a body that plainly named three. A completion body is
+        // a few hundred bytes; there is nothing to stream, and the trap is not worth carrying.
+        XDocument document;
+
+        try
+        {
+            using var reader = XmlReader.Create(
+                new System.IO.StringReader(body),
+                new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+
+            document = XDocument.Load(reader);
+        }
+        catch (XmlException)
+        {
+            // Malformed, or carrying a DTD — which is how a parser is talked into reading a file off
+            // the server or expanding an entity until the process dies. Either way it named no parts,
+            // which is what the caller is told.
+            return [];
+        }
+
+        var parts = new List<(int, string)>();
+
+        foreach (var part in document.Descendants().Where(e => e.Name.LocalName == "Part"))
+        {
+            var number = part.Elements().FirstOrDefault(e => e.Name.LocalName == "PartNumber")?.Value;
+            var etag = part.Elements().FirstOrDefault(e => e.Name.LocalName == "ETag")?.Value;
+
+            if (etag is not { Length: > 0 }) continue;
+
+            if (int.TryParse(number, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            {
+                parts.Add((parsed, etag.Trim('"')));
+            }
+        }
+
+        return parts;
+    }
+
 
     /// <summary>
     /// An S3 error document.

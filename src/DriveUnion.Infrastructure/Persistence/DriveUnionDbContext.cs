@@ -44,6 +44,11 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     /// <summary>S3 access keys. Encrypted and not hashed — see <see cref="S3Credential"/>.</summary>
     public DbSet<S3Credential> S3Credentials => Set<S3Credential>();
 
+    /// <summary>S3 multipart uploads in flight, and the parts staged for them.</summary>
+    public DbSet<S3MultipartUpload> S3MultipartUploads => Set<S3MultipartUpload>();
+
+    public DbSet<S3UploadPart> S3UploadParts => Set<S3UploadPart>();
+
     public DbSet<Tag> Tags => Set<Tag>();
 
     public DbSet<FileTag> FileTags => Set<FileTag>();
@@ -281,6 +286,27 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
                 .WithMany()
                 .HasForeignKey(f => f.ParentFolderId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<S3MultipartUpload>(e =>
+        {
+            e.Property(u => u.Key).HasMaxLength(1024);
+            e.Property(u => u.Name).HasMaxLength(512);
+            e.Property(u => u.MimeType).HasMaxLength(255);
+            e.HasIndex(u => u.TenantId);
+        });
+
+        builder.Entity<S3UploadPart>(e =>
+        {
+            // The pair is the identity: S3 lets a client re-upload a part number, and two rows for
+            // one number would assemble the object twice over.
+            e.HasKey(p => new { p.UploadId, p.PartNumber });
+            e.Property(p => p.ETag).HasMaxLength(64);
+
+            e.HasOne<S3MultipartUpload>()
+                .WithMany()
+                .HasForeignKey(p => p.UploadId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<S3Credential>(e =>
