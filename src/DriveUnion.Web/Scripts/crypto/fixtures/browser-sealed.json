@@ -1,0 +1,12 @@
+{
+  "secret": "correct horse battery staple",
+  "scheme": 1,
+  "segmentSize": 64,
+  "noncePrefix": "CxYhLDdCTVg=",
+  "plaintextLength": 169,
+  "kdfSalt": "AQECAwUIDRUiN1mQ6XkKFA==",
+  "kdfIterations": 600000,
+  "wrappedKey": "ZGVmZ2hpamtsbW5vAPRzv6FbTjeYPUpp/x8aPMQ8havunmBOrs4Z4iqmzJY5S45mGDKo18Kpau6jCSOd",
+  "ciphertext": "Dy7F960c2t1Zsn3QVd4EIpP7JEfOY59D7jgGsxBIXDS3QSYx1o/sI62dVYTdwPfa8LhnXxYVjBGhUlw4ROtWd4+EDr42D0ZDXKEoZTQooOn2WDuOdspkno3aNBiysaCcvBmqFhdJTDVOObjtS9QTtGrQFGSLkM99DMNpO/+GwGMcCi2TVVUf0/F+cBRUbs5jOjDIQZ0ezjUnDK9QA7wkHMZv3d/833ZeW+149n0hY6RXPI0r/naQirp1wPb3A2Nj/StgnCgZPJUd1KbEKdQCAEqeYvxEyM67Ew==",
+  "plaintext": "BzxxptsVSn+06SNYjcL3MWab0Ao/dKneGE2Ct+wmW5DF+jRpntMNQnes4RtQhbrvKV6TyAI3bKHWEEV6r+QeU4i98ixhlssFOm+k2RNIfbLnIVaLwPUvZJnOCD1yp9wWS4C16iRZjsP4Mmec0QtAdarfGU6DuO0nXJHGADVqn9QOQ3it4hxRhrvwKl+UyQM4baLXEUZ7sOUfVIm+8y1il8wGO3Cl2hRJfg=="
+}

@@ -78,6 +78,31 @@
                    autocomplete="off"
                    placeholder="https://…" />
 
+            @*
+                Optional, and the warning is inside it rather than beside the tick.
+
+                The two kinds of encryption in this product are the same format and very different
+                promises, and this is the weaker one — the server is the thing fetching the file, so
+                it sees the contents while it does. Somebody who ticks this without reading that has
+                been misled by the product, so the sentence sits where the choice is made and names
+                the other option by the words on its own control.
+            *@
+            <details class="disclose">
+                <summary class="btn btn--sm">@UiText.Files.FetchLock</summary>
+                <div class="disclose-body stack" style="gap: 8px;">
+                    <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0; max-width: 62ch;">
+                        @UiText.Files.FetchLockWarning
+                    </p>
+
+                    <label class="field-label" for="fetch-secret">@UiText.Files.FetchSecretLabel</label>
+                    <input id="fetch-secret"
+                           name="secret"
+                           type="password"
+                           class="control"
+                           autocomplete="new-password" />
+                </div>
+            </details>
+
             <button type="submit" class="btn btn--primary">@UiText.Files.FetchStart</button>
         </form>
 

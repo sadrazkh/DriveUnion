@@ -11,11 +11,23 @@ namespace DriveUnion.Core.Application;
 /// Present when the browser encrypted this file, and carried to storage untouched. Null is a plain
 /// upload.
 /// </param>
+/// <param name="SealedBy">
+/// Which side did the encrypting, for a file that is encrypted at all.
+///
+/// <para>Not part of <see cref="EncryptionHeader"/> and deliberately: that record is the wire
+/// format, it is what a browser needs to open the file, and provenance is not one of the things it
+/// needs. This is what the <i>screen</i> needs — the two are the same format and different promises,
+/// and a customer looking at a padlock has to be able to tell which one they have.</para>
+///
+/// <para>Client for every path a browser can reach, which is all of them but one: a file fetched
+/// from a URL never passes through a browser, so it is the only thing that can say Server.</para>
+/// </param>
 public sealed record BeginUploadRequest(
     string FileName,
     string MimeType,
     long SizeBytes,
-    EncryptionHeader? Encryption = null);
+    EncryptionHeader? Encryption = null,
+    Storage.SealedBy SealedBy = Storage.SealedBy.Client);
 
 public sealed record BeginUploadResult(Guid SessionId, int ChunkSize);
 

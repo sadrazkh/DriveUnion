@@ -39,10 +39,22 @@ public interface IRemoteFetches
     /// address it resolves to is <b>not</b> checked here, and deliberately: that check belongs at
     /// connect time, or a name can answer differently between the two moments.</para>
     /// </summary>
+    /// <param name="secret">
+    /// What the finished file should be locked with, or null to store it as it comes.
+    ///
+    /// <para>Used here and then gone: a content key is generated, wrapped under a key derived from
+    /// this, and only the wrapped form is written down. The raw key is held in memory for the life
+    /// of the job and the secret itself does not outlive this call.</para>
+    ///
+    /// <para><b>This is not what the browser's encryption promises</b> and must not be presented as
+    /// though it were. The server is fetching the plaintext; it has the file and the secret for the
+    /// length of the transfer. See <c>SealedBy.Server</c>.</para>
+    /// </param>
     Task<RemoteFetchStartResult> StartAsync(
         Guid tenantId,
         Guid? ownerUserId,
         string url,
+        string? secret,
         CancellationToken cancellationToken);
 
     /// <summary>This workspace's fetches, newest first.</summary>

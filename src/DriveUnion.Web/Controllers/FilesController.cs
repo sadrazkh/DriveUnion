@@ -1,6 +1,7 @@
 using System.Text.Json;
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Uploads;
+using DriveUnion.Core.Storage;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
@@ -172,7 +173,8 @@ public sealed class FilesController(
                 detail = ToDetail(
                     file,
                     now,
-                    await encryption.ForFileAsync(tenantId, selectedId, cancellationToken));
+                    await encryption.ForFileAsync(tenantId, selectedId, cancellationToken),
+                    await encryption.SealedByAsync(tenantId, selectedId, cancellationToken));
             }
         }
 
@@ -436,11 +438,25 @@ public sealed class FilesController(
     /// </summary>
     [HttpPost("fetch")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Fetch(string? url, CancellationToken cancellationToken)
+    /// <param name="secret">
+    /// What to lock the arriving file with, or blank to store it as it comes.
+    ///
+    /// <para>Used in this request and not written down: the service derives from it, wraps a content
+    /// key, and keeps only the wrapped form. It never reaches the queue row or a log line.</para>
+    /// </param>
+    public async Task<IActionResult> Fetch(
+        string? url,
+        string? secret,
+        CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
 
-        var result = await fetches.StartAsync(tenantId, User.GetUserId(), url ?? string.Empty, cancellationToken);
+        var result = await fetches.StartAsync(
+            tenantId,
+            User.GetUserId(),
+            url ?? string.Empty,
+            secret?.Trim() is { Length: > 0 } typed ? typed : null,
+            cancellationToken);
 
         if (result.Started)
         {
@@ -620,7 +636,11 @@ public sealed class FilesController(
     /// How to open the file when it is locked, and null when it is not — which is also how this
     /// method knows which of the two it is looking at.
     /// </param>
-    private FileDetailViewModel ToDetail(FileDetail file, DateTimeOffset now, EncryptionHeader? header)
+    private FileDetailViewModel ToDetail(
+        FileDetail file,
+        DateTimeOffset now,
+        EncryptionHeader? header,
+        SealedBy? sealedBy)
     {
         var baseUrl = PublicBaseUrl();
 
@@ -632,6 +652,12 @@ public sealed class FilesController(
             DisplayFormats.PanelDateTime(file.CreatedAt),
             [.. file.Links.Select(link => ToLink(link, baseUrl, now))],
             header is not null,
+            sealedBy switch
+            {
+                SealedBy.Client => UiText.Files.SealedByClient,
+                SealedBy.Server => UiText.Files.SealedByServer,
+                _ => null,
+            },
             header is null ? null : JsonSerializer.Serialize(header, PanelJson));
     }
 

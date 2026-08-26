@@ -408,6 +408,16 @@
                             <p class="subcard muted" style="font-size: 12px; line-height: 1.8; margin-bottom: 14px;">
                                 🔒 @UiText.Files.LockedExplained
                             </p>
+
+                            @* Which of the two kinds it is. The padlock above says «encrypted»,
+                               which is true of both and is the part that is not enough: one of them
+                               the operator can never open and the other they saw on the way past. *@
+                            @if (Model.Selected.SealedByText is { Length: > 0 } provenance)
+                            {
+                                <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: -6px 0 14px;">
+                                    @provenance
+                                </p>
+                            }
                         }
 
                         @if (Model.Selected.ActiveLink is { } link)

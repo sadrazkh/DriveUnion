@@ -1,3 +1,5 @@
+using DriveUnion.Core.Storage;
+
 namespace DriveUnion.Core.Application;
 
 /// <summary>
@@ -72,6 +74,9 @@ public interface IFileEncryption
 {
     /// <summary>The header for one file, or null when the file is not encrypted.</summary>
     Task<EncryptionHeader?> ForFileAsync(Guid tenantId, Guid fileId, CancellationToken cancellationToken);
+
+    /// <summary>Which side sealed one file, or null when it is not encrypted at all.</summary>
+    Task<SealedBy?> SealedByAsync(Guid tenantId, Guid fileId, CancellationToken cancellationToken);
 
     /// <summary>
     /// Which of these files are encrypted, and how long each one really is.

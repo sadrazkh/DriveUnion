@@ -466,6 +466,27 @@ public static partial class UiText
 
         public static string FetchStart => Pick("بیاورش", "Fetch it");
 
+        public static string FetchLock => Pick("رمزگذاری بعد از رسیدن", "Encrypt it once it arrives");
+
+        public static string FetchSecretLabel => Pick("رمز", "Passphrase");
+
+        /// <summary>
+        /// The whole of the difference between this and what the upload screen's own lock does, said
+        /// where the choice is made rather than in a page nobody opens.
+        /// </summary>
+        public static string FetchLockWarning => Pick(
+            "این با قفلِ آپلود از مرورگر یکی نیست. چون فایل را سرورِ ما می‌آورد، در همان لحظه محتوایش را دیده — پس این در برابر گوگل و در برابر پایگاه‌داده‌ی دزدیده‌شده محافظت می‌کند، و در برابر خودِ ما نه. برای رمزی که ما هم نتوانیم بازش کنیم، فایل را از همین صفحه با تیکِ «قفل کردن» آپلود کنید.",
+            "This is not the same as locking a file you upload from your browser. Our server is the one fetching it, so it sees the contents while it does — this protects the file from Google and from a stolen database, and not from us. For a lock we cannot open either, upload the file from this page with «Lock these files» ticked.");
+
+        /// <summary>Which of the two kinds of encryption a file got. See <c>SealedBy</c>.</summary>
+        public static string SealedByClient => Pick(
+            "روی دستگاه شما قفل شده — ما نسخه‌ی خوانا‌ی آن را هرگز نداشته‌ایم.",
+            "Locked on your device — we have never had a readable copy.");
+
+        public static string SealedByServer => Pick(
+            "روی سرور ما رمز شده، چون فایل از یک لینک آمده. در برابر گوگل و پایگاه‌داده محافظت می‌شود، ولی سرور ما در لحظه‌ی آوردن محتوا را دیده است.",
+            "Encrypted on our server, because it came from a link. It is protected from Google and from the database — but our server saw the contents while fetching it.");
+
         public static string FetchQueued => Pick(
             "در صف قرار گرفت. می‌توانید این صفحه را ببندید.",
             "Queued. You can close this page.");
@@ -547,9 +568,17 @@ public static partial class UiText
         /// Said in the detail panel, where there is room to say why the ordinary controls behave
         /// differently: the bot will refuse this file and the link page will ask for the key.
         /// </summary>
+        /// <summary>
+        /// What being encrypted <i>does</i> to this file, and deliberately not how strong that is.
+        ///
+        /// <para>The strength claim used to live here and cannot: it is different for the two kinds
+        /// of encryption, and the sentence beneath this one — <see cref="SealedByClient"/> or
+        /// <see cref="SealedByServer"/> — is the one that makes it. Left in both places they read as
+        /// a contradiction, which is worse than either alone.</para>
+        /// </summary>
         public static string LockedExplained => Pick(
-            "این فایل رمزگذاری‌شده است. ما نسخه‌ی خوانای آن را نداریم — گیرنده رمز را در مرورگر خودش وارد می‌کند. ربات تلگرام نمی‌تواند آن را بفرستد.",
-            "This file is encrypted. We hold no readable copy — whoever opens it enters the key in their own browser. The Telegram bot cannot send it.");
+            "این فایل رمزگذاری‌شده است. گیرنده رمز را در مرورگر خودش وارد می‌کند و ربات تلگرام نمی‌تواند آن را بفرستد.",
+            "This file is encrypted. Whoever opens it enters the key in their own browser, and the Telegram bot cannot send it.");
 
         public static string FilesMoved(int files) => Pick(
             $"{Numerals.Count(files)} فایل منتقل شد.",

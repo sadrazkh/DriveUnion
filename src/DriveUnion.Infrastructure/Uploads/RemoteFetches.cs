@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
 using DriveUnion.Core.Uploads;
 using DriveUnion.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -12,12 +14,16 @@ namespace DriveUnion.Infrastructure.Uploads;
 /// fetch belongs to the workspace that asked for it and the file lands in the folder of the person
 /// who did — the same two facts an ordinary upload carries, for the same reasons.</para>
 /// </summary>
-public sealed class RemoteFetches(DriveUnionDbContext db, TimeProvider clock) : IRemoteFetches
+public sealed class RemoteFetches(
+    DriveUnionDbContext db,
+    FetchKeyring keyring,
+    TimeProvider clock) : IRemoteFetches
 {
     public async Task<RemoteFetchStartResult> StartAsync(
         Guid tenantId,
         Guid? ownerUserId,
         string url,
+        string? secret,
         CancellationToken cancellationToken)
     {
         // The URL's own shape, refused now rather than by a job that fails in a minute. What it
@@ -55,8 +61,33 @@ public sealed class RemoteFetches(DriveUnionDbContext db, TimeProvider clock) : 
             CreatedAt = clock.GetUtcNow(),
         };
 
+        byte[]? contentKey = null;
+
+        if (secret is { Length: > 0 })
+        {
+            // Sealed here, in the request the customer typed their secret into, and not in the
+            // worker — so the secret does not have to outlive this method and is not written down
+            // for a job that starts minutes later. What is written down is the wrapped key; what is
+            // held in memory is the raw one. See FetchKeyring for what that costs on a restart.
+            var salt = RandomNumberGenerator.GetBytes(Du1.SaltBytes);
+            var wrapping = Du1.DeriveWrappingKey(secret, salt, Du1.KdfIterations);
+
+            contentKey = RandomNumberGenerator.GetBytes(Du1.KeyBytes);
+
+            fetch.KdfSalt = Convert.ToBase64String(salt);
+            fetch.KdfIterations = Du1.KdfIterations;
+            fetch.WrappedKey = Convert.ToBase64String(Du1.WrapKey(contentKey, wrapping));
+            fetch.NoncePrefix = Convert.ToBase64String(
+                RandomNumberGenerator.GetBytes(Du1.NoncePrefixBytes));
+
+            Array.Clear(wrapping);
+        }
+
         db.RemoteFetches.Add(fetch);
         await db.SaveChangesAsync(cancellationToken);
+
+        // After the row exists, so a key is never held for a fetch that was not written.
+        if (contentKey is not null) keyring.Hold(fetch.Id, contentKey);
 
         return new RemoteFetchStartResult(fetch.Id, RemoteSourceRefusal.None);
     }
@@ -106,6 +137,10 @@ public sealed class RemoteFetches(DriveUnionDbContext db, TimeProvider clock) : 
         fetch.FinishedAt = clock.GetUtcNow();
 
         await db.SaveChangesAsync(cancellationToken);
+
+        // The key goes with it. A cancelled fetch will never be resumed, so holding one is holding
+        // the thing that opens a file nobody is going to write.
+        keyring.Release(fetchId);
 
         return true;
     }

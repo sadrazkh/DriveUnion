@@ -1,4 +1,5 @@
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace DriveUnion.Infrastructure.Persistence.Repositories;
@@ -28,6 +29,16 @@ public sealed class FileEncryptionStore(DriveUnionDbContext db) : IFileEncryptio
                 e.KdfSalt,
                 e.KdfIterations,
                 e.WrappedKey))
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<SealedBy?> SealedByAsync(
+        Guid tenantId,
+        Guid fileId,
+        CancellationToken cancellationToken) =>
+        await db.FileEncryptions
+            .AsNoTracking()
+            .Where(e => e.StoredFileId == fileId && e.TenantId == tenantId)
+            .Select(e => (SealedBy?)e.SealedBy)
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyDictionary<Guid, long>> PlaintextLengthsAsync(

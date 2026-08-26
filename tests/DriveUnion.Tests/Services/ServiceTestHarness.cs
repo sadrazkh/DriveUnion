@@ -1,5 +1,6 @@
 using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
+using DriveUnion.Core.Uploads;
 using DriveUnion.Core.Tenancy;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Persistence.Repositories;
@@ -89,6 +90,14 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     /// </summary>
     public DriveFolderCache FolderCache { get; } = new();
 
+    /// <summary>
+    /// The content keys of encrypted fetches in flight, one per harness.
+    ///
+    /// <para>Per harness and never static, for the reason FolderCache gives: a key left over from
+    /// another test is a key for a fetch this one never made.</para>
+    /// </summary>
+    public FetchKeyring Keyring { get; } = new();
+
     public DriveFolders Folders(DriveUnionDbContext? context = null) =>
         new(context ?? Db, Drive, FolderCache);
 
@@ -105,7 +114,7 @@ public sealed class ServiceTestHarness : IAsyncDisposable
 
     /// <summary>The queue behind «fetch this URL for me».</summary>
     public Infrastructure.Uploads.RemoteFetches Fetches(DriveUnionDbContext? context = null) =>
-        new(context ?? Db, Clock);
+        new(context ?? Db, Keyring, Clock);
 
     /// <summary>
     /// The half that pulls, pointed at a stub far end.
@@ -121,6 +130,7 @@ public sealed class ServiceTestHarness : IAsyncDisposable
             context ?? Db,
             Uploads(context),
             new SingleClientFactory(source),
+            Keyring,
             Clock,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Uploads.RemoteFetcher>
                 .Instance);

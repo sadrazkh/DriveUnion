@@ -1,4 +1,5 @@
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Uploads;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -85,6 +86,11 @@ public static class RemoteFetchServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddDriveUnionRemoteFetch(this IServiceCollection services)
     {
+        // Singleton: the key for an encrypted fetch is put here by a web request and read by a
+        // worker minutes later, so it has to outlive both scopes — and live nowhere else. See
+        // FetchKeyring for what a restart costs and why that is the right price.
+        services.AddSingleton<FetchKeyring>();
+
         services.AddScoped<IRemoteFetches, RemoteFetches>();
         services.AddScoped<IRemoteFetcher, RemoteFetcher>();
 

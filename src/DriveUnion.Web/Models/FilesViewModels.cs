@@ -88,6 +88,15 @@ public sealed record FileDetailViewModel(
     bool IsEncrypted = false,
 
     /// <summary>
+    /// Which of the two kinds of encryption this file got, as a sentence rather than a word.
+    ///
+    /// <para>Null when it is not encrypted at all. The two are the same format and very different
+    /// promises, and the difference is invisible from the outside — so the panel spells it out
+    /// beside the padlock, which is the place somebody looks to find out what they have.</para>
+    /// </summary>
+    string? SealedByText = null,
+
+    /// <summary>
     /// The file's header as JSON, for the island that shares it — and null for a file that is not
     /// locked.
     ///

@@ -66,6 +66,28 @@ public sealed class RemoteFetch
     /// <summary>Said to the customer, so it names no host of ours and no internal detail.</summary>
     public string? FailureReason { get; set; }
 
+    /// <summary>
+    /// Base64. The salt this fetch's content key was wrapped with, or null for a plain fetch.
+    ///
+    /// <para>Three custody fields on the row and not seven, because the other four are not knowable
+    /// yet: the plaintext length is whatever the source turns out to send, and the scheme and
+    /// segment size are constants the finished header takes from <see cref="Storage.Du1"/>. What is
+    /// here is what was decided at the moment the customer typed their secret — and what is
+    /// deliberately not here is anything that opens the file. See <see cref="FetchKeyring"/>.</para>
+    /// </summary>
+    public string? KdfSalt { get; set; }
+
+    public int KdfIterations { get; set; }
+
+    /// <summary>Base64: the nonce and the content key sealed under what the customer typed.</summary>
+    public string? WrappedKey { get; set; }
+
+    /// <summary>Base64. The per-file half of every segment's nonce, drawn when the fetch was asked for.</summary>
+    public string? NoncePrefix { get; set; }
+
+    /// <summary>Whether this fetch is to be encrypted at all. The four fields above are set together.</summary>
+    public bool IsEncrypted => WrappedKey is { Length: > 0 };
+
     public int Attempts { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

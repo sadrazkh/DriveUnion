@@ -61,6 +61,17 @@ public sealed class UploadSession
     /// </summary>
     public string? EncryptionHeaderJson { get; set; }
 
+    /// <summary>
+    /// Which side sealed it, carried for the same reason the header is: the row that records it is
+    /// created by whichever request lands the last chunk, hours later for a large file.
+    ///
+    /// <para>A column of its own rather than a field inside the JSON above, because unlike the seven
+    /// in there this one is genuinely read — it decides which of two very different sentences the
+    /// customer is shown beside their padlock, and a value that matters is a value worth a column a
+    /// migration can see.</para>
+    /// </summary>
+    public Storage.SealedBy SealedBy { get; set; }
+
     public required string FileName { get; set; }
 
     public required string MimeType { get; set; }

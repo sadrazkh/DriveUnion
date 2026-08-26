@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
 using DriveUnion.Core.Uploads;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Services;
@@ -32,6 +33,7 @@ public sealed class RemoteFetcher(
     DriveUnionDbContext db,
     IUploadCoordinator uploads,
     IHttpClientFactory http,
+    FetchKeyring keyring,
     TimeProvider clock,
     ILogger<RemoteFetcher> logger) : IRemoteFetcher
 {
@@ -190,6 +192,36 @@ public sealed class RemoteFetcher(
         fetch.SizeBytes = length;
         await db.SaveChangesAsync(cancellationToken);
 
+        byte[]? contentKey = null;
+        EncryptionHeader? header = null;
+
+        if (fetch.IsEncrypted)
+        {
+            contentKey = keyring.Get(fetch.Id)
+                ?? throw new RemoteFetchRefusedException(
+                    RemoteSourceRefusal.Unreachable,
+                    "The key for this fetch is no longer held, which happens when the server has "
+                    + "restarted since you asked for it. Start it again with your secret.");
+
+            // Everything but the plaintext length was decided when the customer typed their secret;
+            // the length is what the source has just told us, and it is the last field the header
+            // needs. The four constants come from Du1 rather than from the row, because they are the
+            // format's and not this fetch's.
+            header = new EncryptionHeader(
+                Du1.Scheme,
+                Du1.SegmentSize,
+                fetch.NoncePrefix!,
+                length,
+                fetch.KdfSalt!,
+                fetch.KdfIterations,
+                fetch.WrappedKey!);
+        }
+
+        // What goes on the wire and what the quota is spent on: the ciphertext, which is longer by
+        // one tag per segment. The number beside the customer's file stays the plaintext length,
+        // which is the one carried in the header.
+        var stored = header is null ? length : Du1.CipherLength(length);
+
         // The coordinator refuses here if the plan's per-file ceiling or the workspace's quota says
         // no — before a byte of the body is read.
         var begun = await uploads.BeginAsync(
@@ -198,7 +230,12 @@ public sealed class RemoteFetcher(
             new BeginUploadRequest(
                 fetch.FileName,
                 response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream",
-                length),
+                stored,
+                header,
+
+                // The one path in the product that can say this, and it says it so the padlock on
+                // the customer's screen can carry the right sentence beside it.
+                header is null ? SealedBy.Client : SealedBy.Server),
             cancellationToken);
 
         fetch.UploadSessionId = begun.SessionId;
@@ -206,42 +243,13 @@ public sealed class RemoteFetcher(
 
         await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-        var buffer = new byte[ChunkSize];
-        var sent = 0L;
-
-        while (sent < length)
+        if (contentKey is null)
         {
-            // Cancelled by the customer mid-pull. Checked between chunks rather than only at the
-            // start, because a chunk is eight megabytes and a 40 GB fetch is five thousand of them.
-            if (await IsCancelledAsync(fetch.Id, cancellationToken))
-            {
-                throw new OperationCanceledException("The customer stopped this fetch.");
-            }
-
-            var wanted = (int)Math.Min(ChunkSize, length - sent);
-            var filled = await ReadExactlyAsync(body, buffer, wanted, cancellationToken);
-
-            if (filled < wanted)
-            {
-                // Short of what was asked for means the body ended, which means the source lied
-                // about its length. Thrown here rather than written: a resumable upload takes a
-                // partial chunk only as its last one, so sending this would be refused by storage
-                // for a reason that reads like a protocol bug instead of «the far end stopped».
-                throw new RemoteFetchRefusedException(
-                    RemoteSourceRefusal.Unreachable,
-                    $"The source stopped after {sent + filled} of {length} bytes.");
-            }
-
-            using var chunk = new MemoryStream(buffer, 0, filled, writable: false);
-
-            var progress = await uploads.WriteChunkAsync(
-                fetch.TenantId, begun.SessionId, chunk, sent, filled, cancellationToken);
-
-            sent += filled;
-
-            fetch.BytesFetched = progress.BytesConfirmed;
-            fetch.StoredFileId = progress.StoredFileId;
-            await db.SaveChangesAsync(cancellationToken);
+            await CopyAsync(fetch, begun.SessionId, body, length, cancellationToken);
+        }
+        else
+        {
+            await SealAsync(fetch, begun.SessionId, body, length, contentKey, cancellationToken);
         }
 
         if (fetch.StoredFileId is null)
@@ -249,6 +257,139 @@ public sealed class RemoteFetcher(
             throw new RemoteFetchRefusedException(
                 RemoteSourceRefusal.Unreachable,
                 "Every byte was written and storage never completed the file.");
+        }
+    }
+
+    /// <summary>The plain path: what arrives is what is stored, a chunk at a time.</summary>
+    private async Task CopyAsync(
+        RemoteFetch fetch,
+        Guid sessionId,
+        Stream body,
+        long length,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new byte[ChunkSize];
+        var sent = 0L;
+
+        while (sent < length)
+        {
+            await StopIfCancelledAsync(fetch.Id, cancellationToken);
+
+            var wanted = (int)Math.Min(ChunkSize, length - sent);
+            var filled = await ReadExactlyAsync(body, buffer, wanted, cancellationToken);
+
+            if (filled < wanted) throw Truncated(sent + filled, length);
+
+            await SendAsync(fetch, sessionId, buffer, 0, filled, sent, cancellationToken);
+            sent += filled;
+        }
+    }
+
+    /// <summary>
+    /// The sealed path: read a segment of plaintext, encrypt it, and send the ciphertext on in
+    /// chunks storage will take.
+    ///
+    /// <para><b>Why the two lengths cannot be the same loop.</b> A resumable upload accepts a
+    /// partial chunk only as its last one — everything before that has to be a multiple of 256 KiB.
+    /// A ciphertext segment is 1 MiB <i>plus sixteen bytes</i>, so sending a segment as a chunk is
+    /// refused by storage for a reason that reads like a protocol bug. So the ciphertext goes into a
+    /// buffer and leaves it in <see cref="ChunkSize"/> blocks, which is 32 × 256 KiB, with whatever
+    /// is left over sent last. The browser has the same problem and solves it the other way round —
+    /// it can seek, so it re-encrypts the segments at the ends of a window instead.</para>
+    ///
+    /// <para>Nothing is held: one segment of plaintext, one chunk of ciphertext, whatever the file's
+    /// size.</para>
+    /// </summary>
+    private async Task SealAsync(
+        RemoteFetch fetch,
+        Guid sessionId,
+        Stream body,
+        long length,
+        byte[] contentKey,
+        CancellationToken cancellationToken)
+    {
+        var noncePrefix = Convert.FromBase64String(fetch.NoncePrefix!);
+        var segments = Du1.SegmentCount(length);
+
+        var plain = new byte[Du1.SegmentSize];
+
+        // One chunk, plus room for the segment that overflows it before it is flushed.
+        var pending = new byte[ChunkSize + Du1.SegmentSize + Du1.TagBytes];
+        var held = 0;
+
+        var read = 0L;
+        var sent = 0L;
+
+        for (var index = 0; index < segments; index++)
+        {
+            await StopIfCancelledAsync(fetch.Id, cancellationToken);
+
+            var wanted = (int)Math.Min(Du1.SegmentSize, length - read);
+            var filled = await ReadExactlyAsync(body, plain, wanted, cancellationToken);
+
+            if (filled < wanted) throw Truncated(read + filled, length);
+
+            read += filled;
+
+            var sealedSegment = Du1.EncryptSegment(
+                contentKey, noncePrefix, index, index == segments - 1, plain.AsSpan(0, filled));
+
+            sealedSegment.CopyTo(pending.AsSpan(held));
+            held += sealedSegment.Length;
+
+            while (held >= ChunkSize)
+            {
+                await SendAsync(fetch, sessionId, pending, 0, ChunkSize, sent, cancellationToken);
+                sent += ChunkSize;
+
+                held -= ChunkSize;
+                Buffer.BlockCopy(pending, ChunkSize, pending, 0, held);
+            }
+        }
+
+        // The last chunk, and the only one allowed to be a partial size.
+        if (held > 0)
+        {
+            await SendAsync(fetch, sessionId, pending, 0, held, sent, cancellationToken);
+        }
+    }
+
+    private async Task SendAsync(
+        RemoteFetch fetch,
+        Guid sessionId,
+        byte[] buffer,
+        int offset,
+        int count,
+        long at,
+        CancellationToken cancellationToken)
+    {
+        using var chunk = new MemoryStream(buffer, offset, count, writable: false);
+
+        var progress = await uploads.WriteChunkAsync(
+            fetch.TenantId, sessionId, chunk, at, count, cancellationToken);
+
+        fetch.BytesFetched = progress.BytesConfirmed;
+        fetch.StoredFileId = progress.StoredFileId;
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Short of what was asked for means the body ended, which means the source lied about its
+    /// length — see <see cref="SealAsync"/> for why a partial chunk cannot simply be sent.
+    /// </summary>
+    private static RemoteFetchRefusedException Truncated(long got, long promised) =>
+        new(RemoteSourceRefusal.Unreachable, $"The source stopped after {got} of {promised} bytes.");
+
+    /// <summary>
+    /// Checked between chunks rather than only at the start, because a chunk is eight megabytes and
+    /// a 40 GB fetch is five thousand of them.
+    /// </summary>
+    private async Task StopIfCancelledAsync(Guid fetchId, CancellationToken cancellationToken)
+    {
+        if (await IsCancelledAsync(fetchId, cancellationToken))
+        {
+            throw new OperationCanceledException("The customer stopped this fetch.");
         }
     }
 

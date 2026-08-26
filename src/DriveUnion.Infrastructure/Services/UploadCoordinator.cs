@@ -179,6 +179,8 @@ public sealed class UploadCoordinator(
                     ? System.Text.Json.JsonSerializer.Serialize(encryption)
                     : null,
 
+                SealedBy = request.SealedBy,
+
                 FileName = request.FileName,
                 MimeType = mimeType,
                 SizeBytes = request.SizeBytes,
@@ -319,6 +321,7 @@ public sealed class UploadCoordinator(
                 {
                     StoredFileId = stored.Id,
                     TenantId = session.TenantId,
+                    SealedBy = session.SealedBy,
                     Scheme = header.Scheme,
                     SegmentSize = header.SegmentSize,
                     NoncePrefix = header.NoncePrefix,
