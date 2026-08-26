@@ -36,6 +36,9 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
 
     public DbSet<Folder> Folders => Set<Folder>();
 
+    /// <summary>How to open an encrypted file — and nothing that opens one. See <see cref="FileEncryption"/>.</summary>
+    public DbSet<FileEncryption> FileEncryptions => Set<FileEncryption>();
+
     public DbSet<TenantUsageDay> TenantUsageDays => Set<TenantUsageDay>();
 
     /// <summary>The customer's API keys. Hashes, never secrets — see <see cref="ApiToken"/>.</summary>
@@ -348,6 +351,27 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             // Every read is «this workspace, this range of days», which the key already serves. The
             // one that is not is the operator's «every workspace this month», and that is this.
             e.HasIndex(u => u.Day);
+        });
+
+        builder.Entity<FileEncryption>(e =>
+        {
+            // The file is the key: one encryption row per file, or none. A surrogate id would be a
+            // column nothing ever reads and a second way for two rows to claim one file.
+            e.HasKey(x => x.StoredFileId);
+
+            e.Property(x => x.NoncePrefix).HasMaxLength(FileEncryption.MaxFieldLength);
+            e.Property(x => x.KdfSalt).HasMaxLength(FileEncryption.MaxFieldLength);
+            e.Property(x => x.WrappedKey).HasMaxLength(FileEncryption.MaxFieldLength);
+
+            // «Which of my files are encrypted», which every listing asks.
+            e.HasIndex(x => x.TenantId);
+
+            // Purging a file takes its header with it. Keeping one would be keeping a wrapped key
+            // for bytes that no longer exist — useless, and one more thing in a backup.
+            e.HasOne<StoredFile>()
+                .WithMany()
+                .HasForeignKey(x => x.StoredFileId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<Tag>(e =>

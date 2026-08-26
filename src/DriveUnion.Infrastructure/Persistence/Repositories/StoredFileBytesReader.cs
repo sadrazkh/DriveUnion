@@ -19,6 +19,11 @@ public sealed class StoredFileBytesReader(DriveUnionDbContext db) : IStoredFileB
             // customer's quota, and it is still deleted: an API that streamed it would be a way to
             // read something the panel says is gone.
             .Where(f => f.Id == fileId && f.TenantId == tenantId && f.DeletedAt == null)
-            .Select(f => new StoredFileBytes(f.GoogleAccountId, f.DriveFileId, f.MimeType, f.SizeBytes))
+            .Select(f => new StoredFileBytes(
+                f.GoogleAccountId,
+                f.DriveFileId,
+                f.MimeType,
+                f.SizeBytes,
+                db.FileEncryptions.Any(e => e.StoredFileId == f.Id)))
             .FirstOrDefaultAsync(cancellationToken);
 }

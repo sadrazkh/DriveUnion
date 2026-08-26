@@ -9,7 +9,21 @@ namespace DriveUnion.Core.Application;
 /// Google accounts holds their file. The same discipline the Telegram drainer's own reference
 /// carries, for the same reason.</para>
 /// </summary>
-public sealed record StoredFileBytes(Guid GoogleAccountId, string DriveFileId, string MimeType, long SizeBytes);
+/// <param name="IsEncrypted">
+/// Whether what is stored is ciphertext.
+///
+/// <para>Carried here because every caller of this record is about to hand those bytes to somebody,
+/// and there are three — the S3 gateway, the API's content route, and the Telegram drainer — that
+/// cannot decrypt and must not pretend. A client given an encrypted object with no warning gets a
+/// file of the right length, the right name and no readable content, which is the failure mode this
+/// flag exists to make impossible.</para>
+/// </param>
+public sealed record StoredFileBytes(
+    Guid GoogleAccountId,
+    string DriveFileId,
+    string MimeType,
+    long SizeBytes,
+    bool IsEncrypted);
 
 /// <summary>
 /// The one lookup that turns a customer's file id into somewhere to stream from.

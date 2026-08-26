@@ -2,7 +2,20 @@ using DriveUnion.Core.Uploads;
 
 namespace DriveUnion.Core.Application;
 
-public sealed record BeginUploadRequest(string FileName, string MimeType, long SizeBytes);
+/// <param name="SizeBytes">
+/// What will be sent, which for an encrypted upload is the <i>ciphertext</i> length — longer than
+/// the file by one tag per segment. The quota is spent on what is stored, so this is the number the
+/// plan is checked against, and <c>Encryption.PlaintextLength</c> is the one the customer is shown.
+/// </param>
+/// <param name="Encryption">
+/// Present when the browser encrypted this file, and carried to storage untouched. Null is a plain
+/// upload.
+/// </param>
+public sealed record BeginUploadRequest(
+    string FileName,
+    string MimeType,
+    long SizeBytes,
+    EncryptionHeader? Encryption = null);
 
 public sealed record BeginUploadResult(Guid SessionId, int ChunkSize);
 

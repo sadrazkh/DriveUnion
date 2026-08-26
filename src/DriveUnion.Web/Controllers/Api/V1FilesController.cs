@@ -91,6 +91,18 @@ public sealed class V1FilesController(
         var file = await bytes.ResolveAsync(tenantId, id, cancellationToken);
         if (file is null) return NotFound();
 
+        // Ciphertext is not what a caller of this asked for. Streaming it would hand them a file of
+        // the right length and the right name with no readable content — the one failure a program
+        // cannot detect. The key is the customer's and lives in a browser, so there is nothing this
+        // endpoint could do with it even if it wanted to.
+        if (file.IsEncrypted)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "file_is_encrypted",
+                detail: "This file was encrypted in the browser. Only the panel, with its key, can read it.");
+        }
+
         var range = Request.Headers.Range.Count > 0 ? Request.Headers.Range.ToString() : null;
 
         var download = await drive.OpenDownloadAsync(

@@ -47,6 +47,20 @@ public sealed class UploadSession
     /// </summary>
     public string? DriveFolderId { get; set; }
 
+    /// <summary>
+    /// The encryption header the browser sent, held until the file exists to attach it to.
+    ///
+    /// <para>Null for a plain upload, which is most of them.</para>
+    ///
+    /// <para><b>One opaque column here, typed columns on <c>FileEncryption</c></b>, and the split is
+    /// deliberate. On the finished file those fields are read — the plaintext length is the size a
+    /// customer is shown, and the scheme is what a future reader checks. For the life of an upload
+    /// none of them is read by anything: the server is carrying a note from the browser to itself.
+    /// Seven more columns on a session, written once and never queried, would be seven more things a
+    /// migration has to keep in step with a format that lives in TypeScript.</para>
+    /// </summary>
+    public string? EncryptionHeaderJson { get; set; }
+
     public required string FileName { get; set; }
 
     public required string MimeType { get; set; }

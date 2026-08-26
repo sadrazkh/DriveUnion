@@ -104,6 +104,19 @@ public sealed class UploadCoordinator(
             throw PlanLimitExceededException.File(request.SizeBytes, tenant.MaxFileBytes);
         }
 
+        // An encryption header that is not shaped like one, refused before anything is reserved.
+        //
+        // The server cannot tell whether a header is *correct* — that is the point of the design —
+        // but it can tell that a field will not fit its column or that an iteration count is a
+        // number nobody would choose. Refusing here costs the caller one message; storing it means
+        // an upload that succeeds, a file that looks normal in the list, and a customer who finds
+        // out it cannot be opened whenever they next need it.
+        if (request.Encryption is { } header && !header.IsWellFormed)
+        {
+            throw new UploadRejectedException(
+                "The encryption header is malformed, so this upload was not started.");
+        }
+
         // Then the tenant's room, taken before Google is contacted.
         //
         // The plan check runs ahead of the pool's: a tenant who is both over their cap and facing an
@@ -158,6 +171,13 @@ public sealed class UploadCoordinator(
                 // have been edited across the week a resumable session can live.
                 OwnerUserId = ownerUserId,
                 DriveFolderId = folderId,
+
+                // …and so is the encryption header, for the same reason and one more: the browser
+                // has it at the first request and nowhere else, because the key it describes was
+                // generated there and never sent.
+                EncryptionHeaderJson = request.Encryption is { } encryption
+                    ? System.Text.Json.JsonSerializer.Serialize(encryption)
+                    : null,
 
                 FileName = request.FileName,
                 MimeType = mimeType,
@@ -287,6 +307,28 @@ public sealed class UploadCoordinator(
             };
 
             db.StoredFiles.Add(stored);
+
+            // The header becomes a row of its own, now that there is a file to key it to. Written in
+            // the same SaveChanges as the file: an encrypted file whose header did not land is a
+            // file nobody can ever open, and it would look completely normal in the list.
+            if (session.EncryptionHeaderJson is { Length: > 0 } json
+                && System.Text.Json.JsonSerializer.Deserialize<Core.Application.EncryptionHeader>(json)
+                    is { } header)
+            {
+                db.FileEncryptions.Add(new FileEncryption
+                {
+                    StoredFileId = stored.Id,
+                    TenantId = session.TenantId,
+                    Scheme = header.Scheme,
+                    SegmentSize = header.SegmentSize,
+                    NoncePrefix = header.NoncePrefix,
+                    PlaintextLength = header.PlaintextLength,
+                    KdfSalt = header.KdfSalt,
+                    KdfIterations = header.KdfIterations,
+                    WrappedKey = header.WrappedKey,
+                    CreatedAt = clock.GetUtcNow(),
+                });
+            }
             session.Status = UploadSessionStatus.Completed;
             session.StoredFileId = stored.Id;
             storedFileId = stored.Id;

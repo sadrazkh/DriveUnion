@@ -129,6 +129,17 @@ public sealed class S3GatewayController(
         var stored = await bytes.ResolveAsync(auth.Signer!.TenantId, located.FileId, cancellationToken);
         if (stored is null) return NoSuchKey(key);
 
+        // An S3 client cannot decrypt, and an object handed over as though it could is one that
+        // downloads cleanly and will not open. InvalidObjectState is what S3 answers for an object
+        // that exists and is not retrievable as-is, which is exactly this.
+        if (stored.IsEncrypted)
+        {
+            return Error(
+                StatusCodes.Status403Forbidden,
+                "InvalidObjectState",
+                "That object is encrypted in the browser and cannot be served through S3.");
+        }
+
         var range = Request.Headers.Range.Count > 0 ? Request.Headers.Range.ToString() : null;
         var download = await drive.OpenDownloadAsync(stored.GoogleAccountId, stored.DriveFileId, range, cancellationToken);
 

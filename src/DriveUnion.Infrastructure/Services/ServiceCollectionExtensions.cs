@@ -43,6 +43,9 @@ public static class ServiceCollectionExtensions
         // reason: same rows, same DbContext, same screen.
         services.TryAddScoped<ITags, TagStore>();
 
+        // What a browser needs to open an encrypted file — and nothing that opens one.
+        services.TryAddScoped<IFileEncryption, FileEncryptionStore>();
+
         // The egress counter. Written on the public download path and read by the capacity card and
         // both dashboards — the three places that said «— / ۵۰۰ GB» because nothing counted.
         services.TryAddScoped<ITrafficMeter, TrafficMeter>();
