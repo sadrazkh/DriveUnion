@@ -155,6 +155,32 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     /// </summary>
     public TagStore Labels(DriveUnionDbContext? context = null) => new(context ?? Db, Clock);
 
+    /// <summary>
+    /// The thing that writes the catalogue into the pool, driven directly.
+    ///
+    /// <para>The hosted service around it is a <c>while</c> loop and a timer; everything worth
+    /// asserting is here, which is exactly why the two are separate types.</para>
+    /// </summary>
+    /// <param name="chunkSize">
+    /// Left alone except by the one test that has to prove a snapshot spanning several chunks — see
+    /// <c>CatalogueBackup.DefaultChunkSize</c> for why that parameter exists at all.
+    /// </param>
+    public Infrastructure.Backup.CatalogueBackup Backup(
+        DriveUnionDbContext? context = null,
+        int chunkSize = Infrastructure.Backup.CatalogueBackup.DefaultChunkSize) =>
+        new(
+            context ?? Db,
+            Drive,
+            Folders(context ?? Db),
+            Clock,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Backup.CatalogueBackup>
+                .Instance,
+            chunkSize);
+
+    /// <summary>The operator's view of those snapshots, and the button that asks for one.</summary>
+    public Infrastructure.Backup.CatalogueSnapshots Snapshots(DriveUnionDbContext? context = null) =>
+        new(context ?? Db, Clock);
+
     public UploadCoordinator Uploads(DriveUnionDbContext? context = null)
     {
         var db = context ?? Db;

@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace DriveUnion.Infrastructure.Services;
 
-/// <summary>Which of the four folders in the layout a key names.</summary>
+/// <summary>Which of the folders in the layout a key names.</summary>
 public enum DriveFolderKind
 {
     /// <summary><c>DriveUnion/</c>, one per Google account and belonging to no tenant.</summary>
@@ -16,6 +16,16 @@ public enum DriveFolderKind
 
     /// <summary>The <c>.trash/</c> beside that home.</summary>
     Trash,
+
+    /// <summary>
+    /// <c>DriveUnion/.catalogue/</c> — the operator's own, holding the snapshots of the database
+    /// that says whose every other file is.
+    ///
+    /// <para>A sibling of the tenant folders and inside none of them, which is not tidiness: a
+    /// customer's tree is a place their files are restored into and their trash is emptied from,
+    /// and the index of the whole product must not be reachable by anything that walks one.</para>
+    /// </summary>
+    Catalogue,
 }
 
 /// <summary>

@@ -1,0 +1,170 @@
+@using DriveUnion.Web.Models
+@model BackupsPageViewModel
+@{
+    ViewData["Title"] = UiText.Backups.Title;
+
+    // File · زمان · وضعیت · محتوا · حجم · نسخه‌ها. The file name is the wide track because it is the
+    // thing somebody copies into a Drive search box; everything else is a fixed readout.
+    const string Cols = "--cols: minmax(var(--name-min),2fr) 128px 108px 1.4fr 92px 1fr";
+}
+
+@*
+    The operator's screen, and nothing on it is ever drawn for a customer: the controller is behind
+    the operator policy and the nav entry behind the same claim. Every line of it names the pool.
+
+    The order is deliberate. The alarm first, because a backup that stopped working is invisible and
+    that is the whole reason to open this page; then the button, because somebody who has just read
+    the alarm wants to act on it; then the table; then how to actually use one of these files. The
+    restore steps are on the screen rather than in a document — the document lives somewhere that
+    might be gone at the same time as the database.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="page-head">
+        <h1 class="page-title">@UiText.Backups.Title</h1>
+        <span class="page-sub">@UiText.Backups.Subtitle</span>
+    </div>
+
+    @if (Model.Notice is not null)
+    {
+        <p class="notice" role="status">@Model.Notice</p>
+    }
+
+    @if (Model.Error is not null)
+    {
+        <p class="notice notice--danger" role="alert">@Model.Error</p>
+    }
+
+    @if (Model.Warning is not null)
+    {
+        @* role="alert" and not "status": this is the page telling somebody that a thing they
+           believe is happening is not happening. *@
+        <p class="notice notice--danger" role="alert">@Model.Warning</p>
+    }
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Backups.WhyHeading</div>
+        </div>
+        <div class="card-body">
+            <div class="stack" style="gap: 14px;">
+                <p class="hint">@UiText.Backups.WhyBody</p>
+
+                <div class="stack" style="gap: 6px;">
+                    <div class="card-title">@UiText.Backups.ContentsHeading</div>
+                    <p class="hint">@UiText.Backups.ContentsBody</p>
+                </div>
+
+                <div class="stack" style="gap: 6px;">
+                    <div class="card-title">@UiText.Backups.OmittedHeading</div>
+                    <p class="hint">@UiText.Backups.OmittedBody</p>
+                </div>
+
+                <div class="stack" style="gap: 6px;">
+                    <div class="card-title">@UiText.Backups.ScheduleHeading</div>
+                    <p class="hint">@BackupsPageViewModel.ScheduleText</p>
+                </div>
+
+                <div class="stack" style="gap: 6px;">
+                    <div class="card-title">@UiText.Backups.WhereHeading</div>
+                    <p class="hint">@UiText.Backups.WhereBody</p>
+                </div>
+
+                <div class="row" style="gap: 12px; flex-wrap: wrap; align-items: center;">
+                    <form method="post" action="@Url.Action("Run", "Backups")">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn--primary">@UiText.Backups.RunNow</button>
+                    </form>
+                    <span class="hint">@UiText.Backups.RunNowHint</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card card--flush">
+        <div class="card-head">
+            <div class="card-title">@UiText.Backups.RecentHeading</div>
+        </div>
+
+        <div class="dtable" style="@Cols">
+            <div class="dtable-head">
+                <div>@UiText.Backups.ColumnName</div>
+                <div>@UiText.Backups.ColumnTaken</div>
+                <div>@UiText.Backups.ColumnStatus</div>
+                <div>@UiText.Backups.ColumnContents</div>
+                <div>@UiText.Backups.ColumnSize</div>
+                <div>@UiText.Backups.ColumnCopies</div>
+            </div>
+
+            @if (Model.IsEmpty)
+            {
+                <div class="empty empty--incell">
+                    <span>@UiText.Backups.EmptyStateHeading</span>
+                    <span>@UiText.Backups.EmptyStateBody</span>
+                </div>
+            }
+            else
+            {
+                foreach (var row in Model.Snapshots)
+                {
+                    <div class="dtable-row">
+                        @* The file name is a Latin technical readout in either language — it is what
+                           gets typed into Drive's own search box. *@
+                        <div class="cell-name mono" dir="ltr" title="@row.Name">@row.Name</div>
+                        <div class="cell-muted" title="@row.TriggerText">@row.TakenText</div>
+                        <div><span class="@row.StatusClass">@row.StatusText</span></div>
+                        <div class="cell-muted">
+                            <span>@row.ContentsText</span>
+                            @if (row.EncryptedText is { } encrypted)
+                            {
+                                <span class="muted"> · @encrypted</span>
+                            }
+                        </div>
+                        <div class="cell-num" dir="ltr">@row.SizeText</div>
+                        <div class="cell-muted">
+                            @if (!row.HasCopies)
+                            {
+                                <span>@UiText.Backups.NoCopies</span>
+                            }
+                            else
+                            {
+                                @* Named rather than counted. «two copies» is not something anybody
+                                   can act on; «A1, A2» is where to go and sign in. *@
+                                foreach (var copy in row.Copies)
+                                {
+                                    <span title="@copy.Title">@copy.Text</span>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    @if (row.FailureReason is { Length: > 0 } reason)
+                    {
+                        @* Under its own row rather than in a cell: it is Google's own words, it is
+                           long, and it is the one thing on this screen somebody will paste into a
+                           search engine. *@
+                        <div class="dtable-row">
+                            <div class="cell-muted" style="grid-column: 1 / -1;" dir="ltr">@reason</div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Backups.RestoreHeading</div>
+        </div>
+        <div class="card-body">
+            <div class="stack" style="gap: 8px;">
+                <p class="hint">@UiText.Backups.RestoreIntro</p>
+                <p class="hint">@UiText.Backups.RestoreStep1</p>
+                <p class="hint">@UiText.Backups.RestoreStep2</p>
+                <p class="hint">@UiText.Backups.RestoreStep3</p>
+                <p class="hint">@UiText.Backups.RestoreStep4</p>
+                <p class="hint">@UiText.Backups.RestoreStep5</p>
+                <p class="hint">@UiText.Backups.RestoreCaveat</p>
+            </div>
+        </div>
+    </div>
+</div>

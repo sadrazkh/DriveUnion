@@ -1,5 +1,6 @@
 using System.Globalization;
 using DriveUnion.Core.Abstractions;
+using DriveUnion.Core.Uploads;
 
 namespace DriveUnion.Tests.Fakes;
 
@@ -236,6 +237,25 @@ public sealed class FakeDriveClient : IDriveClient
         }
 
         session.ConfirmedLength += length;
+
+        // «/*»: the writer has not said how long the file is yet, so this cannot be the chunk that
+        // finishes it however much has arrived. Completing here would hand back a file id for a
+        // half-written snapshot and make the one mode this exists to model untestable.
+        if (totalSize == UploadChunking.UnknownTotal)
+        {
+            if (length % UploadChunking.DriveChunkMultiple != 0)
+            {
+                // Drive would take this and then silently stop acknowledging bytes. Loud, like the
+                // rest of this fake: a partial chunk is only allowed as the last one, and a chunk
+                // that declines to name the total is by definition not the last one.
+                throw new DriveApiException(
+                    $"A chunk of {length} bytes with no declared total is not a multiple of "
+                    + $"{UploadChunking.DriveChunkMultiple}, so it can be neither a middle chunk nor "
+                    + "a final one.");
+            }
+
+            return new DriveChunkOutcome(session.ConfirmedLength, null);
+        }
 
         if (session.ConfirmedLength < totalSize) return new DriveChunkOutcome(session.ConfirmedLength, null);
 

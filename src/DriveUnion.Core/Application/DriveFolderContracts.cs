@@ -6,6 +6,7 @@ namespace DriveUnion.Core.Application;
 /// <code>
 /// DriveUnion/{tenant}/{user}/           home
 /// DriveUnion/{tenant}/{user}/.trash/    deleted, awaiting purge
+/// DriveUnion/.catalogue/                the operator's own — see <see cref="CatalogueAsync"/>
 /// </code>
 ///
 /// <para>Two callers need the same answer and must not each derive it: the upload path asks for a
@@ -50,4 +51,20 @@ public interface IDriveFolders
         Guid tenantId,
         Guid? ownerUserId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// <c>DriveUnion/.catalogue/</c> in one account: where the catalogue's own backups go.
+    ///
+    /// <para><b>No tenant, and that is the point.</b> Every other folder in this layout belongs to
+    /// somebody who is paying; this one belongs to the operator, and what goes in it is a snapshot
+    /// of which customer's file is which Drive object — the only copy of that mapping outside
+    /// Postgres. Putting it inside a customer's tree would file the index of the whole product under
+    /// one workspace, where a restore, a trash sweep or a drain would treat it as that workspace's
+    /// own.</para>
+    ///
+    /// <para>Beside the tenant folders rather than above them, so an operator looking at the account
+    /// in Drive finds it next to what it describes. The leading dot says whose it is, the same way
+    /// <c>.trash</c> does.</para>
+    /// </summary>
+    Task<string> CatalogueAsync(Guid accountId, CancellationToken cancellationToken);
 }

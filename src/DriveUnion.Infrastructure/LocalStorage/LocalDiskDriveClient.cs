@@ -110,7 +110,10 @@ public sealed class LocalDiskDriveClient : IDriveClient
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (request.SizeBytes < 0)
+        // UnknownTotal is the one negative that is not a mistake: the writer will name the length on
+        // the chunk that ends the file. Everything else negative is an arithmetic bug upstream, and
+        // Drive rejects it at initiation rather than after the last chunk — so this does too.
+        if (request.SizeBytes < 0 && request.SizeBytes != UploadChunking.UnknownTotal)
         {
             throw new DriveApiException(
                 $"An upload of {request.SizeBytes} bytes is not a file. Drive rejects the size at "
@@ -169,7 +172,11 @@ public sealed class LocalDiskDriveClient : IDriveClient
             var session = await RequireLiveSessionAsync(sessionId, sessionUri, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (totalSize != session.SizeBytes)
+            // A session opened without a length takes whatever total its chunks declare, because the
+            // whole point of that mode is that the number arrives at the end. Everywhere else the
+            // two have to agree: a chunk naming a different total is a chunk from another file, and
+            // writing it into this one would splice two uploads together.
+            if (session.SizeBytes != UploadChunking.UnknownTotal && totalSize != session.SizeBytes)
             {
                 throw new DriveApiException(
                     $"This session was opened for {session.SizeBytes} bytes; a chunk declaring a total "
@@ -199,7 +206,8 @@ public sealed class LocalDiskDriveClient : IDriveClient
             var path = LocalDiskLayout.ContentPath(RootPath, session.AccountId, session.FileId);
             Directory.CreateDirectory(LocalDiskLayout.FilesDirectory(RootPath, session.AccountId));
 
-            var isFinal = offset + length == totalSize;
+            // A chunk that still says «/*» cannot be the last one, whatever it happens to contain.
+            var isFinal = totalSize != UploadChunking.UnknownTotal && offset + length == totalSize;
 
             await using (var file = new FileStream(
                 path,
@@ -252,6 +260,12 @@ public sealed class LocalDiskDriveClient : IDriveClient
                     .ConfigureAwait(false);
 
                 session.Completed = true;
+
+                // The length a session opened without one has been waiting for. Written now so the
+                // probe below — and a replay of this same final chunk — answer with the file's real
+                // size rather than with the placeholder the session started life holding.
+                session.SizeBytes = totalSize;
+
                 completed = ToMetadata(record);
             }
 

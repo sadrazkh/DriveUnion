@@ -88,9 +88,17 @@ public sealed class GoogleDriveClient : IDriveClient, IGoogleAboutReader
         // Not required, but they let Drive reject a mismatched size at initiation rather than after
         // the last chunk has already crossed the Atlantic.
         message.Headers.TryAddWithoutValidation("X-Upload-Content-Type", request.MimeType);
-        message.Headers.TryAddWithoutValidation(
-            "X-Upload-Content-Length",
-            request.SizeBytes.ToString(CultureInfo.InvariantCulture));
+
+        // Omitted rather than sent as «-1» when the writer does not yet know — see
+        // UploadChunking.UnknownTotal for who that is and why. A header announcing a negative length
+        // is a 400 at initiation, which is the one place this would fail in a way that names
+        // something other than the cause.
+        if (request.SizeBytes != UploadChunking.UnknownTotal)
+        {
+            message.Headers.TryAddWithoutValidation(
+                "X-Upload-Content-Length",
+                request.SizeBytes.ToString(CultureInfo.InvariantCulture));
+        }
 
         using var response = await _http.SendAsync(message, cancellationToken).ConfigureAwait(false);
         await EnsureSuccessAsync(response, "opening a resumable upload session", cancellationToken)

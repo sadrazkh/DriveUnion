@@ -32,6 +32,11 @@ public class MigratedScreensTests
         "src/DriveUnion.Web/Views/Links",
         "src/DriveUnion.Web/Views/Accounts",
         "src/DriveUnion.Web/Views/Design",
+
+        // The operator's catalogue-backup screen, written localised from the first line rather than
+        // migrated later. Added here so it stays that way: it is a screen an operator reads on the
+        // worst day of their year, and half of it in the wrong language is half of it unread.
+        "src/DriveUnion.Web/Views/Backups",
     ];
 
     /// <summary>
@@ -60,6 +65,8 @@ public class MigratedScreensTests
         "src/DriveUnion.Web/Models/FilesViewModels.cs",
         "src/DriveUnion.Web/Models/LinksViewModels.cs",
         "src/DriveUnion.Web/Models/AccountsViewModels.cs",
+        "src/DriveUnion.Web/Controllers/BackupsController.cs",
+        "src/DriveUnion.Web/Models/BackupsViewModels.cs",
     ];
 
     /// <summary>

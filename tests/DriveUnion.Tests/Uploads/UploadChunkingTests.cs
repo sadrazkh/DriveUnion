@@ -82,4 +82,36 @@ public class UploadChunkingTests
     {
         UploadChunking.ProbeContentRange(4096).Should().Be("bytes */4096");
     }
+
+    /// <summary>
+    /// The mode the catalogue backup uploads in: a gzip stream's length is not knowable until it
+    /// ends, and Drive's protocol has a spelling for that.
+    /// </summary>
+    [Fact]
+    public void A_writer_that_does_not_yet_know_the_length_says_so_with_a_star()
+    {
+        UploadChunking.ContentRange(0, 262144, UploadChunking.UnknownTotal)
+            .Should().Be("bytes 0-262143/*");
+
+        // And the chunk that ends the file names the total, which by then is known. That is the only
+        // moment Drive learns how long the thing it has been accepting actually is.
+        UploadChunking.ContentRange(262144, 100, 262244).Should().Be("bytes 262144-262243/262244");
+    }
+
+    [Fact]
+    public void A_chunk_with_no_declared_total_is_never_the_last_one()
+    {
+        // So the 256 KiB rule applies to it with no exemption: a partial chunk is allowed only as
+        // the final one, and a chunk that declines to name the total cannot be the final one.
+        UploadChunking.IsValidChunk(0, 256 * 1024, UploadChunking.UnknownTotal).Should().BeTrue();
+        UploadChunking.IsValidChunk(0, 100, UploadChunking.UnknownTotal).Should().BeFalse();
+
+        // Nothing is compared against an end that has not been decided, so a chunk far past where
+        // any guessed total would be is still perfectly valid.
+        UploadChunking.IsValidChunk(1L << 40, 8 * 1024 * 1024, UploadChunking.UnknownTotal)
+            .Should().BeTrue();
+
+        // Every other negative total is still an arithmetic bug upstream and is still refused.
+        UploadChunking.IsValidChunk(0, 256 * 1024, -2).Should().BeFalse();
+    }
 }

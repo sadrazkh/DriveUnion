@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using DriveUnion.Core.Abstractions;
+using DriveUnion.Core.Uploads;
 using FluentAssertions;
 
 namespace DriveUnion.Tests.LocalStorage;
@@ -209,9 +210,63 @@ public class LocalDiskPathSafetyTests
 
         var nonsense = async () => await client.BeginResumableUploadAsync(
             LocalDiskHarness.AccountId,
-            new DriveUploadRequest("report.pdf", "application/pdf", -1, null),
+            new DriveUploadRequest("report.pdf", "application/pdf", -2, null),
             CancellationToken.None);
 
         await nonsense.Should().ThrowAsync<DriveApiException>();
+    }
+
+    /// <summary>
+    /// The one negative that means something.
+    ///
+    /// <para><c>UploadChunking.UnknownTotal</c> is «I will tell you how long this is on the chunk
+    /// that ends it», which is Drive's own mode for a stream whose length is not knowable in advance
+    /// — the catalogue backup gzips a hundred thousand rows and cannot say. This backend has to
+    /// behave the way Google's does, or the local-disk substitute quietly refuses a feature that
+    /// works in production.</para>
+    /// </summary>
+    [Fact]
+    public async Task An_upload_that_will_name_its_length_later_is_accepted()
+    {
+        using var harness = new LocalDiskHarness();
+        var client = harness.Create();
+
+        var session = await client.BeginResumableUploadAsync(
+            LocalDiskHarness.AccountId,
+            new DriveUploadRequest(
+                "catalogue.jsonl.gz",
+                "application/gzip",
+                UploadChunking.UnknownTotal,
+                null),
+            CancellationToken.None);
+
+        var content = new byte[UploadChunking.DriveChunkMultiple];
+        for (var i = 0; i < content.Length; i++) content[i] = (byte)(i % 251);
+
+        // One full-sized chunk that declines to name a total…
+        using (var first = new MemoryStream(content, writable: false))
+        {
+            var outcome = await client.WriteChunkAsync(
+                session.SessionUri,
+                first,
+                0,
+                content.Length,
+                UploadChunking.UnknownTotal,
+                CancellationToken.None);
+
+            outcome.Completed.Should().BeNull("a chunk with no total cannot be the last one");
+        }
+
+        // …and a short one that does, which is the only moment the length is decided.
+        var total = content.Length + 7;
+
+        using (var last = new MemoryStream(new byte[7], writable: false))
+        {
+            var outcome = await client.WriteChunkAsync(
+                session.SessionUri, last, content.Length, 7, total, CancellationToken.None);
+
+            outcome.Completed.Should().NotBeNull();
+            outcome.Completed!.SizeBytes.Should().Be(total);
+        }
     }
 }

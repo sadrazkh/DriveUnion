@@ -78,6 +78,30 @@ public sealed class DriveFolders(
             cancellationToken);
 
     /// <summary>
+    /// The operator's own folder, one per account and belonging to no tenant.
+    ///
+    /// <para>The dot says the same thing <see cref="TrashFolderName"/>'s does: this is ours, and the
+    /// only person who ever reads the name is an operator with the account open in Drive.</para>
+    /// </summary>
+    private const string CatalogueFolderName = ".catalogue";
+
+    public Task<string> CatalogueAsync(Guid accountId, CancellationToken cancellationToken) =>
+        cache.GetOrResolveAsync(
+
+            // Guid.Empty for the tenant and no owner, exactly like the root this hangs off: the
+            // folder belongs to the account, and a key naming a tenant would cache one answer per
+            // workspace for a folder there is only one of.
+            new DriveFolderKey(accountId, Guid.Empty, null, DriveFolderKind.Catalogue),
+            async token =>
+            {
+                var rootFolderId = await RootFolderAsync(accountId, token);
+
+                return await drive.EnsureFolderAsync(
+                    accountId, CatalogueFolderName, rootFolderId, token);
+            },
+            cancellationToken);
+
+    /// <summary>
     /// The folder for one person: <c>u-</c> and their user id, hyphens stripped.
     ///
     /// <para>The id, and not a display name or an address, because this is a path with files in it

@@ -36,6 +36,18 @@ internal sealed class TestDriveFolders(FakeDriveClient drive) : IDriveFolders
         CancellationToken cancellationToken) =>
         ResolveAsync(accountId, tenantId, ownerUserId, leaf: ".trash", cancellationToken);
 
+    /// <summary>
+    /// The operator's own folder, beside the tenants rather than inside one. Nothing in the trash
+    /// slice asks for it; it is here because the interface has it, and answering with a tenant
+    /// folder would be a stub that quietly filed the catalogue's backups under a customer.
+    /// </summary>
+    public async Task<string> CatalogueAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        var root = await drive.EnsureFolderAsync(accountId, "DriveUnion", null, cancellationToken);
+
+        return await drive.EnsureFolderAsync(accountId, ".catalogue", root, cancellationToken);
+    }
+
     private async Task<string> ResolveAsync(
         Guid accountId,
         Guid tenantId,

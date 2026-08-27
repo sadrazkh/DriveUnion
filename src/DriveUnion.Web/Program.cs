@@ -1,3 +1,4 @@
+using DriveUnion.Infrastructure.Backup;
 using DriveUnion.Infrastructure.Dashboard;
 using DriveUnion.Infrastructure.Google;
 using DriveUnion.Infrastructure.Identity;
@@ -154,6 +155,18 @@ builder.Services.AddDriveUnionTrashPanel();
 // parts sit on the operator's volume until somebody notices.
 builder.Services.AddDriveUnionS3Sweeper();
 builder.Services.AddDriveUnionAccountMigrations();
+
+// The catalogue's backup of itself. Files live in the operator's Google accounts and are safe
+// there; the mapping that says whose each one is lived in Postgres and nowhere else, so losing that
+// database meant every byte intact and not one of them reachable. This writes that mapping into the
+// pool on a schedule, so the storage carries its own index.
+//
+// The worker is a second line for the reason the trash sweeper and the Telegram drainer are: every
+// in-process test host boots this pipeline over one shared SQLite connection, and a background loop
+// opening scopes against it turns unrelated suites into "database is locked". Without it the screen
+// draws, the button queues a row, and nothing is ever written.
+builder.Services.AddDriveUnionCatalogueBackup();
+builder.Services.AddDriveUnionCatalogueBackupWorker();
 
 // Fetching a file from a URL the customer supplies. The registration wires the one HTTP client
 // either half is allowed to use to GuardedFetchHandler — see there for what that closes — and the

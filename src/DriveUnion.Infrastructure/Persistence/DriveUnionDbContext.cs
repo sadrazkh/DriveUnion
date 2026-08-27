@@ -53,6 +53,18 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     /// </summary>
     public DbSet<DeletionJob> DeletionJobs => Set<DeletionJob>();
 
+    /// <summary>
+    /// The exports of this database into the pool it describes, and where each copy landed.
+    ///
+    /// <para>Everything else in this file is a table the product reads to work. These two are the
+    /// table the product reads to be <i>rebuildable</i>: without them a lost database is every
+    /// customer's files still sitting in Google and nothing left that knows whose they are. See
+    /// <see cref="CatalogueSnapshot"/>.</para>
+    /// </summary>
+    public DbSet<CatalogueSnapshot> CatalogueSnapshots => Set<CatalogueSnapshot>();
+
+    public DbSet<CatalogueSnapshotCopy> CatalogueSnapshotCopies => Set<CatalogueSnapshotCopy>();
+
     /// <summary>The customer's API keys. Hashes, never secrets — see <see cref="ApiToken"/>.</summary>
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
@@ -579,6 +591,38 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             // And a key to Tenant would be actively harmful here: TenantStorageMeter detaches the
             // tenant it reserves against, which detaches its tracked dependents with it. A row
             // silently detached mid-request is every write after that point becoming a no-op.
+        });
+
+        builder.Entity<CatalogueSnapshot>(e =>
+        {
+            e.Property(s => s.Name).HasMaxLength(CatalogueSnapshot.MaxNameLength);
+            e.Property(s => s.FailureReason).HasMaxLength(CatalogueSnapshot.MaxFailureReasonLength);
+
+            // The worker's own question — «is one waiting» — asked on every pass. Status first,
+            // because after a year of daily runs all but one row is Completed and is skipped on it.
+            e.HasIndex(s => new { s.Status, s.RequestedAt });
+
+            // No foreign key to AspNetUsers for RequestedByUserId, deliberately: this is a record of
+            // who asked, and an operator leaving must not delete the history of what they did.
+        });
+
+        builder.Entity<CatalogueSnapshotCopy>(e =>
+        {
+            e.Property(c => c.DriveFileId).HasMaxLength(256);
+            e.Property(c => c.DriveFolderId).HasMaxLength(256);
+
+            // «Which copies does this run have», which is both the screen's question and the
+            // pruner's.
+            e.HasIndex(c => c.SnapshotId);
+
+            // «What is this account still holding», asked when an operator is deciding whether an
+            // account can be retired.
+            e.HasIndex(c => new { c.GoogleAccountId, c.RemovedAt });
+
+            e.HasOne<CatalogueSnapshot>()
+                .WithMany()
+                .HasForeignKey(c => c.SnapshotId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<ShareLinkKey>(e =>
