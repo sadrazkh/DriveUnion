@@ -95,7 +95,7 @@
                     The name is the link instead.
                 *@
                 <div class="dtable-row">
-                    <div class="cell-slug" dir="ltr">@plan.Code</div>
+                    <div class="cell-slug" dir="ltr" data-label="@UiText.Plans.ColumnCode">@plan.Code</div>
                     <div class="cell-name">
                         <a href="@Url.Action("Tier", "Plans", new { code = plan.Code })" title="@plan.Name">@plan.Name</a>
                         @if (plan.IsConfiguredDefault)
@@ -107,14 +107,15 @@
                        and a Latin unit with a space between them: in an RTL cell the bidi algorithm
                        resolves that space to the paragraph's own direction and lays the two out as
                        «GB 5». The seat count is Persian numerals in Persian and needs no isolate. *@
-                    <div class="cell-num" dir="ltr">@plan.StorageText</div>
-                    <div class="cell-num" dir="ltr">@plan.MaxFileText</div>
-                    <div class="cell-num" dir="ltr">@plan.MonthlyTrafficText</div>
-                    <div class="cell-num">@plan.SeatsText</div>
-                    <div class="@(plan.IsRetired ? "cell-muted" : null)">@plan.StatusText</div>
+                    <div class="cell-num" dir="ltr" data-label="@UiText.Plans.ColumnStorage">@plan.StorageText</div>
+                    <div class="cell-num" dir="ltr" data-label="@UiText.Plans.ColumnFile">@plan.MaxFileText</div>
+                    <div class="cell-num" dir="ltr" data-label="@UiText.Plans.ColumnTraffic">@plan.MonthlyTrafficText</div>
+                    <div class="cell-num" data-label="@UiText.Plans.ColumnSeats">@plan.SeatsText</div>
+                    <div class="@(plan.IsRetired ? "cell-muted" : null)"
+                         data-label="@UiText.Plans.ColumnStatus">@plan.StatusText</div>
                     @* How many workspaces carry this tier — the size of a re-apply, never the size of
                        an edit. Editing the row above moves none of them. *@
-                    <div class="cell-num">@plan.WorkspacesText</div>
+                    <div class="cell-num" data-label="@UiText.PlanAdmin.ColumnWorkspaces">@plan.WorkspacesText</div>
                     <div class="row cell-pin" style="gap: 4px; align-items: center;">
                         @*
                             Named rather than left to the tier name being a link. Retire, delete and
@@ -188,15 +189,15 @@
                 {
                     <a class="dtable-row" href="@Url.Action("OperatorTenant", "Plans", new { tenantId = tenant.TenantId })">
                         <div class="cell-name" title="@tenant.Name">@tenant.Name</div>
-                        <div class="cell-slug" dir="ltr">@tenant.PlanText</div>
-                        <div class="stack" style="gap: 4px;">
+                        <div class="cell-slug" dir="ltr" data-label="@UiText.Plans.ColumnPlan">@tenant.PlanText</div>
+                        <div class="stack" style="gap: 4px;" data-label="@UiText.Plans.ColumnUsed">
                             <span class="mono" dir="ltr" style="font-size: 12px;">@tenant.UsedText</span>
                             <div class="bar">
                                 <div class="@tenant.FillClass" style="width: @tenant.Percent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;"></div>
                             </div>
                         </div>
-                        <div class="cell-num">@tenant.FilesText</div>
-                        <div>@tenant.MembersText</div>
+                        <div class="cell-num" data-label="@UiText.Plans.ColumnFiles">@tenant.FilesText</div>
+                        <div data-label="@UiText.Plans.ColumnSeats">@tenant.MembersText</div>
                     </a>
                 }
             }

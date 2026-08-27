@@ -114,8 +114,8 @@
                            href="@Url.Action("Index", "Files", new { selected = row.FileId })"
                            title="@row.OpenLabel">
                             <div class="cell-name" title="@row.Name">@row.Name</div>
-                            <div class="cell-num" dir="ltr">@row.SizeText</div>
-                            <div class="cell-muted">@row.WhenText</div>
+                            <div class="cell-num" dir="ltr" data-label="@UiText.Trash.ColumnSize">@row.SizeText</div>
+                            <div class="cell-muted" data-label="@UiText.Files.ColumnModified">@row.WhenText</div>
                         </a>
                     }
                 }
@@ -150,8 +150,8 @@
                                href="@Url.Action("Index", "Files", new { selected = row.FileId })">
                                 <div class="cell-name" title="@row.FileName">@row.FileName</div>
                                 @* A slug is an address, which is Latin in both languages. *@
-                                <div class="cell-slug" dir="ltr">@row.SlugPath</div>
-                                <div class="cell-num">@row.DownloadsText</div>
+                                <div class="cell-slug" dir="ltr" data-label="@UiText.Links.ColumnAddress">@row.SlugPath</div>
+                                <div class="cell-num" data-label="@UiText.Links.ColumnDownloads">@row.DownloadsText</div>
                             </a>
                         }
                     }

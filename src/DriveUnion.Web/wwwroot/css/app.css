@@ -36,6 +36,39 @@ body {
   color-scheme: dark;
 }
 
+/*
+ * The strips of the screen the phone keeps for itself.
+ *
+ * _HeadAssets declares apple-mobile-web-app-status-bar-style: black-translucent and both layouts
+ * carry viewport-fit=cover, so an installed panel is laid out *under* the status bar and *under*
+ * the home indicator rather than beside them. That is the whole point — the app fills the screen —
+ * and it costs exactly this: every box that touches an edge of the shell has to give the strip
+ * back, or the header renders under the clock and the sidebar's sign-out button under the home
+ * indicator. That was the state M1 shipped and this is the half that finishes it.
+ *
+ * env() is physical and has no logical form, which is a problem in a stylesheet whose header
+ * comment forbids naming a side. --safe-inline is the answer: the larger of the two, given to both
+ * inline edges. Both are zero in portrait — an inline edge is only cut when the phone is turned —
+ * so what this costs is a strip of padding on the side away from the notch, in landscape, in
+ * exchange for one rule that is right in Persian and in English. Naming left and right per edge
+ * would need a [dir="rtl"] override on every box below, which is the thing the drawers already
+ * demonstrate the cost of.
+ *
+ * Block rather than top and bottom because the rest of the file is written that way; the panel is
+ * horizontal-tb in both languages, so block-start is the top in both.
+ *
+ * The 0px fallbacks are not decoration. A browser that parses env() but does not know the keyword
+ * resolves it to the fallback; without one it resolves to nothing, and calc(14px + ) is an invalid
+ * declaration rather than 14px — which would take the padding off the header on the desktop too.
+ *
+ * This is the only place in the file that names a physical side, and it names both.
+ */
+:root {
+  --safe-block-start: env(safe-area-inset-top, 0px);
+  --safe-block-end: env(safe-area-inset-bottom, 0px);
+  --safe-inline: max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+}
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -131,6 +164,21 @@ a:hover {
   position: sticky;
   top: 0;
   height: 100vh;
+
+  /*
+    The column and the phone drawer are one box, and in standalone both run the full height of the
+    screen: the brand at the top sits under the clock and .sidebar-foot at the bottom — the capacity
+    card, «راهنمای طراحی» and the sign-out control — under the home indicator. Padding rather than a
+    shorter box, so the surface still reaches both edges and the strip is this panel's colour rather
+    than a band of page showing through.
+
+    max() on the inline edges and not a sum: one of them is against the edge of the screen and the
+    other is against the content column, so adding 12px to an inset that is already wider than the
+    padding would push the menu inwards for no reason.
+  */
+  padding-block-start: calc(18px + var(--safe-block-start));
+  padding-block-end: calc(18px + var(--safe-block-end));
+  padding-inline: max(12px, var(--safe-inline));
 }
 
 .brand {
@@ -354,11 +402,25 @@ a:hover {
     header height on a narrow window and nothing at all on a wide one.
   */
   flex-wrap: wrap;
+
+  /*
+    …and in standalone it is the box the status bar is drawn on top of. The sticky offset stays 0 on
+    purpose: the header pins against the top of the viewport, which is above the clock, and the
+    padding is what keeps «جست‌وجو» and the menu button out from under it. A `top` of the inset
+    instead would leave a strip of scrolling page showing between the clock and the header.
+  */
+  padding-block-start: calc(14px + var(--safe-block-start));
+  padding-inline: max(26px, var(--safe-inline));
 }
 
 .app-content {
   flex: 1;
   padding: 24px 26px 40px;
+
+  /* The last row of every screen, and the home indicator sits over the bottom 34px of it. 40px of
+     air was enough when 40px was all there was. */
+  padding-block-end: calc(40px + var(--safe-block-end));
+  padding-inline: max(26px, var(--safe-inline));
 }
 
 .search {
@@ -1197,10 +1259,18 @@ a:hover {
  */
 .upload-dock {
   position: fixed;
-  inset-block-end: 16px;
-  inset-inline-end: 16px;
+
+  /*
+    The one fixed box in the panel that is not the shell, and the corner it is in is the corner the
+    home indicator is in. Without the inset the «توقف» and «لغو» buttons on the last row of the dock
+    are under the bar the reader swipes to leave the app — so the press that was meant to pause a
+    transfer sends them to the home screen instead, which is the worst possible outcome for a
+    control whose whole job is not losing an upload.
+  */
+  inset-block-end: calc(16px + var(--safe-block-end));
+  inset-inline-end: max(16px, var(--safe-inline));
   z-index: 10;
-  width: min(360px, calc(100vw - 32px));
+  width: min(360px, calc(100vw - 32px - 2 * var(--safe-inline)));
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
@@ -1582,6 +1652,12 @@ a:hover {
   max-width: 760px;
   margin: 0 auto;
   padding: 26px 22px 60px;
+
+  /* The page a stranger opens from a message, on a phone, held sideways as often as not — and it
+     carries viewport-fit=cover for the same reason the panel does. It is never installed, so the
+     top inset is Safari's own chrome and is zero; the other three are not. */
+  padding-block-end: calc(60px + var(--safe-block-end));
+  padding-inline: max(22px, var(--safe-inline));
 }
 
 .public-head {
@@ -1797,7 +1873,10 @@ audio.preview-media {
 .app-content[aria-busy='true']::before {
   content: '';
   position: fixed;
-  inset-block-start: 0;
+
+  /* Under the clock in standalone, which for a 2px line means invisible — the one cue that says a
+     press was heard, drawn in the one strip of the screen the reader cannot see. */
+  inset-block-start: var(--safe-block-start);
   inset-inline-start: 0;
   block-size: 2px;
   inline-size: 0;
@@ -1993,26 +2072,6 @@ summary.btn::-webkit-details-marker {
   box-shadow: var(--shadow);
 }
 
-/* ---------------------------------------------------------------- colour utilities */
-
-/*
- * The other two text colours the panel actually uses, beside .muted: fifteen
- * `style="color: var(--warn)"` attributes across six screens before they existed, and a colour a
- * view carries in an attribute is a colour no audit of this stylesheet can find.
- *
- * Last in the file on purpose, and this is the whole of why they work. They are one class deep, and
- * so is every component they are put on — `.page-sub.danger` on a refusal, `.card-title.warn` on a
- * warning heading. At equal specificity the later rule wins, so a utility that has to outrank the
- * component it is correcting has to be written after it.
- */
-.warn {
-  color: var(--warn);
-}
-
-.danger {
-  color: var(--danger);
-}
-
 /* ---------------------------------------------------------------- responsive */
 
 /* The handoff: under 1200px the side panels become drawers. A page opts in by putting
@@ -2037,6 +2096,10 @@ summary.btn::-webkit-details-marker {
     overflow-y: auto;
     border-radius: 0;
     transition: transform 160ms ease;
+
+    /* Full-height like the nav drawer, and under the same two strips: the file's name at the top of
+       the detail panel is what the clock lands on. */
+    padding-block: var(--safe-block-start) var(--safe-block-end);
   }
 
   /* translate, not display:none — the panel keeps its scroll position and the transition has
@@ -2105,7 +2168,19 @@ summary.btn::-webkit-details-marker {
 
   .app-header,
   .app-content {
-    padding-inline: 16px;
+    padding-inline: max(16px, var(--safe-inline));
+  }
+
+  /*
+   * The one case where the header is not the box the status bar is over.
+   *
+   * Without data-nav the sidebar is a plain block at the top of the page — the state a checkout
+   * with no bundle is in, and the state every page is in for the moment before main.ts runs. The
+   * sidebar has already given the strip back above, so a header that gives it back a second time is
+   * a 47px band of empty surface in the middle of the page rather than room for a clock.
+   */
+  .app-shell:not([data-nav]) .app-header {
+    padding-block-start: 14px;
   }
 
   .grid-2,
@@ -2126,4 +2201,350 @@ summary.btn::-webkit-details-marker {
   .public-foot {
     padding: 13px 18px;
   }
+}
+
+/* ---------------------------------------------------------------- the phone
+ *
+ * The breakpoint the panel did not have. 900px turns the sidebar into a drawer and 760px belongs to
+ * the public download card; between 760 and 320 the panel was laid out with the 900px rules, which
+ * is to say with a desktop's tables in a 358px card.
+ *
+ * 640px, and the number is a decision rather than a round one. Every phone this is opened on is
+ * between 320 and 430 CSS pixels wide held upright, and the narrowest tablet is 768. What is left
+ * in between is a narrow desktop window, where a table that scrolls sideways is a table somebody can
+ * widen by dragging a corner. Below 640 there is no corner to drag.
+ */
+@media (max-width: 640px) {
+  /*
+   * A table becomes a stack of records.
+   *
+   * .dtable is a --cols grid and every screen writes its own tracks. The narrowest is three columns;
+   * the operator's plan catalogue is nine, which is 906px of fixed and flexible track against 358px
+   * of card. The sideways scroll that carries that today is not a fallback — it is nine columns read
+   * three at a time through a hairline scrollbar, and .cell-pin exists at all because the column
+   * that gets swiped out of view is the one holding the buttons.
+   *
+   * Not a card inside the card it already sits in. Every one of these tables is inside a
+   * .card--flush, and a border and a radius per row would be a box in a box in a box. A record runs
+   * the full width of the card and is separated by the rule .dtable-row already draws.
+   */
+  .dtable {
+    display: block;
+
+    /* There is nothing to scroll to any more, and leaving it would keep a scrollbar under a stack
+       that fits. container-type stays: .empty--incell is still sized in cqi. */
+    overflow-x: visible;
+  }
+
+  /* The column names move into the cells — see [data-label] below. Left here they would be a row of
+     headings over a table that is no longer laid out in columns. */
+  .dtable-head {
+    display: none;
+  }
+
+  /*
+   * A record, and a flex column rather than a block for one reason: `order`.
+   *
+   * The heading is the cell with no label, and it is not always the first track. The operator's plan
+   * catalogue leads with the tier's code and the workspace list on /operator/tenants leads with a
+   * member's address, so stacked in document order those records open with a labelled line and put
+   * the name somebody is looking for underneath it. Flex is what lets one declaration lift the
+   * heading to the top of every record without any view knowing which track it wrote it in.
+   */
+  .dtable-row,
+  .skeleton-row {
+    display: flex;
+    flex-direction: column;
+
+    /*
+      …and the cross axis is now the inline one, so the row's own `align-items: center` — which is
+      what puts a cell's content in the middle of a band — stops meaning that and starts meaning
+      «every line is as wide as its own text, in the middle of the record». Measured at 390px: the
+      «۱۸.۴ MB» cell came out 64px wide inside a 455px record and broke after the number, so every
+      size in the table was set over two lines with its unit underneath it.
+    */
+    align-items: stretch;
+
+    /* The containing block for .cell-tick, which is pinned into the record's corner. */
+    position: relative;
+    padding: 10px 14px;
+  }
+
+  /* A cell is a line of the record: what it is called, then what it says. */
+  .dtable-row > * {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 3px 0;
+
+    /*
+      .cell-name clips to an ellipsis so that a long name cannot widen a track it shares with four
+      other columns. There are no tracks here and nothing to protect: a record 358px wide whose
+      heading reads «Q3-Report-Fin…» is a list in which two files cannot be told apart, which is the
+      exact defect --name-min was introduced to prevent from the other direction.
+    */
+    white-space: normal;
+    overflow: visible;
+  }
+
+  /*
+   * The label, out of the header band and into the cell it names.
+   *
+   * attr() rather than a second copy of the word: the value is whatever the view wrote on the cell,
+   * which is the same UiText entry the header above it renders. A cell with no label is one whose
+   * value speaks for itself, and there is exactly one of those per table — see below.
+   */
+  .dtable-row > [data-label]::before {
+    content: attr(data-label);
+
+    /* A fixed proportion, so the values line up down the record instead of starting wherever the
+       longest word this language happens to use ends. Persian and English disagree by about a third
+       on every one of these headings. */
+    flex: 0 0 38%;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.6;
+  }
+
+  /*
+   * …and the third place in this stylesheet that a physical direction cannot be avoided.
+   *
+   * Half the cells in the panel carry dir="ltr", because «18.4 MB» in an RTL box is laid out
+   * «MB 18.4» and a slug is an address. That attribute is on the cell, the cell is the flex
+   * container, and a flex container lays its items out along *its own* direction — so in the Persian
+   * panel those cells put the label at the left while every cell beside them puts it at the right.
+   * Measured at 390px: «حجم» and «لینک» at x = 75 with «تاریخ تغییر» at x = 340, in one record.
+   *
+   * row-reverse rather than moving the isolate: the isolate is the only thing keeping the number
+   * beside its unit, and it has to stay on the box the run is in. Only the RTL panel needs this —
+   * in English the cell's direction and the document's already agree — which is why it is written
+   * the same way the two drawers' transforms are.
+   */
+  [dir="rtl"] .dtable-row > [dir="ltr"][data-label] {
+    flex-direction: row-reverse;
+
+    /* …and the label's own box is 38% of the cell, so reversing the order alone moves the box and
+       leaves the word at the far side of it — «حجم» at x = 250 against «تاریخ تغییر» at x = 340,
+       which is a column of labels that does not line up with itself. Set on the cell rather than on
+       the pseudo-element because it inherits, and the value beside it is sized to its own text. */
+    text-align: end;
+  }
+
+  /*
+   * A cell that is a stack in its own right — the workspace list draws a figure over a bar in one —
+   * keeps its own axis and takes the label as its first line rather than as a column beside it.
+   *
+   * Without this the cell becomes the row above, the .bar is a flex item with no width of its own,
+   * and the one thing on /operator/plans that says how full a workspace is resolves to 0px.
+   */
+  .dtable-row > .stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dtable-row > .stack[data-label]::before {
+    flex: none;
+  }
+
+  /*
+   * The line a record is identified by: the file's name, the workspace's, the plan's code.
+   *
+   * It is the cell with no label, which is not a coincidence to be relied on but the rule the views
+   * are written to — a heading that repeated «نام» in front of itself would be the one label on the
+   * screen that says nothing.
+   *
+   * .cell-pin is the second cell a table leaves unlabelled, and it is the opposite thing: a column
+   * of buttons whose header is empty because the buttons name themselves. Without it excluded here,
+   * «بازگرداندن» is lifted above the name of the file it would restore.
+   */
+  .dtable-row > :not([data-label], .cell-pin) {
+    font-size: 13.5px;
+    font-weight: 600;
+
+    /* First, whichever track it was written in — see .dtable-row above. */
+    order: -1;
+  }
+
+  /*
+   * The files table's first track is a marker: a checkbox on a file's row, a ▸ on a folder's.
+   *
+   * Stacked with the rest it is a line of its own holding a 13px control above the name it belongs
+   * to. In the record's corner it is what it was in the table — the mark on the row — and the corner
+   * is the one place there is room to give it something worth pressing.
+   */
+  .cell-tick {
+    position: absolute;
+    inset-block-start: 6px;
+    inset-inline-end: 6px;
+    min-inline-size: 44px;
+    min-block-size: 44px;
+    padding: 0;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* …and the heading has to stop before it, or a long file name is set underneath a checkbox. */
+  .dtable-row:has(.cell-tick) {
+    padding-inline-end: 58px;
+  }
+
+  /*
+   * A cell that is an em dash because the row has nothing to put there — a folder has no modified
+   * date and no share link.
+   *
+   * In a table it is one dash in a column that has to be filled or the cells after it move up a
+   * track. In a record it is a whole labelled line saying nothing, and /files draws two of them per
+   * folder directly under the name somebody is trying to read.
+   */
+  .dtable-row > .cell-empty {
+    display: none;
+  }
+
+  /*
+   * The pinned column is just the record's actions now.
+   *
+   * Nothing scrolls sideways, so sticky pins it against a box that never moves, and the opaque fill
+   * it needed in order to hide the columns behind it becomes a paler stripe across the foot of every
+   * record. The selected pair above keeps --soft, which is the colour the whole record is by then.
+   */
+  .dtable-head > .cell-pin,
+  .dtable-row > .cell-pin,
+  .dtable-row:hover > .cell-pin {
+    position: static;
+    background: transparent;
+    align-items: center;
+    padding-block-start: 8px;
+  }
+
+  /* The loading state is the same stack. Its cells carry the separator when the table is a grid, and
+     a record ruled off six times over is six rows of nothing. */
+  .skeleton-row {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .skeleton-row > * {
+    border-bottom: 0;
+    padding: 3px 0;
+  }
+
+  /*
+   * 44px, which is Apple's figure in the Human Interface Guidelines and WCAG 2.2's AAA target size.
+   *
+   * Everything named here is something a finger lands on, and every one of them was drawn for a
+   * pointer: .btn--sm is 30.8px tall, the sign-out control in the sidebar 32.4px, a .chip 25px, a
+   * .seg-option 34px. On a desktop that is a dense panel; on a phone it is a row of controls that
+   * are missed and pressed again.
+   *
+   * min-block-size and not padding, so a control that is already tall enough does not grow and the
+   * ones that are not keep their type and their border where the comp put them.
+   */
+  .btn,
+  .nav-item,
+  .chip,
+  .choice,
+  .seg-option,
+  .control,
+  .field,
+  .search,
+  .capacity-link,
+  a.badge,
+  .crumbs a,
+  .crumbs .crumb-here {
+    min-block-size: 44px;
+  }
+
+  /* The three of those that are not already a flex box, and so would leave their text sitting at the
+     top of the space just given to them. */
+  a.badge,
+  .crumbs a,
+  .crumbs .crumb-here {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* A .badge is a 20px pill 24px tall; at 44px with its own 10px of side padding «مالی» comes out a
+     green disc, which reads as an avatar rather than as a label you can press. The padding is what
+     keeps it a pill at the height a thumb needs. */
+  a.badge {
+    padding-inline: 16px;
+  }
+
+  /*
+   * The row's checkbox, which is a real <input> and is 13px.
+   *
+   * Its cell is 44px, and that does nothing on its own: a press lands on the control or it lands on
+   * nothing, and there is no text beside it for a <label> to have been wrapped around. Views/Files
+   * makes the cell itself the label, which is what turns the whole corner into the target — this is
+   * the other half, because a 13px tick centred in it is still a 13px tick to aim at.
+   *
+   * 22px and not 44: at 44 the browser draws a 44px checkbox, and a tick the size of the file name
+   * beside it reads as the subject of the row rather than a way to choose it.
+   */
+  .rowcheck {
+    inline-size: 22px;
+    block-size: 22px;
+  }
+
+  /*
+   * A row of things beside each other wraps rather than squeezing.
+   *
+   * .app-header, .card-head, .page-head, .dtable-foot and .public-foot each learned this on their
+   * own and each carries the measurement that taught them. .row is the primitive underneath all of
+   * them and it is used forty times over — the operator's dashboard sets two Persian sentences side
+   * by side in it, the pool card sets an avatar, an address and a badge — and at 358px the answer
+   * has been the same every time it has been asked.
+   */
+  .row {
+    flex-wrap: wrap;
+  }
+
+  /* ⌘K on a device with no ⌘ key. */
+  .kbd {
+    display: none;
+  }
+
+  /*
+   * A card's heading is a customer's own word on three screens, and the abuse queue's is a file name
+   * one stranger chose and another is reading — .card-title has no truncation and never needed any
+   * on a desktop. A name with no hyphen or space in it has a min-content width of the whole name, so
+   * at 358px it is a heading set over the edge of its own card.
+   */
+  .card-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* Thirty days in 322px of card body is a column and a hair; three of those pixels being gap is a
+     third of the column. */
+  .chart {
+    gap: 2px;
+  }
+}
+
+/* ---------------------------------------------------------------- colour utilities */
+
+/*
+ * The other two text colours the panel actually uses, beside .muted: fifteen
+ * `style="color: var(--warn)"` attributes across six screens before they existed, and a colour a
+ * view carries in an attribute is a colour no audit of this stylesheet can find.
+ *
+ * Last in the file on purpose, and this is the whole of why they work. They are one class deep, and
+ * so is every component they are put on — `.page-sub.danger` on a refusal, `.card-title.warn` on a
+ * warning heading. At equal specificity the later rule wins, so a utility that has to outrank the
+ * component it is correcting has to be written after it.
+ *
+ * Last means after the breakpoints too, which is where they moved to. A media query is not a
+ * specificity, so a `color` inside one is an ordinary rule that happens to be further down the file
+ * — and the phone's table labels are the first rule in this stylesheet to paint text from inside
+ * one. Written above them, .danger on a screen at 390px would have been the same silent grey the
+ * Telegram refusals were.
+ */
+.warn {
+  color: var(--warn);
+}
+
+.danger {
+  color: var(--danger);
 }

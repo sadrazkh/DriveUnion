@@ -110,17 +110,18 @@
                         @* The file name is a Latin technical readout in either language — it is what
                            gets typed into Drive's own search box. *@
                         <div class="cell-name mono" dir="ltr" title="@row.Name">@row.Name</div>
-                        <div class="cell-muted" title="@row.TriggerText">@row.TakenText</div>
-                        <div><span class="@row.StatusClass">@row.StatusText</span></div>
-                        <div class="cell-muted">
+                        <div class="cell-muted" title="@row.TriggerText"
+                             data-label="@UiText.Backups.ColumnTaken">@row.TakenText</div>
+                        <div data-label="@UiText.Backups.ColumnStatus"><span class="@row.StatusClass">@row.StatusText</span></div>
+                        <div class="cell-muted" data-label="@UiText.Backups.ColumnContents">
                             <span>@row.ContentsText</span>
                             @if (row.EncryptedText is { } encrypted)
                             {
                                 <span class="muted"> · @encrypted</span>
                             }
                         </div>
-                        <div class="cell-num" dir="ltr">@row.SizeText</div>
-                        <div class="cell-muted">
+                        <div class="cell-num" dir="ltr" data-label="@UiText.Backups.ColumnSize">@row.SizeText</div>
+                        <div class="cell-muted" data-label="@UiText.Backups.ColumnCopies">
                             @if (!row.HasCopies)
                             {
                                 <span>@UiText.Backups.NoCopies</span>

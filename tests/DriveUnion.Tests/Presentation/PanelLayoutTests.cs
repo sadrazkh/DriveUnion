@@ -501,6 +501,305 @@ public class PanelLayoutTests
     public void A_row_of_controls_wraps_before_it_leaves_the_card(string selector) =>
         Rule(AppCss(), selector).Value("flex-wrap").Should().Be("wrap");
 
+    // ------------------------------------------------------------------ the phone
+
+    /// <summary>
+    /// The shell gives back the strips of the screen the phone keeps for itself.
+    ///
+    /// <para>M1 declared <c>apple-mobile-web-app-status-bar-style: black-translucent</c> and both
+    /// layouts carry <c>viewport-fit=cover</c>, which is what makes an installed panel fill the
+    /// screen — and what lays it out <i>under</i> the clock and <i>under</i> the home indicator.
+    /// Without these declarations the header renders behind the status bar and the sidebar's
+    /// sign-out control behind the bar the reader swipes to leave the app.</para>
+    ///
+    /// <para>The tokens are asserted verbatim rather than by substring because the 0px fallbacks are
+    /// load bearing: <c>env()</c> with no fallback resolves to nothing on a browser that does not
+    /// know the keyword, and <c>calc(14px + )</c> is an invalid declaration rather than 14px — which
+    /// would take the padding off the header on the desktop as well.</para>
+    /// </summary>
+    [Fact]
+    public void The_shell_gives_the_phone_back_the_strips_it_keeps()
+    {
+        var css = AppCss();
+
+        var tokens = Rules(css).Single(r => r.Selector == ":root" && r.Declares("--safe-inline"));
+
+        tokens.Value("--safe-block-start").Should().Be("env(safe-area-inset-top, 0px)");
+        tokens.Value("--safe-block-end").Should().Be("env(safe-area-inset-bottom, 0px)");
+
+        // The larger of the two physical insets, given to both inline edges — see below for why.
+        tokens.Value("--safe-inline").Should()
+            .Be("max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))");
+
+        // Every box in the shell that touches an edge of the screen.
+        Rule(css, ".app-header").Value("padding-block-start").Should().Contain("--safe-block-start");
+        Rule(css, ".app-sidebar").Value("padding-block-start").Should().Contain("--safe-block-start");
+        Rule(css, ".app-sidebar").Value("padding-block-end").Should().Contain("--safe-block-end");
+        Rule(css, ".app-content").Value("padding-block-end").Should().Contain("--safe-block-end");
+
+        // The dock sits in the corner the home indicator is in, so a press that misses «توقف» by a
+        // few pixels is a swipe that leaves the app — which pauses the transfer the button was for.
+        Rule(css, ".upload-dock").Value("inset-block-end").Should().Contain("--safe-block-end");
+
+        // The cue that says a press was heard is a 2px line at the very top of the viewport.
+        Rule(css, ".app-content[aria-busy='true']::before")
+            .Value("inset-block-start").Should().Be("var(--safe-block-start)");
+    }
+
+    /// <summary>
+    /// The one rule in these stylesheets that names a physical side names both of them.
+    ///
+    /// <para><c>env()</c> has no logical form, and this panel is RTL Persian and LTR English out of
+    /// one file — so an inset applied to <c>left</c> alone is correct in one language and pads the
+    /// wrong edge in the other. The answer is the larger of the two on both edges, which costs a
+    /// strip of padding on the side away from the notch in landscape and nothing at all in
+    /// portrait, where both are zero.</para>
+    ///
+    /// <para>Written as a per-declaration check rather than a count, because two declarations each
+    /// naming one side would balance and still be wrong in both directions.</para>
+    /// </summary>
+    [Fact]
+    public void An_inset_that_names_one_inline_edge_names_the_other()
+    {
+        foreach (var (name, css) in new[] { ("app.css", AppCss()), ("accounts.css", AccountsCss()) })
+        {
+            var offenders = Regex
+                .Matches(
+                    StripComments(css),
+                    @"[^;{}]*safe-area-inset-(?:left|right)[^;{}]*",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5))
+                .Select(m => m.Value.Trim())
+                .Where(declaration =>
+                    !declaration.Contains("safe-area-inset-left", StringComparison.Ordinal)
+                    || !declaration.Contains("safe-area-inset-right", StringComparison.Ordinal))
+                .ToList();
+
+            offenders.Should().BeEmpty(
+                "{0} pads one physical edge, which is the inline start in one of this panel's two "
+                + "languages and the inline end in the other",
+                name);
+        }
+    }
+
+    /// <summary>
+    /// Below the phone breakpoint a table is a stack of records rather than a squeezed grid.
+    ///
+    /// <para>Every <c>.dtable</c> writes its own <c>--cols</c>; the narrowest is three columns and
+    /// the operator's plan catalogue is nine, which is 906px of track against the 358px a 390px
+    /// phone leaves a full-bleed card. What carried that until now was <c>overflow-x: auto</c> —
+    /// nine columns read three at a time through a hairline scrollbar, which is also the whole
+    /// reason <c>.cell-pin</c> had to be invented.</para>
+    /// </summary>
+    [Fact]
+    public void A_table_below_the_phone_breakpoint_is_a_stack_of_records()
+    {
+        var css = AppCss();
+
+        Newlines(css).Should().Contain(
+            "@media (max-width: 640px)",
+            "the panel's smallest breakpoint was 900px and the 760px one only touches the public card");
+
+        // The grid and its sideways scroll both go.
+        var phoneTable = Rules(css).Last(r => r.Selector == ".dtable");
+        phoneTable.Value("display").Should().Be("block");
+        phoneTable.Value("overflow-x").Should().Be("visible");
+
+        // The header band goes with them, because there are no columns left for it to name.
+        Rules(css).Last(r => r.Selector == ".dtable-head").Value("display").Should().Be("none");
+
+        // …so each cell carries its own column's name. attr() and not a second copy of the word: the
+        // value on the cell is the same UiText entry the header renders.
+        Rule(css, ".dtable-row > [data-label]::before").Value("content").Should().Be("attr(data-label)");
+
+        // A record is a flex column so that one declaration can lift the heading out of whichever
+        // track the view wrote it in — /operator/plans leads with a tier's code and the member list
+        // with an address, and neither is what somebody is looking down the list for.
+        // Found by predicate: the pair is written one selector per line inside a media query, so the
+        // prelude carries that block's indentation and Rule() compares the whole of it.
+        var record = Rules(css).Single(r =>
+            r.Selector.Contains(".dtable-row", StringComparison.Ordinal)
+            && r.Selector.Contains(".skeleton-row", StringComparison.Ordinal));
+        record.Value("display").Should().Be("flex");
+        record.Value("flex-direction").Should().Be("column");
+
+        // …and the cross axis is the inline one now, so the row's own `align-items: center` stops
+        // meaning «content in the middle of the band» and starts meaning «every line as wide as its
+        // own text». Measured at 390px: the «۱۸.۴ MB» cell came out 64px wide in a 455px record and
+        // broke after the number, so every size in the table was set over two lines.
+        record.Value("align-items").Should().Be("stretch");
+
+        Rule(css, ".dtable-row > :not([data-label], .cell-pin)").Value("order").Should().Be("-1");
+
+        // Half the cells in the panel carry dir="ltr", because «18.4 MB» in an RTL box is laid out
+        // «MB 18.4». That attribute is on the cell and the cell is the flex container, so in the
+        // Persian panel those cells put the label at the opposite edge from the ones beside them:
+        // measured at 390px, «حجم» and «لینک» at x = 75 with «تاریخ تغییر» at x = 340, in one record.
+        var isolated = Rule(css, @"[dir=""rtl""] .dtable-row > [dir=""ltr""][data-label]");
+        isolated.Value("flex-direction").Should().Be("row-reverse");
+
+        // Reversing the order moves the label's 38% box and leaves the word at the far side of it.
+        isolated.Value("text-align").Should().Be("end");
+    }
+
+    /// <summary>
+    /// 44px on anything a finger lands on — Apple's figure in the Human Interface Guidelines and
+    /// WCAG 2.2's AAA target size.
+    ///
+    /// <para>Every control in this panel was drawn for a pointer: a <c>.btn--sm</c> is 30.8px tall,
+    /// the sidebar's sign-out button 32.4px, a <c>.chip</c> 25px, the row checkbox 13px. On a
+    /// desktop that is a dense panel; under a thumb it is a row of controls that are missed and
+    /// pressed again.</para>
+    /// </summary>
+    [Fact]
+    public void Everything_a_finger_lands_on_is_44px_below_the_phone_breakpoint()
+    {
+        var css = AppCss();
+
+        var sized = Rules(css).Single(r =>
+            r.Value("min-block-size") == "44px"
+            && r.Selector.Contains(".search", StringComparison.Ordinal));
+
+        foreach (var control in new[]
+        {
+            ".btn", ".nav-item", ".chip", ".choice", ".seg-option", ".control", ".field", ".search",
+        })
+        {
+            sized.Selector.Should().Contain(
+                control,
+                "{0} is something a reader presses and it is under 44px tall as the comp draws it",
+                control);
+        }
+
+        // The row's checkbox is the one control with no text beside it, so the cell it sits in is
+        // the <label> — and the cell is the corner of the record, which is where the 44px goes.
+        var tick = Rule(css, ".cell-tick");
+        tick.Value("min-block-size").Should().Be("44px");
+        tick.Value("min-inline-size").Should().Be("44px");
+    }
+
+    /// <summary>
+    /// The files table's checkbox cell is the label, which is what makes it pressable.
+    ///
+    /// A 13px <c>input</c> centred in a 44px cell is still a 13px target: there is no text beside it
+    /// for a label to have been wrapped around, so without this the only thing to aim at is the
+    /// control. The cell is a <c>label</c> containing its own input, so the whole corner passes the
+    /// press on.
+    /// </summary>
+    [Fact]
+    public async Task The_row_checkbox_is_wrapped_in_the_cell_that_gives_it_a_target()
+    {
+        var markup = await ShellAsync();
+
+        markup.Should().MatchRegex(
+            @"<label class=""cell-tick"">\s*<input type=""checkbox""",
+            "app.css gives .cell-tick 44px and the input 22px; only a label turns the difference "
+            + "into somewhere a thumb can land");
+    }
+
+    /// <summary>
+    /// The upload dock sizes its own controls, because the shell is not allowed to.
+    ///
+    /// Its styles are <c>scoped</c>, so every selector in them carries a <c>[data-v-…]</c> the
+    /// stylesheet cannot outrank — and _HeadAssets loads the island CSS after app.css on purpose.
+    /// «توقف» and «لغو» are 3px of padding round 11px of text, which is 21px tall, in the corner of
+    /// the screen the home indicator is in.
+    /// </summary>
+    [Fact]
+    public void The_upload_dock_sizes_its_own_controls_because_the_stylesheet_cannot()
+    {
+        var dock = Read("src/DriveUnion.Web/Scripts/islands/UploadDock.vue");
+
+        dock.Should().Contain(
+            "@media (max-width: 640px)",
+            "the breakpoint is app.css's and the number is repeated here because a media query's "
+            + "condition cannot be a custom property");
+
+        dock.Should().Contain("min-block-size: 44px");
+    }
+
+    /// <summary>
+    /// Every cell that carries a label carries one of its own table's column names.
+    ///
+    /// The label and the heading above it are one decision written twice — the same
+    /// <c>UiText.…Column…</c> entry on the head cell and on each body cell — and below 640px the
+    /// heading is not rendered at all, so a label that has drifted is a column named wrongly on
+    /// every phone and correctly on every desktop.
+    /// </summary>
+    [Theory]
+    [InlineData("/files")]
+    [InlineData("/links")]
+    [InlineData("/operator/plans")]
+    [InlineData("/design")]
+    public async Task Every_labelled_cell_names_a_column_its_own_table_draws(string path)
+    {
+        var tables = LabelledTablesIn(await MarkupAsync(path));
+
+        tables.Should().NotBeEmpty($"{path} is listed here because it draws a .dtable");
+
+        foreach (var table in tables)
+        {
+            var headings = table.Head.Select(cell => cell.Text).ToList();
+
+            foreach (var label in table.Labels)
+            {
+                headings.Should().Contain(
+                    label,
+                    "«{0}» on {1} is not a column that table draws — its headings are «{2}»",
+                    label,
+                    path,
+                    string.Join("», «", headings));
+            }
+        }
+    }
+
+    /// <summary>
+    /// A table names every column but one on its cells, and the one it does not name is the record's
+    /// heading.
+    ///
+    /// <para>This is the half of the rule above that catches a column being <i>added</i>. The header
+    /// band is <c>display: none</c> on a phone, so a cell with no <c>data-label</c> is a value with
+    /// nothing saying what it is — and in a table of eight figures that is seven anonymous numbers
+    /// under a name.</para>
+    ///
+    /// <para>Two kinds of cell are exempt and both are exempt in the markup rather than here: a head
+    /// cell with no text at all names nothing to begin with (the files table's checkbox column), and
+    /// a <c>.cell-pin</c> is a column of buttons that name themselves. What is left is columns with
+    /// names, and exactly one of those — the file's, the workspace's, the tier's — is the line the
+    /// record is identified by.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("/files")]
+    [InlineData("/links")]
+    [InlineData("/operator/plans")]
+    [InlineData("/design")]
+    public async Task A_table_names_every_column_but_the_one_that_is_the_records_heading(string path)
+    {
+        // A table with no rows has no cells to have labelled — /design draws two of those on
+        // purpose, for the loading state and the empty state.
+        var tables = LabelledTablesIn(await MarkupAsync(path)).Where(t => t.HasRows).ToList();
+
+        tables.Should().NotBeEmpty($"{path} is listed here because it draws a .dtable with rows in it");
+
+        foreach (var table in tables)
+        {
+            var named = table.Head
+                .Where(cell => cell.Text.Length > 0)
+                .Where(cell => !cell.Attributes.Contains("cell-pin", StringComparison.Ordinal))
+                .Select(cell => cell.Text)
+                .ToList();
+
+            var unlabelled = named.Except(table.Labels).ToList();
+
+            unlabelled.Should().ContainSingle(
+                "on {0} the columns «{1}» are named in a header no phone renders, and «{2}» of them "
+                + "reach the cells — exactly one column is meant to be the record's heading",
+                path,
+                string.Join("», «", named),
+                table.Labels.Count);
+        }
+    }
+
     // ------------------------------------------------------------------ one product, one component
 
     /// <summary>
@@ -767,6 +1066,85 @@ public class PanelLayoutTests
 
         return tables;
     }
+
+    /// <summary>One <c>.dtable</c>: the columns it names, and the names its cells carry.</summary>
+    private sealed record PanelTable(
+        IReadOnlyList<HeadCell> Head,
+        IReadOnlyList<string> Labels,
+        bool HasRows);
+
+    /// <summary>A header cell as written, and the heading it prints.</summary>
+    private sealed record HeadCell(string Attributes, string Text);
+
+    /// <summary>
+    /// Each table on a page, cut at the next one.
+    ///
+    /// Tables do not nest, so the span between two <c>--cols</c> is one table and everything in it.
+    /// The last one runs to the end of the document, which costs nothing: no <c>data-label</c> is
+    /// written anywhere but on a row's cell.
+    /// </summary>
+    private static List<PanelTable> LabelledTablesIn(string markup)
+    {
+        var starts = Regex
+            .Matches(
+                markup,
+                @"class=""dtable""\s+style=""--cols:[^""]+""",
+                RegexOptions.None,
+                TimeSpan.FromSeconds(5))
+            .Select(m => m.Index)
+            .ToList();
+
+        var tables = new List<PanelTable>();
+
+        for (var i = 0; i < starts.Count; i++)
+        {
+            var extent = markup[starts[i]..(i + 1 < starts.Count ? starts[i + 1] : markup.Length)];
+
+            // The same header pattern TablesIn uses, and for the same reason: a cell may hold text or
+            // an element but never another <div>, which is what stops this walking into the rows.
+            var head = Regex.Match(
+                extent,
+                """<div class="dtable-head">(?<cells>(?:\s*<div[^>]*>(?:[^<]|<(?!/?div))*</div>)+)\s*</div>""",
+                RegexOptions.None,
+                TimeSpan.FromSeconds(5));
+
+            Assert.True(head.Success, "A .dtable on this page has no header to compare its labels with.");
+
+            var cells = Regex
+                .Matches(
+                    head.Groups["cells"].Value,
+                    @"<div(?<attrs>[^>]*)>(?<inner>(?:[^<]|<(?!/?div))*)</div>",
+                    RegexOptions.None,
+                    TimeSpan.FromSeconds(5))
+                .Select(m => new HeadCell(m.Groups["attrs"].Value, Heading(m.Groups["inner"].Value)))
+                .ToList();
+
+            var labels = Regex
+                .Matches(extent, @"data-label=""(?<value>[^""]*)""", RegexOptions.None, TimeSpan.FromSeconds(5))
+                .Select(m => WebUtility.HtmlDecode(m.Groups["value"].Value).Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            tables.Add(new PanelTable(
+                cells,
+                labels,
+                extent.Contains(@"class=""dtable-row", StringComparison.Ordinal)));
+        }
+
+        return tables;
+    }
+
+    /// <summary>
+    /// What a header cell says, with its markup taken off and its entities put back.
+    ///
+    /// Razor encodes every non-ASCII character it writes, in text and in an attribute alike, so a
+    /// Persian heading and the <c>data-label</c> that repeats it both arrive as runs of
+    /// <c>&amp;#x…;</c>. Decoding is what makes the two comparable — and what makes a failure
+    /// message readable.
+    /// </summary>
+    private static string Heading(string inner) => WebUtility
+        .HtmlDecode(Regex.Replace(inner, "<[^>]*>", string.Empty, RegexOptions.None, TimeSpan.FromSeconds(5)))
+        .Trim();
 
     /// <summary>
     /// Top-level tracks in a <c>--cols</c>, so <c>minmax(var(--name-min), 2.4fr)</c> counts once and

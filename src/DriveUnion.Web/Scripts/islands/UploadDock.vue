@@ -393,4 +393,30 @@ const anyFinished = computed(() =>
 .upload-dock-note {
   color: var(--warn);
 }
+
+/*
+ * The same 44px the shell gives every other control below 640px, and it cannot come from app.css:
+ * these are scoped styles, Vite's island CSS is loaded after the stylesheet on purpose, and
+ * `.upload-dock-actions .btn[data-v-…]` outranks anything written there.
+ *
+ * The dock is the one box in the panel a phone reader is most likely to reach for and the one whose
+ * controls are smallest — «توقف» and «لغو» are 3px of padding round 11px of text, which is 21px
+ * tall. It sits in the corner the home indicator is in, so a press that misses by a few pixels is a
+ * press that leaves the app, and leaving the app is what pauses the transfer the button was for.
+ *
+ * The 640px breakpoint is app.css's and the number is repeated rather than shared, because a custom
+ * property cannot be a media query's condition. Keep the two in step.
+ */
+@media (max-width: 640px) {
+  .upload-dock-actions {
+    gap: 8px;
+  }
+
+  .upload-dock-actions .btn,
+  .upload-dock-toggle {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+    padding: 6px 12px;
+  }
+}
 </style>

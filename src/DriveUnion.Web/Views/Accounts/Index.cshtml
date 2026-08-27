@@ -288,13 +288,13 @@
             {
                 <div class="dtable-row">
                     <div class="cell-name" dir="auto" title="@held.Name">@held.Name</div>
-                    <div class="cell-muted">@held.StatusText</div>
+                    <div class="cell-muted" data-label="@UiText.Accounts.ColumnStatus">@held.StatusText</div>
                     @* dir="ltr" on every figure, for the reason UploadPanel.vue spells out: an
                        RTL container reorders a run of digits beside a Latin unit. *@
-                    <div class="cell-num" dir="ltr">@held.FilesText</div>
-                    <div class="cell-num" dir="ltr">@held.HeldText</div>
-                    <div class="cell-num" dir="ltr">@held.FreeText</div>
-                    <div class="cell-num" dir="ltr">@held.TenantsText</div>
+                    <div class="cell-num" dir="ltr" data-label="@UiText.Accounts.ColumnFiles">@held.FilesText</div>
+                    <div class="cell-num" dir="ltr" data-label="@UiText.Accounts.ColumnHeld">@held.HeldText</div>
+                    <div class="cell-num" dir="ltr" data-label="@UiText.Accounts.ColumnFree">@held.FreeText</div>
+                    <div class="cell-num" dir="ltr" data-label="@UiText.Accounts.ColumnWorkspaces">@held.TenantsText</div>
                 </div>
             }
         </div>

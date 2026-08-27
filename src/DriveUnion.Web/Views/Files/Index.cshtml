@@ -267,15 +267,21 @@
                 {
                     <a class="dtable-row" href="@Url.Action("Index", "Files", new { folder = folder.Id })"
                        title="@UiText.Files.Open" data-drop-folder="@folder.Id">
-                        <div><span class="muted" aria-hidden="true">▸</span></div>
+                        @* .cell-tick is the marker track: a ▸ here and a checkbox on a file's row.
+                           Below 640px the table is a stack of records and this is what sits in the
+                           corner of one — see app.css. *@
+                        <div class="cell-tick"><span class="muted" aria-hidden="true">▸</span></div>
                         <div class="cell-name" title="@folder.Name">@folder.Name</div>
                         @* The contents count sits under «حجم», because it is the answer to the same
                            question a size answers — how much is in there. A folder has no size, and
                            adding up its subtree on every row of every listing would be a walk of the
                            whole catalogue to draw one column. *@
-                        <div class="cell-muted">@folder.ContentsText</div>
-                        <div class="cell-muted">—</div>
-                        <div class="cell-muted">—</div>
+                        <div class="cell-muted" data-label="@UiText.Files.ColumnSize">@folder.ContentsText</div>
+                        @* Two cells a folder has nothing to put in. They fill the track here and are
+                           dropped from the phone's record, where each would be a labelled line whose
+                           value is a dash. *@
+                        <div class="cell-muted cell-empty">—</div>
+                        <div class="cell-muted cell-empty">—</div>
                     </a>
                 }
 
@@ -329,10 +335,19 @@
                     {
                         <div class="dtable-row @(row.IsSelected ? "is-selected" : null)"
                              draggable="true" data-file="@row.Id" data-file-name="@row.Name">
-                            <div>
+                            @*
+                                The cell is the <label>, and that is what makes the tick pressable on
+                                a phone. A checkbox is 13px in this panel and 22px below 640px, and
+                                neither is a target: there is no text beside it for a label to have
+                                been wrapped round, so without this the only thing to aim at is the
+                                control itself. As a label the whole 44px corner of the record passes
+                                the press on. `for` is deliberately absent — a label containing its
+                                control needs none, and the input already carries the name.
+                            *@
+                            <label class="cell-tick">
                                 <input type="checkbox" name="ids" value="@row.Id" class="rowcheck"
                                        aria-label="@UiText.Files.SelectThisFile(row.Name)" />
-                            </div>
+                            </label>
                             <div class="cell-name" title="@row.Name">
                                 @* The term and the folder ride along, or opening a result is what
                                    ends the search that found it. *@
@@ -353,15 +368,16 @@
                                     <span class="badge badge--muted">@label.Name</span>
                                 }
                             </div>
-                            <div class="cell-num" dir="ltr">@row.SizeText</div>
-                            <div class="cell-muted">@row.ModifiedText</div>
+                            <div class="cell-num" dir="ltr" data-label="@UiText.Files.ColumnSize">@row.SizeText</div>
+                            <div class="cell-muted" data-label="@UiText.Files.ColumnModified">@row.ModifiedText</div>
                             @if (row.FolderText is { } where)
                             {
-                                <div class="cell-name cell-muted" title="@where">@where</div>
+                                <div class="cell-name cell-muted" title="@where" data-label="@lastColumn">@where</div>
                             }
                             else
                             {
-                                <div class="@(row.ActiveLinkCount == 0 ? "cell-muted" : "cell-slug")">@row.LinkText</div>
+                                <div class="@(row.ActiveLinkCount == 0 ? "cell-muted" : "cell-slug")"
+                                     data-label="@lastColumn">@row.LinkText</div>
                             }
                         </div>
                     }

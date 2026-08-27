@@ -119,9 +119,10 @@
         {
             <div class="dtable-row">
                 <div class="cell-num" dir="ltr">@t.Size</div>
-                <div class="cell-num" dir="ltr">@t.Weight</div>
-                <div class="cell-muted">@t.Role</div>
-                <div style="font-size: @t.Size; font-weight: @t.Weight; line-height: 1.4;">@UiText.Brand.Name</div>
+                <div class="cell-num" dir="ltr" data-label="@UiText.Design.ColumnScaleWeight">@t.Weight</div>
+                <div class="cell-muted" data-label="@UiText.Design.ColumnScaleRole">@t.Role</div>
+                <div style="font-size: @t.Size; font-weight: @t.Weight; line-height: 1.4;"
+                     data-label="@UiText.Design.ColumnScaleSample">@UiText.Brand.Name</div>
             </div>
         }
     </div>
@@ -193,33 +194,33 @@
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Count(14286)</div>
-            <div>@PersianDigits.Count(14286)</div>
-            <div class="cell-muted">@UiText.Design.NumeralsCounts</div>
+            <div data-label="@UiText.Design.ColumnOutput">@PersianDigits.Count(14286)</div>
+            <div class="cell-muted" data-label="@UiText.Design.ColumnWhere">@UiText.Design.NumeralsCounts</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Count(241)</div>
-            <div>@PersianDigits.Count(241)</div>
-            <div class="cell-muted">@UiText.Design.NumeralsProseExample</div>
+            <div data-label="@UiText.Design.ColumnOutput">@PersianDigits.Count(241)</div>
+            <div class="cell-muted" data-label="@UiText.Design.ColumnWhere">@UiText.Design.NumeralsProseExample</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Plain(1405)</div>
-            <div>@PersianDigits.Plain(1405)</div>
-            <div class="cell-muted">@UiText.Design.NumeralsYear</div>
+            <div data-label="@UiText.Design.ColumnOutput">@PersianDigits.Plain(1405)</div>
+            <div class="cell-muted" data-label="@UiText.Design.ColumnWhere">@UiText.Design.NumeralsYear</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Percent(68)</div>
-            <div>@PersianDigits.Percent(68)</div>
-            <div class="cell-muted">@UiText.Design.NumeralsPercent</div>
+            <div data-label="@UiText.Design.ColumnOutput">@PersianDigits.Percent(68)</div>
+            <div class="cell-muted" data-label="@UiText.Design.ColumnWhere">@UiText.Design.NumeralsPercent</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">PersianDigits.Translate("1405/05/31")</div>
-            <div>@PersianDigits.Translate("1405/05/31")</div>
-            <div class="cell-muted">@UiText.Design.NumeralsAssembled</div>
+            <div data-label="@UiText.Design.ColumnOutput">@PersianDigits.Translate("1405/05/31")</div>
+            <div class="cell-muted" data-label="@UiText.Design.ColumnWhere">@UiText.Design.NumeralsAssembled</div>
         </div>
         <div class="dtable-row">
             <div class="cell-num" dir="ltr">—</div>
-            <div class="cell-num" dir="ltr">18.4 MB · 341 MB/s · /d/kx91mz</div>
-            <div class="cell-muted">@UiText.Design.NumeralsStayLatin</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Design.ColumnOutput">18.4 MB · 341 MB/s · /d/kx91mz</div>
+            <div class="cell-muted" data-label="@UiText.Design.ColumnWhere">@UiText.Design.NumeralsStayLatin</div>
         </div>
     </div>
     <div class="dtable-foot">

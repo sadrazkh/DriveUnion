@@ -50,13 +50,13 @@
                 {
                     <a class="dtable-row" href="@Url.Action("Index", "Files", new { selected = row.FileId })">
                         <div class="cell-name" title="@row.FileName">@row.FileName</div>
-                        <div class="cell-slug" dir="ltr">@row.SlugPath</div>
-                        <div class="cell-num">@row.DownloadsText</div>
+                        <div class="cell-slug" dir="ltr" data-label="@UiText.Links.ColumnAddress">@row.SlugPath</div>
+                        <div class="cell-num" data-label="@UiText.Links.ColumnDownloads">@row.DownloadsText</div>
                         @* No font-size of their own: .dtable-row > * is already the handoff's 12.5px
                            table body, and these two cells were the only ones on the screen written a
                            half-pixel smaller than the three beside them. *@
-                        <div>@row.ExpiryText</div>
-                        <div style="@row.StatusStyle">@row.StatusText</div>
+                        <div data-label="@UiText.Links.ColumnExpiry">@row.ExpiryText</div>
+                        <div style="@row.StatusStyle" data-label="@UiText.Links.ColumnStatus">@row.StatusText</div>
                     </a>
                 }
             }

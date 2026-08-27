@@ -71,9 +71,9 @@
                         <div class="cell-name" title="@row.Name">@row.Name</div>
                         @* A byte quantity is a Latin technical readout in either language, and in an
                            RTL box the bidi algorithm lays «4.7 GB» out as «GB 4.7» without this. *@
-                        <div class="cell-num" dir="ltr">@row.SizeText</div>
-                        <div class="cell-muted">@row.DeletedText</div>
-                        <div class="cell-muted">@row.PurgeText</div>
+                        <div class="cell-num" dir="ltr" data-label="@UiText.Trash.ColumnSize">@row.SizeText</div>
+                        <div class="cell-muted" data-label="@UiText.Trash.ColumnDeleted">@row.DeletedText</div>
+                        <div class="cell-muted" data-label="@UiText.Trash.ColumnPurge">@row.PurgeText</div>
                         <div class="cell-pin">
                             <form method="post" action="@Url.Action("Restore", "Trash", new { id = row.Id })">
                                 @Html.AntiForgeryToken()

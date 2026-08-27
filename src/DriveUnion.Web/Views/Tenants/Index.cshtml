@@ -123,21 +123,22 @@
                 {
                     <a class="dtable-row" href="@Url.Action("Detail", "Tenants", new { tenantId = tenant.TenantId })">
                         <div class="cell-name" title="@tenant.Name">@tenant.Name</div>
-                        <div class="cell-slug" dir="ltr">@tenant.Slug</div>
-                        <div class="cell-slug" dir="ltr">@tenant.PlanText</div>
+                        <div class="cell-slug" dir="ltr" data-label="@UiText.Tenants.ColumnSlug">@tenant.Slug</div>
+                        <div class="cell-slug" dir="ltr" data-label="@UiText.Tenants.ColumnPlan">@tenant.PlanText</div>
                         @*
                             A full workspace is warned about here rather than only at the moment the
                             next account is refused: the operator reading this list is usually the
                             person about to promise somebody an account.
                         *@
-                        <div class="@(tenant.SeatsAreFull ? "warn" : null)">@tenant.MembersText</div>
-                        <div class="stack" style="gap: 4px;">
+                        <div class="@(tenant.SeatsAreFull ? "warn" : null)"
+                             data-label="@UiText.Tenants.ColumnMembers">@tenant.MembersText</div>
+                        <div class="stack" style="gap: 4px;" data-label="@UiText.Tenants.ColumnStorage">
                             <span class="mono" dir="ltr" style="font-size: 12px;">@tenant.StorageText</span>
                             <div class="bar">
                                 <div class="@tenant.StorageFillClass" style="width: @tenant.StoragePercent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;"></div>
                             </div>
                         </div>
-                        <div class="cell-num">@tenant.FilesText</div>
+                        <div class="cell-num" data-label="@UiText.Tenants.ColumnFiles">@tenant.FilesText</div>
                     </a>
                 }
             }

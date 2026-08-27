@@ -109,10 +109,11 @@
                 {
                     <div class="dtable-row">
                         <div class="cell-name" title="@key.Name">@key.Name</div>
-                        <div class="cell-slug" dir="ltr">@key.PrefixText</div>
-                        <div class="cell-muted">@key.ScopeText</div>
-                        <div class="cell-muted">@key.LastUsedText</div>
-                        <div class="@(key.IsLive ? "cell-muted" : "danger")">@key.StateText</div>
+                        <div class="cell-slug" dir="ltr" data-label="@UiText.ApiKeys.ColumnKey">@key.PrefixText</div>
+                        <div class="cell-muted" data-label="@UiText.ApiKeys.ColumnScope">@key.ScopeText</div>
+                        <div class="cell-muted" data-label="@UiText.ApiKeys.ColumnLastUsed">@key.LastUsedText</div>
+                        <div class="@(key.IsLive ? "cell-muted" : "danger")"
+                             data-label="@UiText.ApiKeys.ColumnState">@key.StateText</div>
                         <div class="cell-pin">
                             @if (key.IsLive)
                             {
@@ -198,10 +199,11 @@
                     {
                         <div class="dtable-row">
                             <div class="cell-name" title="@key.Name">@key.Name</div>
-                            <div class="cell-slug" dir="ltr">@key.AccessKeyId</div>
-                            <div class="cell-muted">@key.ScopeText</div>
-                            <div class="cell-muted">@key.LastUsedText</div>
-                            <div class="@(key.IsLive ? "cell-muted" : "danger")">@key.StateText</div>
+                            <div class="cell-slug" dir="ltr" data-label="@UiText.ApiKeys.S3ColumnAccessKey">@key.AccessKeyId</div>
+                            <div class="cell-muted" data-label="@UiText.ApiKeys.ColumnScope">@key.ScopeText</div>
+                            <div class="cell-muted" data-label="@UiText.ApiKeys.ColumnLastUsed">@key.LastUsedText</div>
+                            <div class="@(key.IsLive ? "cell-muted" : "danger")"
+                                 data-label="@UiText.ApiKeys.ColumnState">@key.StateText</div>
                             <div class="cell-pin">
                                 @if (key.IsLive)
                                 {

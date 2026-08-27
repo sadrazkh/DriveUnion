@@ -68,32 +68,35 @@
             <div>@UiText.Files.ColumnLinks</div>
             <div>@UiText.Links.ColumnDownloads</div>
         </div>
+        @* data-label on every cell but the name, which is what the panel's own tables carry and what
+           app.css turns into a labelled record below 640px. The guide is the one place both shapes
+           of this table can be seen, so the samples have to be the real markup. *@
         <div class="dtable-row is-selected">
-            <div><span class="rowbox is-checked"></span></div>
+            <div class="cell-tick"><span class="rowbox is-checked"></span></div>
             <div class="cell-name">Q3-Report-Final.pdf</div>
-            <div class="cell-num" dir="ltr">A1</div>
-            <div class="cell-num" dir="ltr">18.4 MB</div>
-            <div class="cell-muted">@UiText.Design.SampleToday</div>
-            <div class="cell-slug" dir="ltr">/d/kx91mz</div>
-            <div class="cell-num">@Numerals.Count(241)</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Design.ColumnAccount">A1</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Files.ColumnSize">18.4 MB</div>
+            <div class="cell-muted" data-label="@UiText.Files.ColumnModified">@UiText.Design.SampleToday</div>
+            <div class="cell-slug" dir="ltr" data-label="@UiText.Files.ColumnLinks">/d/kx91mz</div>
+            <div class="cell-num" data-label="@UiText.Links.ColumnDownloads">@Numerals.Count(241)</div>
         </div>
         <div class="dtable-row">
-            <div><span class="rowbox"></span></div>
+            <div class="cell-tick"><span class="rowbox"></span></div>
             <div class="cell-name">Season-04-Master.mkv</div>
-            <div class="cell-num" dir="ltr">A1</div>
-            <div class="cell-num" dir="ltr">214 GB</div>
-            <div class="cell-muted">@UiText.Design.SampleYesterday</div>
-            <div class="cell-muted" style="font-size: 11.5px;">—</div>
-            <div class="cell-num">@Numerals.Count(0)</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Design.ColumnAccount">A1</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Files.ColumnSize">214 GB</div>
+            <div class="cell-muted" data-label="@UiText.Files.ColumnModified">@UiText.Design.SampleYesterday</div>
+            <div class="cell-muted cell-empty" style="font-size: 11.5px;">—</div>
+            <div class="cell-num" data-label="@UiText.Links.ColumnDownloads">@Numerals.Count(0)</div>
         </div>
         <div class="dtable-row">
-            <div><span class="rowbox"></span></div>
+            <div class="cell-tick"><span class="rowbox"></span></div>
             <div class="cell-name">@UiText.Design.SampleRtlFileName</div>
-            <div class="cell-num" dir="ltr">A2</div>
-            <div class="cell-num" dir="ltr">6.2 MB</div>
-            <div class="cell-muted">@UiText.Design.SampleDaysAgo(5)</div>
-            <div class="cell-slug" dir="ltr">/d/rt40ab</div>
-            <div class="cell-num">@Numerals.Count(76)</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Design.ColumnAccount">A2</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Files.ColumnSize">6.2 MB</div>
+            <div class="cell-muted" data-label="@UiText.Files.ColumnModified">@UiText.Design.SampleDaysAgo(5)</div>
+            <div class="cell-slug" dir="ltr" data-label="@UiText.Files.ColumnLinks">/d/rt40ab</div>
+            <div class="cell-num" data-label="@UiText.Links.ColumnDownloads">@Numerals.Count(76)</div>
         </div>
     </div>
     <div class="dtable-foot">
@@ -121,22 +124,22 @@
             <div>@UiText.Links.ColumnDownloads</div>
         </div>
         <div class="dtable-row">
-            <div><span class="rowbox"></span></div>
+            <div class="cell-tick"><span class="rowbox"></span></div>
             <div class="cell-name">promo-reel-4k.mp4</div>
-            <div class="cell-num" dir="ltr">A2</div>
-            <div class="cell-num" dir="ltr">4.7 GB</div>
-            <div class="cell-muted">@UiText.Design.SampleDaysAgo(3)</div>
-            <div class="cell-slug" dir="ltr">/d/8vaq2c</div>
-            <div class="cell-num">@Numerals.Count(189)</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Design.ColumnAccount">A2</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Files.ColumnSize">4.7 GB</div>
+            <div class="cell-muted" data-label="@UiText.Files.ColumnModified">@UiText.Design.SampleDaysAgo(3)</div>
+            <div class="cell-slug" dir="ltr" data-label="@UiText.Files.ColumnLinks">/d/8vaq2c</div>
+            <div class="cell-num" data-label="@UiText.Links.ColumnDownloads">@Numerals.Count(189)</div>
         </div>
         <div class="dtable-row">
-            <div><span class="rowbox"></span></div>
+            <div class="cell-tick"><span class="rowbox"></span></div>
             <div class="cell-name">dataset-full.img</div>
-            <div class="cell-num" dir="ltr">A1</div>
-            <div class="cell-num" dir="ltr">812 GB</div>
-            <div class="cell-muted">@UiText.Design.SampleWeeksAgo(1)</div>
-            <div class="cell-muted" style="font-size: 11.5px;">—</div>
-            <div class="cell-num">@Numerals.Count(0)</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Design.ColumnAccount">A1</div>
+            <div class="cell-num" dir="ltr" data-label="@UiText.Files.ColumnSize">812 GB</div>
+            <div class="cell-muted" data-label="@UiText.Files.ColumnModified">@UiText.Design.SampleWeeksAgo(1)</div>
+            <div class="cell-muted cell-empty" style="font-size: 11.5px;">—</div>
+            <div class="cell-num" data-label="@UiText.Links.ColumnDownloads">@Numerals.Count(0)</div>
         </div>
     </div>
 </div>

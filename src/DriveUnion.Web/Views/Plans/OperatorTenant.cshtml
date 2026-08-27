@@ -232,14 +232,18 @@
                 @foreach (var row in Model.History)
                 {
                     <div class="dtable-row">
-                        <div>@row.WhenText</div>
+                        @* The field that changed is what a record on a phone is about — «سقف فضا»,
+                           and under it when, from what and to what. Every other cell carries its
+                           column's name into the stack; this one is the one that does not, which is
+                           what makes it the heading (see app.css). *@
+                        <div data-label="@UiText.Plans.ColumnWhen">@row.WhenText</div>
                         <div>@row.FieldText</div>
                         @* Three of the four dimensions are byte quantities — «500 GB» — and the
                            fourth is a seat count in Persian numerals. The isolate is what keeps the
                            unit beside its number in an RTL cell; a bare number is unharmed by it. *@
-                        <div class="cell-num" dir="ltr">@row.FromText</div>
-                        <div class="cell-num" dir="ltr">@row.ToText</div>
-                        <div class="cell-muted" title="@row.Reason">@row.Reason</div>
+                        <div class="cell-num" dir="ltr" data-label="@UiText.Plans.ColumnFrom">@row.FromText</div>
+                        <div class="cell-num" dir="ltr" data-label="@UiText.Plans.ColumnTo">@row.ToText</div>
+                        <div class="cell-muted" title="@row.Reason" data-label="@UiText.Plans.ColumnReason">@row.Reason</div>
                     </div>
                 }
             }

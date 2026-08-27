@@ -75,7 +75,12 @@
                 <div>@UiText.Tenants.ColumnDisplayName</div>
                 <div>@UiText.Tenants.ColumnStatus</div>
                 <div>@UiText.Tenants.ColumnAdded</div>
-                <div></div>
+                @* The controls column, pinned like every other one in the panel: five tracks is
+                   650px, so at a narrow window the track that leaves the card is the only one that
+                   does anything. Its header is empty because the buttons under it name themselves,
+                   and it is pinned in the header too or the column picks up whichever heading
+                   drifts above it. *@
+                <div class="cell-pin"></div>
             </div>
 
             @if (Model.Members.Count == 0)
@@ -89,13 +94,14 @@
                 @foreach (var member in Model.Members)
                 {
                     <div class="dtable-row">
-                        <div class="cell-slug" dir="ltr" title="@member.Email">@member.Email</div>
+                        <div class="cell-slug" dir="ltr" title="@member.Email"
+                             data-label="@UiText.Tenants.ColumnEmail">@member.Email</div>
                         <div class="cell-name">@member.DisplayName</div>
-                        <div>
+                        <div data-label="@UiText.Tenants.ColumnStatus">
                             <span class="badge @(member.IsDisabled ? "badge--danger" : "badge--muted")">@member.StatusText</span>
                         </div>
-                        <div class="cell-muted">@member.AddedText</div>
-                        <div class="row" style="gap: 6px; flex-wrap: wrap; align-items: center;">
+                        <div class="cell-muted" data-label="@UiText.Tenants.ColumnAdded">@member.AddedText</div>
+                        <div class="row cell-pin" style="gap: 6px; flex-wrap: wrap; align-items: center;">
                             @*
                                 Two small forms rather than one row of links: both of these write, and
                                 a GET that disables somebody is a control any prefetcher can press.
@@ -231,11 +237,13 @@
                 @foreach (var row in Model.History)
                 {
                     <div class="dtable-row">
-                        <div>@row.WhenText</div>
+                        @* The field that changed is the record's heading on a phone — the one cell
+                           with no label — for the reason /operator/plans/{tenant} gives at length. *@
+                        <div data-label="@UiText.Tenants.ColumnWhen">@row.WhenText</div>
                         <div>@row.FieldText</div>
-                        <div class="cell-num" dir="ltr">@row.FromText</div>
-                        <div class="cell-num" dir="ltr">@row.ToText</div>
-                        <div class="cell-muted" title="@row.Reason">@row.Reason</div>
+                        <div class="cell-num" dir="ltr" data-label="@UiText.Plans.ColumnFrom">@row.FromText</div>
+                        <div class="cell-num" dir="ltr" data-label="@UiText.Plans.ColumnTo">@row.ToText</div>
+                        <div class="cell-muted" title="@row.Reason" data-label="@UiText.Tenants.ColumnReason">@row.Reason</div>
                     </div>
                 }
             }
