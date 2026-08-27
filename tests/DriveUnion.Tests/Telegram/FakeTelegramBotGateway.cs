@@ -95,6 +95,16 @@ public sealed class FakeTelegramBotGateway : ITelegramBotGateway, IDisposable
     /// <summary>Opt in to the cloud API's <c>getFile</c> shape. Off by default; see the class remarks.</summary>
     public bool AnswerFilesWithUrls { get; set; }
 
+    /// <summary>
+    /// Stop reading a document body after this many bytes and refuse the send.
+    ///
+    /// <para>An upload that dies with part of the body already gone is the shape of a real Telegram
+    /// failure, and it is the only way to test that a delivery is charged for what it moved rather
+    /// than for what arrived. Null is the ordinary path, where the whole body is drained and the
+    /// send succeeds.</para>
+    /// </summary>
+    public long? FailSendDocumentAfterReading { get; set; }
+
     /// <summary>What <see cref="GetMeAsync"/> reports.</summary>
     public TelegramBotProfile Profile { get; set; } = new(123456789, "DriveUnionBot");
 
@@ -281,8 +291,28 @@ public sealed class FakeTelegramBotGateway : ITelegramBotGateway, IDisposable
         if (content is not null)
         {
             var buffer = new byte[64 * 1024];
-            int read;
-            while ((read = await content.ReadAsync(buffer, cancellationToken)) > 0) uploaded += read;
+
+            while (true)
+            {
+                // Never past the cut. A transfer that dies part-way through the body is the shape of
+                // a real upload failure, and the buffer has to stop exactly there — reading 64 KB at
+                // a time would swallow a small body whole and the «half» would be all of it.
+                var want = FailSendDocumentAfterReading is { } cut
+                    ? (int)Math.Min(buffer.Length, cut - uploaded)
+                    : buffer.Length;
+
+                if (want <= 0) break;
+
+                var read = await content.ReadAsync(buffer.AsMemory(0, want), cancellationToken);
+                if (read <= 0) break;
+
+                uploaded += read;
+            }
+        }
+
+        if (FailSendDocumentAfterReading is not null)
+        {
+            return TelegramCall<TelegramSentMessage>.Failed(null, "the upload was cut short");
         }
 
         if (Refuse<TelegramSentMessage>(

@@ -35,14 +35,6 @@ public sealed class PublicDownloadController(
     private const int UserAgentLimit = 512;
 
     /// <summary>
-    /// The copy buffer, and the granularity the byte count is kept to.
-    ///
-    /// <para>80 KB is what <c>Stream.CopyToAsync</c> uses by default, so this is the same copy it
-    /// was doing with a running total added — not a slower one chosen to make counting easier.</para>
-    /// </summary>
-    private const int CopyBuffer = 81920;
-
-    /// <summary>
     /// camelCase, because the only reader is the browser and the format's TypeScript definition is
     /// where the field names actually live. Nothing here is escaped into HTML by this serialiser —
     /// the view writes it into an attribute, which Razor encodes.
@@ -327,7 +319,7 @@ public sealed class PublicDownloadController(
 
                 try
                 {
-                    await CopyCountingAsync(
+                    await EgressCopy.CopyAsync(
                         download.Content,
                         Response.Body,
                         bytes => sent = bytes,
@@ -382,43 +374,6 @@ public sealed class PublicDownloadController(
             // visitor is the one who cancelled it is already cancelled, and the bytes they took
             // would go uncounted for the one reason that is not a failure at all.
             if (sent > 0) await traffic.RecordAsync(ticket.TenantId, sent, CancellationToken.None);
-        }
-    }
-
-    /// <summary>
-    /// <c>Stream.CopyToAsync</c>, reporting the running total as it goes.
-    ///
-    /// <para><b>Why a callback and not a return value.</b> The transfers worth counting are the ones
-    /// that do not finish — a tab closed halfway is the case this meter exists for — and a returned
-    /// total never arrives when the copy throws. Reported after each write, the caller's own
-    /// variable already holds what reached the visitor by the time the exception unwinds.</para>
-    ///
-    /// <para>80 KB and an <c>ArrayPool</c> buffer, which is what <c>CopyToAsync</c> does: this is
-    /// that copy with one addition, not a slower one chosen to make counting possible.</para>
-    /// </summary>
-    private static async Task CopyCountingAsync(
-        Stream source,
-        Stream destination,
-        Action<long> sent,
-        CancellationToken cancellationToken)
-    {
-        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(CopyBuffer);
-        var total = 0L;
-
-        try
-        {
-            int read;
-            while ((read = await source.ReadAsync(buffer.AsMemory(0, CopyBuffer), cancellationToken)) > 0)
-            {
-                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-
-                total += read;
-                sent(total);
-            }
-        }
-        finally
-        {
-            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 
@@ -545,7 +500,7 @@ public sealed class PublicDownloadController(
         // Midnight UTC on the first of next month, which is exactly when MonthAsync starts counting
         // a new window — so the header promises the moment the refusal actually lifts rather than a
         // round number of hours somebody picked.
-        Response.Headers.RetryAfter = NextMonthStart(DateTimeOffset.UtcNow).ToString("R");
+        Response.Headers.RetryAfter = EgressWindow.NextResetHeader();
 
         var result = View(
             "~/Views/Public/OverTraffic.cshtml",
@@ -555,16 +510,6 @@ public sealed class PublicDownloadController(
 
         return result;
     }
-
-    /// <summary>
-    /// Midnight UTC on the first of the month after <paramref name="now"/>.
-    ///
-    /// <para>UTC because that is the clock <c>TenantUsageDay.Day</c> is stamped in; a rollover
-    /// computed in the reader's own zone would promise a return three and a half hours before the
-    /// counter it is about actually resets.</para>
-    /// </summary>
-    private static DateTimeOffset NextMonthStart(DateTimeOffset now) =>
-        new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
 
     /// <param name="inline">
     /// Only ever true on <see cref="Preview"/>, and only for a type on <c>Previews</c>' list. This is

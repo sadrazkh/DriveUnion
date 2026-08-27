@@ -5,6 +5,7 @@ using DriveUnion.Core.Application;
 using DriveUnion.Core.Tenancy;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Web.Hosting;
+using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.S3;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -59,6 +60,8 @@ public sealed class S3GatewayController(
     IUploadCoordinator uploads,
     IS3Multipart multipart,
     IDriveClient drive,
+    ITrafficMeter traffic,
+    IEgressAllowance allowance,
     DriveUnionDbContext db) : ControllerBase
 {
     /// <summary>What S3 defaults to and caps at, matching AWS so a client's paging behaves.</summary>
@@ -148,25 +151,70 @@ public sealed class S3GatewayController(
                 "That object is encrypted in the browser and cannot be served through S3.");
         }
 
+        // The traffic gate, before Drive is contacted — the position and the reasoning are the public
+        // download path's, and the argument for reading it once and letting an admitted transfer
+        // finish is written out there.
+        //
+        // This route needs it more than that one does, not less. `aws s3 sync` against a bucket is
+        // the single easiest way to pull a workspace's entire contents, a presigned GET hands that
+        // ability to somebody holding nothing but a URL, and until this line both went out
+        // uncounted — so a workspace whose public links had stopped serving could still take
+        // terabytes through here, and the operator's own egress chart did not show any of it.
+        var standing = await allowance.ReadAsync(auth.Signer!.TenantId, cancellationToken);
+
+        if (standing.IsOverAllowance)
+        {
+            // S3 has no code for «you are over a quota you bought», and inventing one would be a
+            // string no client library has a branch for. SlowDown is what S3 answers when a caller
+            // must back off and try later, every SDK's default retry policy already understands it,
+            // and 503 is the status it carries — which is also what the public card answers, so the
+            // two surfaces disagree about the wording and not about what happened.
+            Response.Headers.RetryAfter = EgressWindow.NextResetHeader();
+
+            return Error(
+                StatusCodes.Status503ServiceUnavailable,
+                "SlowDown",
+                "This workspace has used its monthly traffic allowance. "
+                    + "Downloads resume at the start of the next calendar month.");
+        }
+
         var range = Request.Headers.Range.Count > 0 ? Request.Headers.Range.ToString() : null;
         var download = await drive.OpenDownloadAsync(stored.GoogleAccountId, stored.DriveFileId, range, cancellationToken);
 
-        await using (download)
+        // What actually left, not what was promised. An interrupted `aws s3 cp` and a client that
+        // seeks with Range both cost the operator exactly the bytes they took.
+        var sent = 0L;
+
+        try
         {
-            Response.StatusCode = download.IsPartial
-                ? StatusCodes.Status206PartialContent
-                : StatusCodes.Status200OK;
+            await using (download)
+            {
+                Response.StatusCode = download.IsPartial
+                    ? StatusCodes.Status206PartialContent
+                    : StatusCodes.Status200OK;
 
-            WriteObjectHeaders(located);
-            Response.ContentType = stored.MimeType;
+                WriteObjectHeaders(located);
+                Response.ContentType = stored.MimeType;
 
-            if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
-            if (download.ContentLength is { } length) Response.ContentLength = length;
+                if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
+                if (download.ContentLength is { } length) Response.ContentLength = length;
 
-            await download.Content.CopyToAsync(Response.Body, cancellationToken);
+                await EgressCopy.CopyAsync(
+                    download.Content,
+                    Response.Body,
+                    copied => sent = copied,
+                    cancellationToken);
+            }
+
+            return new EmptyResult();
         }
-
-        return new EmptyResult();
+        finally
+        {
+            // Not the request's token: when the caller is the one who cancelled it is already
+            // cancelled, and the bytes they took would go uncounted for the one reason that is not a
+            // failure at all.
+            if (sent > 0) await traffic.RecordAsync(auth.Signer!.TenantId, sent, CancellationToken.None);
+        }
     }
 
     /// <summary>

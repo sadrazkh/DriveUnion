@@ -221,6 +221,125 @@ public class S3GatewayTests
         copy.Should().Throw<EndOfStreamException>();
     }
 
+    /// <summary>
+    /// <b>The monthly traffic allowance reaches the gateway too.</b>
+    ///
+    /// <para><c>aws s3 sync</c> against a bucket is the single easiest way to pull a workspace's
+    /// entire contents, and until this gate existed it went out uncounted and uncapped: a workspace
+    /// whose public links had stopped serving could still take terabytes through here, and none of
+    /// it appeared on the operator's own egress chart.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_workspace_over_its_allowance_cannot_sync_its_bucket()
+    {
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("kx91mzq4", monthlyEgressBytes: 100_000);
+
+        harness.SeedTrafficThisMonth(seeded.TenantId, 100_000);
+
+        var (id, secret) = await MintAsync(harness, seeded.TenantId, ApiScope.Read);
+        var bucket = SlugOf(harness, seeded.TenantId);
+
+        using var client = harness.NewClient();
+        using var response = await SendAsync(
+            client, HttpMethod.Get, $"/s3/{bucket}/{seeded.FileName}", id, secret);
+
+        response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+
+        // SlowDown, because S3 has no code for «over a quota you bought» and every SDK's default
+        // retry policy already knows this one. An invented code is a string no client has a branch
+        // for, which turns a temporary refusal into an unhandled exception in somebody's script.
+        (await response.Content.ReadAsStringAsync()).Should().Contain("SlowDown");
+
+        // Retry-After names the moment it lifts, from the same helper the other two surfaces use.
+        response.Headers.RetryAfter?.Date.Should().NotBeNull();
+
+        // The half that costs money.
+        harness.Drive.Calls.Should().NotContain(
+            call => call.Operation == FakeDriveOperation.OpenDownload,
+            "a refusal that reaches Google has already spent the egress it exists to save");
+    }
+
+    /// <summary>
+    /// The positive control, and the reporting half: an object served through the gateway is counted
+    /// against the workspace that owns the bucket.
+    /// </summary>
+    [Fact]
+    public async Task An_object_served_through_the_gateway_is_counted()
+    {
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("kx91mzq4", content: PublicSiteHarness.TestBytes(4096));
+
+        var (id, secret) = await MintAsync(harness, seeded.TenantId, ApiScope.Read);
+        var bucket = SlugOf(harness, seeded.TenantId);
+
+        using var client = harness.NewClient();
+        using var response = await SendAsync(
+            client, HttpMethod.Get, $"/s3/{bucket}/{seeded.FileName}", id, secret);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsByteArrayAsync()).Should().HaveCount(4096);
+
+        (await harness.MeteredAsync(seeded.TenantId)).Should().Be(
+            4096, "the operator is billed for these bytes whichever front door asked for them");
+    }
+
+    /// <summary>
+    /// A HEAD is not egress and is not gated.
+    ///
+    /// <para>It reaches no Drive stream and sends no body, so it costs the operator nothing — and a
+    /// client that cannot stat an object cannot tell a workspace that is over its allowance from one
+    /// whose bucket has gone. The public path draws the same line at its own probe.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_head_still_answers_for_a_workspace_that_is_over()
+    {
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("kx91mzq4", monthlyEgressBytes: 100_000);
+
+        harness.SeedTrafficThisMonth(seeded.TenantId, 100_000);
+
+        var (id, secret) = await MintAsync(harness, seeded.TenantId, ApiScope.Read);
+        var bucket = SlugOf(harness, seeded.TenantId);
+
+        using var client = harness.NewClient();
+        using var response = await SendAsync(
+            client, HttpMethod.Head, $"/s3/{bucket}/{seeded.FileName}", id, secret);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await harness.MeteredAsync(seeded.TenantId)).Should().Be(100_000, "a stat moves no bytes");
+    }
+
+    /// <summary>
+    /// Being out of traffic does not lock a customer out of managing their own workspace.
+    ///
+    /// <para>The allowance is about bytes leaving the pool, and a delete sends none — so the gate is
+    /// on <c>GetObject</c> alone. Listing and deleting stay open deliberately: a workspace that has
+    /// spent its month must still be able to see what it is holding and get rid of some of it, which
+    /// is the one action that makes the situation better rather than worse.</para>
+    /// </summary>
+    [Fact]
+    public async Task Being_over_the_traffic_cap_does_not_close_the_paths_that_move_no_bytes_out()
+    {
+        await using var harness = new PublicSiteHarness();
+        var seeded = harness.SeedLink("kx91mzq4", monthlyEgressBytes: 100_000);
+
+        harness.SeedTrafficThisMonth(seeded.TenantId, 100_000);
+
+        var (id, secret) = await MintAsync(harness, seeded.TenantId, ApiScope.Write);
+        var bucket = SlugOf(harness, seeded.TenantId);
+
+        using var client = harness.NewClient();
+
+        using var listed = await SendAsync(client, HttpMethod.Get, $"/s3/{bucket}", id, secret);
+        listed.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var deleted = await SendAsync(
+            client, HttpMethod.Delete, $"/s3/{bucket}/{seeded.FileName}", id, secret);
+
+        deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
     // ------------------------------------------------------------------ signing, from the spec
 
     /// <summary>

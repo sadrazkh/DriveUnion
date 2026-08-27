@@ -32,6 +32,14 @@ public sealed class TelegramOutboxProcessor(
     ITelegramBotSettingsStore botSettings,
     IDriveClient drive,
     IUploadCoordinator uploads,
+
+    // Telegram is the third way a customer's bytes leave the pool, after the public link and the two
+    // programmatic gateways. It is metered and not capped, and that is a decision: this runs on a
+    // worker against a queue somebody joined minutes or hours ago, so refusing here would turn a
+    // queued delivery into a failure the customer meets long after the action that caused it, with
+    // no screen in front of them to explain it. The cap belongs at the moment the button is pressed,
+    // which is a different change on a different surface.
+    ITrafficMeter traffic,
     TelegramWorkDirectory workDirectory,
     TelegramFairnessCursor fairness,
     IOptions<TelegramOptions> options,
@@ -335,6 +343,11 @@ public sealed class TelegramOutboxProcessor(
         using var beating = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var heartbeat = KeepAliveAsync(item.ChatId, beating.Token);
 
+        // What actually leaves the pool account, counted as it passes. CountingStream forwards each
+        // read and adds to a total; it buffers, copies and seeks nothing, which is what makes it
+        // compatible with the rule below rather than an exception to it.
+        var counting = new CountingStream(download.Content);
+
         try
         {
             // The response body is forwarded to the multipart upload unread. Nothing here buffers,
@@ -342,11 +355,23 @@ public sealed class TelegramOutboxProcessor(
             // and it is the kind that only shows up on the one file big enough to matter.
             await using (download)
             {
-                return await telegram.SendDocumentAsync(send, download.Content, cancellationToken);
+                return await telegram.SendDocumentAsync(send, counting, cancellationToken);
             }
         }
         finally
         {
+            // Every byte this delivery took, including the ones a failure took before it died and
+            // the ones a retry will take again. Google bills the operator for all of them, so a
+            // meter that only counted the successes would under-report exactly the large files
+            // where the difference is worth money.
+            //
+            // Not the caller's token: a delivery cancelled mid-upload is the case with the most
+            // uncounted bytes behind it, and it is already cancelled by the time this runs.
+            if (counting.BytesRead > 0)
+            {
+                await traffic.RecordAsync(item.TenantId, counting.BytesRead, CancellationToken.None);
+            }
+
             await beating.CancelAsync();
 
             try

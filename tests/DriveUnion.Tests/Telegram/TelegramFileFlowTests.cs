@@ -276,6 +276,60 @@ public class TelegramFileFlowTests
         // enough to matter.
         send.UploadedBytes.Should().Be(content.LongLength);
         send.Text.Should().Be(file.Name);
+
+        // And they were counted. A bot delivery is egress out of the operator's Google account
+        // exactly as a public download is — Google bills for it identically — and for a long time
+        // this was the one path in the product that put a customer's bytes on the wire with nothing
+        // writing them down, so the operator's own «what has this product served» chart drew every
+        // route but this one.
+        harness.Traffic.BytesFor(tenant.Id).Should().Be(content.LongLength);
+    }
+
+    /// <summary>
+    /// A delivery that dies mid-upload still costs the operator what it moved, and says so.
+    ///
+    /// <para>This is the case a simpler meter gets wrong. Recording the file's size on success alone
+    /// would report nothing here — while Google has already billed for everything that left before
+    /// the failure, and the outbox is about to retry and spend it again. <c>CountingStream</c> counts
+    /// as the bytes pass, so what is written down is what actually went.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_delivery_that_fails_halfway_is_still_charged_for_what_it_moved()
+    {
+        await using var harness = TelegramTestHarness.Create();
+        await harness.SeedBotAsync();
+
+        var account = harness.SeedAccount();
+        var tenant = harness.SeedTenant();
+        var content = Encoding.UTF8.GetBytes(new string('x', 8192));
+        var file = harness.SeedFile(
+            tenant.Id,
+            account.Id,
+            sizeBytes: content.LongLength,
+            content: content);
+
+        await harness.Outbox().EnqueueAsync(
+            tenant.Id,
+            senderUserId: null,
+            5001,
+            TelegramOutboxKind.SendDocument,
+            file.Id,
+            null,
+            content.LongLength,
+            null,
+            CancellationToken.None);
+
+        // Telegram takes part of the body and then refuses. The bytes it read are gone from the pool
+        // account whatever it does with them afterwards.
+        harness.Telegram.FailSendDocumentAfterReading = 4096;
+
+        var processor = harness.Processor();
+        await processor.ExecuteAsync(
+            (await processor.ClaimNextAsync(true, CancellationToken.None))!,
+            CancellationToken.None);
+
+        harness.Traffic.BytesFor(tenant.Id).Should().Be(
+            4096, "the operator paid for what left, not for what arrived");
     }
 
     [Fact]

@@ -1947,12 +1947,19 @@ public static partial class UiText
         /// <c>UiText.Capacity.TrafficCounts</c> is answering on the sidebar, and it has to keep
         /// agreeing with it: two screens describing one meter differently is how a customer decides
         /// the panel is guessing.</para>
+        ///
+        /// <para>It named only public links until the API and the S3 gateway started counting too.
+        /// That was not a change of mind about what to charge for so much as the discovery that the
+        /// exemption had never been «your own files are free» — the panel has no download action, so
+        /// a customer already reached their own file through a metered public link. It was «your own
+        /// files are free if you fetch them with a program», which is the cap standing in front of
+        /// the browser and open behind it.</para>
         /// </summary>
         public static string TrafficCounts => Pick(
-            "بایت‌هایی که این ماه از طریق لینک‌های عمومی شما تحویل داده شده. آپلود و پیش‌نمایش‌های "
-            + "داخل پنل حساب نمی‌شوند. این شمارنده اول هر ماه میلادی صفر می‌شود.",
-            "Bytes delivered through your public links this month. Uploads do not count. The counter "
-            + "resets on the first of each calendar month.");
+            "بایت‌هایی که این ماه از این فضای کاری بیرون رفته: لینک‌های عمومی، API و درگاه S3. "
+            + "آپلود و پیش‌نمایش‌های داخل پنل حساب نمی‌شوند. این شمارنده اول هر ماه میلادی صفر می‌شود.",
+            "Bytes served out of this workspace this month — public links, the API and the S3 "
+            + "gateway. Uploads do not count. The counter resets on the first of each calendar month.");
 
         /// <summary>
         /// <b>The sentence that tells an owner their visitors are being turned away.</b>

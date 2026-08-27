@@ -169,13 +169,23 @@ public static partial class UiText
         /// <summary>
         /// What the figure is and what it is not.
         ///
-        /// <para>Downloads through public links, which is every byte this product puts on the wire
-        /// for a visitor. It says so rather than leaving «ترافیک» to be guessed at, because a
-        /// customer looking at a number next to a cap wants to know what would make it go up.</para>
+        /// <para>It says so rather than leaving «ترافیک» to be guessed at, because a customer looking
+        /// at a number next to a cap wants to know what would make it go up.</para>
+        ///
+        /// <para>It used to say «public links» and stop there, which matched a meter that only the
+        /// public download path wrote to. Downloads through an API key and through the S3 gateway are
+        /// counted now — they cost the operator the same bytes out of the same Google account — so
+        /// the sentence names all three. Uploads still do not count, and neither does anything the
+        /// panel renders for the owner.</para>
+        ///
+        /// <para>Must keep agreeing with <c>UiText.Plans.TrafficCounts</c>, which answers the same
+        /// question on a different screen.</para>
         /// </summary>
         public static string TrafficCounts => Pick(
-            "بایت‌هایی که از طریق لینک‌های عمومی این ماه تحویل داده شده. آپلود حساب نمی‌شود.",
-            "Bytes delivered through your public links this month. Uploads do not count.");
+            "بایت‌هایی که این ماه از این فضای کاری بیرون رفته: لینک‌های عمومی، API و درگاه S3. "
+            + "آپلود حساب نمی‌شود.",
+            "Bytes served out of this workspace this month — public links, the API and the S3 "
+            + "gateway. Uploads do not count.");
 
         public static string TrashLabel => Pick("در سطل زباله", "In the trash");
 

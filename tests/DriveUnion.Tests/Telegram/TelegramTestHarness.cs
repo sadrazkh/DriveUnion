@@ -56,6 +56,14 @@ public sealed class TelegramTestHarness : IAsyncDisposable
     public FakeDriveClient Drive { get; }
 
     /// <summary>
+    /// What a delivery told the meter it had put on the wire.
+    ///
+    /// <para>A bot delivery is egress out of the operator's Google account exactly as a public
+    /// download is, and for a while it was the one such path that counted nothing.</para>
+    /// </summary>
+    public RecordingTrafficMeter Traffic { get; } = new();
+
+    /// <summary>
     /// Free space, which is the one number in the disk arithmetic that cannot be produced by any
     /// other means: there is no way to make a real volume nearly full inside a unit test.
     /// </summary>
@@ -169,6 +177,7 @@ public sealed class TelegramTestHarness : IAsyncDisposable
             Bot(db),
             Drive,
             new UploadCoordinator(db, Drive, new SingleAccountUploadTargetSelector(db), Clock),
+            Traffic,
             WorkDirectory(),
             Fairness,
             Wrapped,

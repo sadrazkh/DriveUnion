@@ -1,6 +1,7 @@
 using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
 using DriveUnion.Web.Hosting;
+using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Models.Api;
 using DriveUnion.Web.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -34,6 +35,8 @@ public sealed class V1FilesController(
     IShareLinkService links,
     IStoredFileBytes bytes,
     IDriveClient drive,
+    ITrafficMeter traffic,
+    IEgressAllowance allowance,
     IOptions<DriveUnionWebOptions> options) : ControllerBase
 {
     /// <summary>
@@ -77,10 +80,18 @@ public sealed class V1FilesController(
     /// The bytes.
     ///
     /// <para>Range is passed to Drive untouched and Drive's answer comes back, the same way
-    /// <c>/d/{slug}</c> does it — so a program resuming a large download behaves. Metering is
-    /// <b>not</b> applied here and that is a decision rather than an omission: the meter counts what
-    /// a workspace serves to the public, and a customer pulling their own file back is not that. It
-    /// is stated on <c>UiText.Capacity.TrafficCounts</c>, which is what the screen tells them.</para>
+    /// <c>/d/{slug}</c> does it — so a program resuming a large download behaves.</para>
+    ///
+    /// <para><b>This is metered and capped, and it used to say in this very place that it deliberately
+    /// was not.</b> The argument then was that the meter counts what a workspace serves to the public
+    /// and a customer pulling their own file back is not that. Two things were wrong with it. Google
+    /// bills the operator for every byte out of the pool account and has no opinion about who asked,
+    /// so the operator's «what has this product served» chart was drawing a subset and calling it the
+    /// total. And there is no privileged self-retrieval route in this product to be consistent with:
+    /// the panel has no download action at all — a customer reaches their own file by making a share
+    /// link, which is metered and capped like every other public link. So the exemption was not
+    /// «your own files are free», it was «your own files are free if you ask through a program»,
+    /// which left the cap standing in front of the browser and open behind it.</para>
     /// </summary>
     [HttpGet("{id:guid}/content")]
     [Authorize(Policy = ApiPolicies.Read)]
@@ -103,6 +114,31 @@ public sealed class V1FilesController(
                 detail: "This file was encrypted in the browser. Only the panel, with its key, can read it.");
         }
 
+        // Before Drive is contacted, for the reason the public path checks in the same position: a
+        // refusal that arrives after the stream is open has already cost the operator a connection
+        // and, on a large file, already cost them bytes. Read once and never again for this
+        // transfer — a download that starts under the allowance finishes even though it ends over
+        // it, and the overage stops the next one. That trade is argued at length in
+        // PublicDownloadController.StreamAsync and is the same trade here.
+        var standing = await allowance.ReadAsync(tenantId, cancellationToken);
+
+        if (standing.IsOverAllowance)
+        {
+            // 429 and not 403: nothing about this caller's key or their right to the file has
+            // changed, and a client that reads 403 will go looking for a permissions problem that
+            // does not exist. It is not a rate limit either, strictly — but 429 is the one status a
+            // client already understands as «you, later, yes; you, now, no», and Retry-After is
+            // where «later» is spelled out. The public path answers 503 because it is talking to a
+            // stranger about somebody else's account; this one is talking to the account holder.
+            Response.Headers.RetryAfter = EgressWindow.NextResetHeader();
+
+            return Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                title: "over_traffic_allowance",
+                detail: "This workspace has used its monthly traffic allowance. "
+                    + "Downloads resume at the start of the next calendar month.");
+        }
+
         var range = Request.Headers.Range.Count > 0 ? Request.Headers.Range.ToString() : null;
 
         var download = await drive.OpenDownloadAsync(
@@ -121,12 +157,31 @@ public sealed class V1FilesController(
         if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
         if (download.ContentLength is { } length) Response.ContentLength = length;
 
-        await using (download)
-        {
-            await download.Content.CopyToAsync(Response.Body, cancellationToken);
-        }
+        // What actually reached the caller, which is not what was promised: a CLI interrupted at 90%
+        // of a 2 GB file cost the operator 1.8 GB, and a program resuming with a Range pays for the
+        // ranges it asks for.
+        var sent = 0L;
 
-        return new EmptyResult();
+        try
+        {
+            await using (download)
+            {
+                await EgressCopy.CopyAsync(
+                    download.Content,
+                    Response.Body,
+                    copied => sent = copied,
+                    cancellationToken);
+            }
+
+            return new EmptyResult();
+        }
+        finally
+        {
+            // Not the request's token: when the caller is the one who cancelled it is already
+            // cancelled, and the bytes they took would go uncounted for the one reason that is not a
+            // failure at all.
+            if (sent > 0) await traffic.RecordAsync(tenantId, sent, CancellationToken.None);
+        }
     }
 
     [HttpDelete("{id:guid}")]
