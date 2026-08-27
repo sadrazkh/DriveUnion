@@ -17,7 +17,7 @@ namespace DriveUnion.Tests.Services;
 /// </summary>
 public class AbuseReportTests
 {
-    private static AbuseReports Queue(ServiceTestHarness harness) => new(harness.Db, harness.Clock);
+    private static AbuseReports Queue(ServiceTestHarness harness) => new(harness.Db, harness.Clock, harness.Push);
 
     [Fact]
     public async Task A_report_reaches_the_operators_queue()

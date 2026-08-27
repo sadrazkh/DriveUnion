@@ -4,6 +4,7 @@ using DriveUnion.Core.Uploads;
 using DriveUnion.Core.Tenancy;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Persistence.Repositories;
+using DriveUnion.Infrastructure.Push;
 using DriveUnion.Infrastructure.Services;
 using DriveUnion.Tests.Fakes;
 using Microsoft.Data.Sqlite;
@@ -98,6 +99,26 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     /// </summary>
     public FetchKeyring Keyring { get; } = new();
 
+    /// <summary>
+    /// What the domain has said is worth a notification, without a worker standing over it.
+    ///
+    /// <para>The real <c>PushOutbox</c> rather than a stub: it is a bounded in-memory channel with
+    /// no dependencies, so a test that reads it is reading exactly what <c>Program.cs</c> wires up.
+    /// Per harness and never static, for the reason <see cref="FolderCache"/> gives — an event left
+    /// over from another test is an event this one never raised.</para>
+    /// </summary>
+    public PushOutbox Push { get; } = new();
+
+    /// <summary>Everything raised so far, drained. Reading is taking, as it is for the worker.</summary>
+    public List<Core.Application.PushEvent> RaisedNotifications()
+    {
+        var raised = new List<Core.Application.PushEvent>();
+
+        while (Push.TryRead(out var notification)) raised.Add(notification);
+
+        return raised;
+    }
+
     public DriveFolders Folders(DriveUnionDbContext? context = null) =>
         new(context ?? Db, Drive, FolderCache);
 
@@ -132,6 +153,7 @@ public sealed class ServiceTestHarness : IAsyncDisposable
             new SingleClientFactory(source),
             Keyring,
             Clock,
+            Push,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Uploads.RemoteFetcher>
                 .Instance);
 

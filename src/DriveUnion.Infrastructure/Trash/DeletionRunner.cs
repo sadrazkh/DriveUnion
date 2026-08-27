@@ -25,6 +25,7 @@ public sealed class DeletionRunner(
     DriveUnionDbContext db,
     ITrashMover trash,
     TimeProvider clock,
+    IPushEvents push,
     ILogger<DeletionRunner> logger) : IDeletionRunner
 {
     /// <summary>What one file's move can end as. The third is why it is not a <c>bool</c>.</summary>
@@ -215,6 +216,18 @@ public sealed class DeletionRunner(
             job.FilesFailed);
 
         await db.SaveChangesAsync(cancellationToken);
+
+        // The workspace and not one person: a job carries no user id, because the delete happened in
+        // a request and the row is what is left over. Everybody in the workspace can see the trash
+        // this filled, so everybody in it is the honest audience.
+        //
+        // Only on the transition to Completed, which is where this call is: FinishAsync runs once
+        // per job, on the pass that finds nothing left to move. A raise inside the loop would be one
+        // notification per file.
+        push.Raise(new PushEvent(
+            PushEventKind.DeletionCompleted,
+            PushAudience.Workspace(job.TenantId),
+            job.FilesTotal));
     }
 
     private static string Trimmed(string message) =>

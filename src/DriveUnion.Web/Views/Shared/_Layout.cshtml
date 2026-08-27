@@ -260,6 +260,22 @@
                 403 rather than the retention form, and one who guesses /telegram gets a 403 rather than
                 the operator's bot token screen.
             *@
+            @*
+                Notifications, for both audiences and at one address.
+
+                Not behind isOperator and not behind hasWorkspace: a customer subscribes to hear
+                about their own link-uploads and deletions, an operator subscribes to hear about a
+                new abuse report — which is the one notification racing Google — and an operator has
+                no workspace at all. NotificationsController is behind [Authorize] and nothing
+                narrower for exactly that reason, so this gate and that route ask the same question.
+
+                What each of them is actually told is decided by the audience of the event and never
+                by this item: the abuse line on that screen is drawn for an operator only, the same
+                way every other pool fact in this file is.
+            *@
+            <a class="@NavClass("Notifications")" href="/notifications">
+                <span class="nav-dot" aria-hidden="true"></span>@UiText.Notifications.Title
+            </a>
             @if (isOperator)
             {
                 <a class="@NavClass("Telegram")" href="/telegram">

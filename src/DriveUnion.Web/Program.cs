@@ -1,3 +1,4 @@
+using DriveUnion.Core.Application;
 using DriveUnion.Infrastructure.Backup;
 using DriveUnion.Infrastructure.Dashboard;
 using DriveUnion.Infrastructure.Google;
@@ -5,6 +6,7 @@ using DriveUnion.Infrastructure.Identity;
 using DriveUnion.Infrastructure.LocalStorage;
 using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Plans;
+using DriveUnion.Infrastructure.Push;
 using DriveUnion.Infrastructure.S3;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Services;
@@ -15,6 +17,7 @@ using DriveUnion.Infrastructure.Trash;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
+using DriveUnion.Web.Notifications;
 using DriveUnion.Web.Security;
 using System.Net;
 using Microsoft.AspNetCore.Authentication;
@@ -219,6 +222,26 @@ builder.Services.AddDriveUnionCatalogueBackupWorker();
 // worker is a second line because a test host must be able to have the queue without the loop.
 builder.Services.AddDriveUnionRemoteFetch();
 builder.Services.AddDriveUnionRemoteFetchWorker();
+
+// Web Push: the device table, the encryption, and the sender that spends the sockets. The keys it
+// signs with come from the Push section — environment or user-secrets, never the repository — and a
+// deployment that supplies none boots exactly as before, with the notifications screen saying so.
+//
+// The message composer is registered here rather than inside AddDriveUnionPush() because the words
+// belong to this project: every user-visible string in the product is an entry in UiText, and
+// DriveUnion.Infrastructure cannot see it. IVapidCredentials is given the Push section rather than
+// the root, the same way the Google credential resolver is given its own.
+builder.Services.AddSingleton<IVapidCredentials>(
+    _ => new VapidCredentials(builder.Configuration.GetSection(VapidCredentials.SectionName)));
+builder.Services.AddScoped<IPushMessages, PushMessages>();
+builder.Services.AddDriveUnionPush();
+
+// The loop that actually sends, and a second line for the reason the deletion worker is: every
+// in-process test host boots this pipeline over one shared SQLite connection, and a background loop
+// opening scopes against it turns unrelated suites into "database is locked". Without it the panel
+// still offers the control, still stores the subscription and still raises every event, and not one
+// notification is ever delivered.
+builder.Services.AddDriveUnionPushWorker();
 
 // The two dashboards behind «/». After the three lines above and AddGoogleDrive: the customer's
 // reader is built on ITenantPlanService and ITrash, the operator's on IGoogleAccountDirectory, and a

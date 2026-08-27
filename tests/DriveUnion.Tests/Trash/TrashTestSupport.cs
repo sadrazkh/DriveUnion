@@ -124,6 +124,7 @@ internal static class TrashTestSupport
             context ?? harness.Db,
             harness.Mover(context),
             harness.Clock,
+            harness.Push,
             NullLogger<DeletionRunner>.Instance);
 
     public static TrashPurge Sweeper(this ServiceTestHarness harness, DriveUnionDbContext? context = null) =>

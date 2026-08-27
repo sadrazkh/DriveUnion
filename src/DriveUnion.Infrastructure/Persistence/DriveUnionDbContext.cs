@@ -1,5 +1,6 @@
 using DriveUnion.Core.Api;
 using DriveUnion.Core.Metering;
+using DriveUnion.Core.Notifications;
 using DriveUnion.Core.Plans;
 using DriveUnion.Core.Settings;
 using DriveUnion.Core.Sharing;
@@ -98,6 +99,16 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
 
     /// <summary>Complaints about public links. See <see cref="AbuseReport"/> for what they prevent.</summary>
     public DbSet<AbuseReport> AbuseReports => Set<AbuseReport>();
+
+    /// <summary>
+    /// Devices that have agreed to be woken up. See <see cref="PushSubscription"/>.
+    ///
+    /// <para>A row here is a mailbox at a browser vendor plus the two keys a message is encrypted to
+    /// — never anything that can be read, and never anything of a customer's. The payloads sent to
+    /// it carry no file name for the same reason nothing in this product's caches does.</para>
+    /// </summary>
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+
     public DbSet<DownloadEvent> DownloadEvents => Set<DownloadEvent>();
 
     /// <summary>
@@ -591,6 +602,45 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             // And a key to Tenant would be actively harmful here: TenantStorageMeter detaches the
             // tenant it reserves against, which detaches its tracked dependents with it. A row
             // silently detached mid-request is every write after that point becoming a no-op.
+        });
+
+        builder.Entity<PushSubscription>(e =>
+        {
+            e.Property(s => s.Endpoint).HasMaxLength(PushSubscription.MaxEndpointLength);
+            e.Property(s => s.P256dh).HasMaxLength(PushSubscription.MaxP256dhLength);
+            e.Property(s => s.Auth).HasMaxLength(PushSubscription.MaxAuthLength);
+            e.Property(s => s.LastFailureReason).HasMaxLength(PushSubscription.MaxFailureReasonLength);
+
+            // «fa» or «en». Wide enough for a regional tag if PanelCulture.Supported ever grows one.
+            e.Property(s => s.Culture).HasMaxLength(16);
+
+            // The endpoint is the device's identity — a browser re-subscribing hands back the same
+            // string — so this is what makes «save» an upsert and what stops one phone holding two
+            // rows and being notified twice. The column length above is chosen to stay inside
+            // Postgres's btree limit precisely because of this index.
+            e.HasIndex(s => s.Endpoint).IsUnique();
+
+            // «This person's devices», which is both what the notifications screen counts and how an
+            // unsubscribe finds its row.
+            e.HasIndex(s => s.UserId);
+
+            // «This workspace's devices», for an event nobody in particular asked for — a queued
+            // deletion finishing.
+            e.HasIndex(s => s.TenantId);
+
+            // No foreign key to Tenant, and that is not an omission — UploadSession, RemoteFetch,
+            // AbuseReport and DeletionJob deliberately have none either, and the reasoning is
+            // written out on RemoteFetch above. The short version: TenantStorageMeter detaches the
+            // Tenant it reserved against, and detaching a principal cascade-detaches its tracked
+            // dependents, so a row tied to it by a real key stops being written halfway through its
+            // own work.
+            //
+            // No foreign key to AspNetUsers either, and that one is a different argument. A device
+            // outliving the account it was registered under is not a leak: the audiences are read
+            // the other way round — «which subscriptions belong to a user who is operator staff» —
+            // so a subscription whose user no longer exists matches no audience and is delivered
+            // nothing. It is then removed by the ninety-day sweep, which is the same answer this
+            // table gives to every other kind of device that has gone away.
         });
 
         builder.Entity<CatalogueSnapshot>(e =>

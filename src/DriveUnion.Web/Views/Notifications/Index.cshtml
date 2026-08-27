@@ -1,0 +1,158 @@
+@using DriveUnion.Web.Models
+@using DriveUnion.Web.Security
+@model NotificationsPageViewModel
+@{
+    ViewData["Title"] = UiText.Notifications.Title;
+}
+
+@*
+    One screen for a customer and for the operator. Which of them is told what is decided by the
+    audience of each event, not here — see PushAudience.
+
+    The order is the argument. What gets sent comes before the button, because a reader deciding
+    whether to let a server write on their lock screen is entitled to know what it will write there
+    first, and a promise made underneath a control somebody has already pressed is not a promise.
+
+    Every state below is rendered by the server and hidden; Scripts/notifications.ts reveals exactly
+    one. That is not a flourish — three of the four states are only knowable in the browser (is this
+    a home-screen app, has permission already been refused, does this browser have push at all), and
+    a control that appears and then fails when pressed is worse than one that was never drawn.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="page-head">
+        <h1 class="page-title">@UiText.Notifications.Title</h1>
+        <span class="page-sub">@UiText.Notifications.Subtitle</span>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Notifications.WhatIsSentHeading</div>
+        </div>
+        <div class="card-body">
+            <div class="stack" style="gap: 8px;">
+                <p class="hint">@UiText.Notifications.WhatIsSentNoNames</p>
+                <p class="hint">@UiText.Notifications.WhatIsSentEncrypted</p>
+                <p class="hint">@UiText.Notifications.WhatIsSentPerDevice</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div class="card-title">@UiText.Notifications.WhenHeading</div>
+        </div>
+        <div class="card-body">
+            <div class="stack" style="gap: 8px;">
+                <p class="hint">@UiText.Notifications.WhenRemoteFetch</p>
+                <p class="hint">@UiText.Notifications.WhenDeletion</p>
+                @if (User.IsOperator())
+                {
+                    @* Operator-only, and absent rather than hidden for a customer: the abuse queue is
+                       the operator's screen and a customer must not learn it exists. *@
+                    <p class="hint">@UiText.Notifications.WhenAbuse</p>
+                }
+                <p class="hint muted">@UiText.Notifications.WhenNotUploads</p>
+            </div>
+        </div>
+    </div>
+
+    @if (Model.CanSubscribe)
+    {
+        @*
+            The mount point wraps the whole control rather than sitting inside it, so that
+            Scripts/notifications.ts can reveal one of its children and hide the rest without the
+            view knowing which. Its data-* attributes are its props, which is the registry's own
+            contract — the URLs and the antiforgery pair in particular, because the token is minted
+            per response and a bundle compiled once cannot know it.
+        *@
+        <div class="card"
+             data-island="notifications"
+             data-application-server-key="@Model.ApplicationServerKey"
+             data-subscribe-url="@Model.SubscribeUrl"
+             data-unsubscribe-url="@Model.UnsubscribeUrl"
+             data-antiforgery-header="@Model.AntiforgeryHeader"
+             data-antiforgery-token="@Model.AntiforgeryToken"
+             @* The four sentences a press can end in. Rendered here rather than written in the
+                bundle: a bundle is compiled once and cannot ask which language this request was in,
+                which is how the redirect-URI copy button once came to answer an English panel in
+                Persian. *@
+             data-text-on="@UiText.Notifications.StatusOn"
+             data-text-off="@UiText.Notifications.StatusOff"
+             data-text-refused="@UiText.Notifications.RefusedByReader"
+             data-text-failed="@UiText.Notifications.Failed"
+             data-text-too-many="@UiText.Notifications.TooManyDevices">
+            <div class="card-head">
+                <div class="card-title">@UiText.Notifications.DevicesHeading</div>
+                <span class="hint">@Model.DeviceCountText</span>
+            </div>
+
+            <div class="card-body">
+                <div class="stack" style="gap: 12px;">
+                    @* Written by the script, in one of the four states below. Empty until then, and
+                       not «off»: a reader whose bundle has not arrived must not be told something
+                       that may be untrue about their own device. *@
+                    <p class="hint" data-notifications-status role="status"></p>
+
+                    <div class="row" style="gap: 8px; flex-wrap: wrap;">
+                        @* Both hidden. The script shows whichever matches this browser's own
+                           permission state, and neither if it cannot be asked at all. *@
+                        <button type="button" class="btn btn--primary" data-notifications-enable hidden>
+                            @UiText.Notifications.EnableButton
+                        </button>
+                        <button type="button" class="btn" data-notifications-disable hidden>
+                            @UiText.Notifications.DisableButton
+                        </button>
+                    </div>
+
+                    @* The three refusals, each with its own instruction and each hidden until it is
+                       the one that applies. A single «could not turn on» message would leave the
+                       reader with nothing to do about it — and on iOS the answer is a specific
+                       four-word gesture in another app's menu. *@
+                    <div class="stack" style="gap: 4px;" data-notifications-state="home-screen" hidden>
+                        <strong>@UiText.Notifications.NeedsHomeScreenHeading</strong>
+                        <p class="hint">@UiText.Notifications.NeedsHomeScreenBody</p>
+                    </div>
+
+                    <div class="stack" style="gap: 4px;" data-notifications-state="unsupported" hidden>
+                        <strong>@UiText.Notifications.UnsupportedHeading</strong>
+                        <p class="hint">@UiText.Notifications.UnsupportedBody</p>
+                    </div>
+
+                    <div class="stack" style="gap: 4px;" data-notifications-state="blocked" hidden>
+                        <strong>@UiText.Notifications.BlockedHeading</strong>
+                        <p class="hint">@UiText.Notifications.BlockedBody</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        @*
+            No keys, so no control at all. A browser will mint a subscription against any 65 bytes and
+            every send to it would answer 403 for the life of the row — so the reader would have given
+            a permission that buys them nothing, and nothing anywhere would say why the notifications
+            never came.
+        *@
+        <div class="card">
+            <div class="card-head">
+                <div class="card-title">@UiText.Notifications.NotConfiguredHeading</div>
+            </div>
+            <div class="card-body">
+                <div class="stack" style="gap: 8px;">
+                    <p class="hint">@UiText.Notifications.NotConfiguredBody</p>
+                    @if (Model.Problem is { Length: > 0 } problem)
+                    {
+                        @* Operator-only — the view model leaves it null for anybody else. It names
+                           configuration keys, which is the deployment's own vocabulary. *@
+                        <p class="hint warn">@UiText.Notifications.ConfigurationProblem(problem)</p>
+                    }
+                    @if (User.IsOperator())
+                    {
+                        <p class="hint mono" dir="ltr">@UiText.Notifications.ConfigurationKeys</p>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>

@@ -13,7 +13,7 @@ namespace DriveUnion.Infrastructure.Persistence.Repositories;
 /// anonymous surface cannot reach the operator's — a controller has to ask for
 /// <see cref="IAbuseQueue"/> by name, which is a line in a constructor a reader will notice.</para>
 /// </summary>
-public sealed class AbuseReports(DriveUnionDbContext db, TimeProvider clock)
+public sealed class AbuseReports(DriveUnionDbContext db, TimeProvider clock, IPushEvents push)
     : IAbuseReports, IAbuseQueue
 {
     public async Task<AbuseReportResult> FileAsync(
@@ -66,6 +66,18 @@ public sealed class AbuseReports(DriveUnionDbContext db, TimeProvider clock)
 
         db.AbuseReports.Add(report);
         await db.SaveChangesAsync(cancellationToken);
+
+        // The one notification in this product that is not a courtesy. A file reported to Google
+        // gets the pool account holding it suspended, and that account holds the files of every
+        // workspace routed onto it — so the operator hearing about this before Google does is the
+        // whole of what the abuse queue is for. The sidebar badge already says how many are waiting;
+        // it says it to somebody who is looking at the panel, which at three in the morning is
+        // nobody.
+        //
+        // Raised after the row is committed and never before: a notification about a report that
+        // was then rolled back is an operator opening a queue that does not have it. Nothing is
+        // told about the file, the link or the workspace — see PushPayload.
+        push.Raise(new PushEvent(PushEventKind.AbuseReportFiled, PushAudience.OperatorStaff));
 
         return new AbuseReportResult(report.Id, AbuseReportRefusal.None);
     }

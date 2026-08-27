@@ -9,6 +9,7 @@ import { mountCopyLink } from './copyLink';
 import { mountFileGrid } from './fileGrid';
 import { mountGoogleConnect } from './googleConnect';
 import { mountNavToggle } from './nav';
+import { mountNotifications } from './notifications';
 import { startNavigation } from './navigate';
 import { registerServiceWorker } from './serviceWorker';
 
@@ -164,6 +165,21 @@ const islands: Record<string, Island> = {
       const wiring = mountFileGrid(el);
 
       return () => wiring.teardown();
+    },
+  },
+
+  'notifications': {
+    // Inside the swapped region: the card is on one screen, and it holds a per-response antiforgery
+    // token that a navigation replaces. A shell island here would be a mount that kept the first
+    // token it ever saw and started answering 400 after one navigation.
+    region: 'content',
+    mount: (el) => {
+      mountNotifications(el);
+
+      // Nothing to take back, for the reason copy-link gives: every listener it adds is on a
+      // descendant of `el`, which leaves the document with the rest of the region and is collected
+      // with it. The empty function is the answer rather than the omission of one.
+      return () => {};
     },
   },
 

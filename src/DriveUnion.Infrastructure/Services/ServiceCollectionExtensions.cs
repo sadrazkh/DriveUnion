@@ -83,6 +83,16 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IAbuseReports>(sp => sp.GetRequiredService<AbuseReports>());
         services.TryAddScoped<IAbuseQueue>(sp => sp.GetRequiredService<AbuseReports>());
 
+        // Where «this finished» is put down. A singleton, and here rather than in
+        // AddDriveUnionPush(), because it is the half every raiser in this layer needs and it costs
+        // nothing: an in-memory queue with no dependencies. Delivering out of it needs the network
+        // and the operator's VAPID keys and is a separate line, so a host can have the domain
+        // raising events without a background loop opening scopes against a shared SQLite
+        // connection. Both registrations resolve the one instance — two would be a doorbell nobody
+        // is listening to.
+        services.TryAddSingleton<Push.PushOutbox>();
+        services.TryAddSingleton<IPushEvents>(sp => sp.GetRequiredService<Push.PushOutbox>());
+
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();
         services.TryAddScoped<IUploadTargetSelector, SingleAccountUploadTargetSelector>();

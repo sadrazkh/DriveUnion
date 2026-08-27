@@ -35,6 +35,7 @@ public sealed class RemoteFetcher(
     IHttpClientFactory http,
     FetchKeyring keyring,
     TimeProvider clock,
+    IPushEvents push,
     ILogger<RemoteFetcher> logger) : IRemoteFetcher
 {
     /// <summary>The named client wired to <see cref="GuardedFetchHandler"/>. Nothing else may fetch.</summary>
@@ -103,6 +104,12 @@ public sealed class RemoteFetcher(
             fetch.FailureReason = null;
 
             await db.SaveChangesAsync(cancellationToken);
+
+            // The reason this feature exists is that the customer's machine can be asleep by now, so
+            // this is the one outcome in the product where nobody is looking at a screen that could
+            // have said it. Raised after the row is committed: a notification for a fetch the
+            // database does not agree has finished is a customer opening an empty list.
+            push.Raise(Finished(fetch, PushEventKind.RemoteFetchCompleted));
 
             return true;
         }
@@ -430,7 +437,30 @@ public sealed class RemoteFetcher(
         }
 
         await db.SaveChangesAsync(CancellationToken.None);
+
+        // Only when it is over. A retry is not news — the customer asked for a file and the file is
+        // still coming — and a phone buzzing three times for one fetch that eventually worked is
+        // exactly how somebody learns to turn notifications off.
+        if (fetch.Status == RemoteFetchStatus.Failed)
+        {
+            push.Raise(Finished(fetch, PushEventKind.RemoteFetchFailed));
+        }
     }
+
+    /// <summary>
+    /// Who to tell about a fetch that is over.
+    ///
+    /// <para>The person who asked for it when the row says who that was, and the workspace when it
+    /// does not — <c>OwnerUserId</c> is nullable, and a fetch queued through a route that never had
+    /// a principal would otherwise reach nobody at all. Nothing about the file travels: not its
+    /// name, not its size, not the address it came from. See <c>PushPayload</c>.</para>
+    /// </summary>
+    private static PushEvent Finished(RemoteFetch fetch, PushEventKind kind) =>
+        new(
+            kind,
+            fetch.OwnerUserId is { } owner
+                ? PushAudience.Person(fetch.TenantId, owner)
+                : PushAudience.Workspace(fetch.TenantId));
 
     /// <summary>
     /// What to say to the customer.
