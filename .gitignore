@@ -29,3 +29,7 @@ Thumbs.db
 
 # Per-agent isolated build outputs (dotnet build --artifacts-path)
 /.artifacts/
+
+# Scratch worktrees for parallel agents. They are checkouts of this repository,
+# not files belonging to it.
+.claude/worktrees/
