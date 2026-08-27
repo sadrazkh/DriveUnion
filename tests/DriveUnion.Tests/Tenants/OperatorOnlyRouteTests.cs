@@ -27,29 +27,33 @@ namespace DriveUnion.Tests.Tenants;
 ///
 /// <para>The workspace list names every customer, and the workspace page creates accounts and takes
 /// them away. A tenant user reaching either would be reading the operator's whole customer book and
-/// holding the keys to it. Hiding the nav link is not a control, so the test is about the status
-/// code and never about the markup.</para>
+/// holding the keys to it. The abuse queue is the same kind of surface from the other end: it names
+/// every workspace somebody has complained about, and its buttons revoke a link and stop every
+/// public link a workspace has. Hiding the nav link is not a control, so the test is about the
+/// status code and never about the markup.</para>
 ///
 /// <para><b>The route list is generated, not hand-written.</b> It comes out of the test host's own
-/// <c>EndpointDataSource</c>, so a route added to <c>TenantsController</c> in six months is covered
-/// by this test on the day it is added rather than on the day somebody remembers to list it.</para>
+/// <c>EndpointDataSource</c>, so a route added to either controller in six months is covered by this
+/// test on the day it is added rather than on the day somebody remembers to list it.</para>
 /// </summary>
 [Collection(TenantHostCollection.Name)]
 public class OperatorOnlyRouteTests
 {
     [Fact]
-    public async Task Every_operator_tenant_route_refuses_a_tenant_user_with_403()
+    public async Task Every_operator_route_refuses_a_tenant_user_with_403()
     {
         using var harness = new OperatorRouteHarness(asOperator: false);
         using var client = harness.NewClient();
 
-        var routes = harness.OperatorTenantRoutes();
+        var routes = harness.OperatorRoutes();
 
         // A floor rather than an exact list: the generated set is the point, and a new route joining
         // it should be covered rather than argued about. The floor is here because a reflection bug
         // that found nothing would otherwise make this test pass loudest of all.
         routes.Should().HaveCountGreaterThanOrEqualTo(
-            7, "the list, the create, the workspace page, the member create, and disable/enable/reset");
+            12,
+            "the list, the create, the workspace page, the member create and disable/enable/reset, "
+                + "plus the abuse queue and its uphold, reject, suspend and restore");
 
         // Named so the failure message is readable when one of them is not what it claims to be.
         routes.Select(r => $"{r.Method} {r.Path}").Should().OnlyHaveUniqueItems();
@@ -84,7 +88,7 @@ public class OperatorOnlyRouteTests
         using var harness = new OperatorRouteHarness(asOperator: true);
         using var client = harness.NewClient();
 
-        foreach (var (method, path) in harness.OperatorTenantRoutes())
+        foreach (var (method, path) in harness.OperatorRoutes())
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), path);
             using var response = await client.SendAsync(request);
@@ -102,7 +106,7 @@ public class OperatorOnlyRouteTests
         using var harness = new OperatorRouteHarness(asOperator: null);
         using var client = harness.NewClient();
 
-        foreach (var (method, path) in harness.OperatorTenantRoutes())
+        foreach (var (method, path) in harness.OperatorRoutes())
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), path);
             using var response = await client.SendAsync(request);
@@ -138,6 +142,8 @@ public sealed class OperatorRouteHarness(bool? asOperator) : WebApplicationFacto
 
     private static readonly Guid SomeUserId = new("7c4e1b90-3a2d-4f88-9e11-5b0a6c2d8f31");
 
+    private static readonly Guid SomeReportId = new("f4a20d6b-8c17-4e93-b5da-2e6f9c0138a7");
+
     private readonly SqliteConnection connection = OpenSchema();
 
     public HttpClient NewClient() => CreateClient(new WebApplicationFactoryClientOptions
@@ -150,13 +156,14 @@ public sealed class OperatorRouteHarness(bool? asOperator) : WebApplicationFacto
         new(new DbContextOptionsBuilder<DriveUnionDbContext>().UseSqlite(connection).Options);
 
     /// <summary>
-    /// Every route under <c>/operator/tenants</c> the host actually has, with its ids filled in.
+    /// Every route under <c>/operator/tenants</c> and <c>/operator/abuse</c> the host actually has,
+    /// with its ids filled in.
     ///
     /// <para>Read out of <see cref="EndpointDataSource"/> rather than listed, because a list is a
     /// second place to forget something — and the thing being forgotten would be an unprotected way
     /// into the operator's customer book.</para>
     /// </summary>
-    public IReadOnlyList<(string Method, string Path)> OperatorTenantRoutes()
+    public IReadOnlyList<(string Method, string Path)> OperatorRoutes()
     {
         var endpoints = Services.GetRequiredService<EndpointDataSource>().Endpoints;
 
@@ -170,7 +177,15 @@ public sealed class OperatorRouteHarness(bool? asOperator) : WebApplicationFacto
 
             var normalised = template.StartsWith('/') ? template : "/" + template;
 
-            if (!normalised.StartsWith("/operator/tenants", StringComparison.Ordinal)) continue;
+            // Two prefixes now. The abuse queue joined them because it is the same kind of surface:
+            // it names every workspace that has been complained about, and its buttons revoke a
+            // customer's link and stop every public link they have. A customer reaching it would be
+            // holding the takedown switch for the people they compete with.
+            if (!normalised.StartsWith("/operator/tenants", StringComparison.Ordinal)
+                && !normalised.StartsWith("/operator/abuse", StringComparison.Ordinal))
+            {
+                continue;
+            }
 
             var methods = endpoint.Metadata
                 .GetMetadata<IHttpMethodMetadata>()?.HttpMethods
@@ -178,7 +193,10 @@ public sealed class OperatorRouteHarness(bool? asOperator) : WebApplicationFacto
 
             var path = normalised
                 .Replace("{tenantId:guid}", SomeTenantId.ToString(), StringComparison.Ordinal)
-                .Replace("{userId:guid}", SomeUserId.ToString(), StringComparison.Ordinal);
+                .Replace("{userId:guid}", SomeUserId.ToString(), StringComparison.Ordinal)
+
+                // The abuse queue's own id. It names no report, and it never gets that far.
+                .Replace("{id:guid}", SomeReportId.ToString(), StringComparison.Ordinal);
 
             foreach (var method in methods) routes.Add((method, path));
         }

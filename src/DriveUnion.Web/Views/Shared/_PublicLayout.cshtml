@@ -51,16 +51,31 @@
 
         @RenderBody()
 
-        @* The address is the handoff's placeholder and stays one until the domain is settled
-           (spec §11.3). Shipping it live would publish a mailbox nobody reads. *@
+        @*
+            This used to end with the literal address abuse@@yourdomain.com, on every public page in
+            the product, pointing at a mailbox that did not exist. A report route nobody reads is
+            worse than none: it looks like diligence and delivers nothing, and the thing it was
+            meant to catch — a file reported to Google, which suspends the whole pool account and
+            every workspace on it — is the failure that takes the product down for people who did
+            nothing wrong.
+
+            It is a link to a form now, because a form makes a row in a queue and an address made an
+            assumption. Only where there is a link to report: the refusal card deliberately says
+            nothing about whether a slug exists, and the report form must not link to itself.
+        *@
         <p class="public-note">
             @if (isFa)
             {
-                @:این لینک اختصاصی است و ممکن است منقضی شود. گزارش سوءاستفاده: abuse@@yourdomain.com
+                @:این لینک اختصاصی است و ممکن است منقضی شود.
             }
             else
             {
-                @:This is a private link and may expire. Report abuse: abuse@@yourdomain.com
+                @:This is a private link and may expire.
+            }
+
+            @if (ViewData["ReportSlug"] is string reportSlug && reportSlug.Length > 0)
+            {
+                <a href="/d/@reportSlug/report">@UiText.Abuse.ReportLink</a>
             }
         </p>
     </div>

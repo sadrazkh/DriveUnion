@@ -1,0 +1,94 @@
+@using DriveUnion.Core.Sharing
+@using DriveUnion.Web.Models
+@model AbuseReportViewModel
+@{
+    var lang = Model.Language;
+
+    Layout = "_PublicLayout";
+    ViewData["Title"] = UiText.Abuse.ReportTitle;
+}
+
+<div class="public-card">
+    <div class="public-body">
+        <h1 class="public-title">@UiText.Abuse.ReportTitle</h1>
+
+        @if (Model.Sent)
+        {
+            @*
+                The same sentence whatever happened — accepted, refused because the slug is unknown,
+                refused because the link is already at its cap. A form that said «no such link» would
+                confirm which addresses exist to anybody willing to type, which is the enumeration
+                the download card's single refusal exists to prevent.
+            *@
+            <p class="public-desc" role="status">@UiText.Abuse.ReportThanks</p>
+
+            <a class="btn" href="/d/@Model.Slug">@UiText.Abuse.OpenTheLink</a>
+        }
+        else
+        {
+            <p class="public-desc">@UiText.Abuse.ReportIntro</p>
+
+            @* The link being reported, so the person can see they are on the right one. *@
+            <p class="mono muted" dir="ltr" style="font-size: 11.5px; margin: -8px 0 18px;">
+                /d/@Model.Slug
+            </p>
+
+            <form method="post" class="stack" style="gap: 12px;" action="/d/@Model.Slug/report">
+                <div class="stack" style="gap: 6px;">
+                    <span class="field-label">@UiText.Abuse.ReportWhat</span>
+
+                    @*
+                        Radios rather than a select: five options, all of them worth reading, and a
+                        collapsed list is one somebody picks the first item from. Copyright is first
+                        because it is the overwhelming majority of real reports.
+                    *@
+                    @foreach (var (kind, label) in new[]
+                    {
+                        (AbuseKind.Copyright, UiText.Abuse.KindCopyright),
+                        (AbuseKind.Malware, UiText.Abuse.KindMalware),
+                        (AbuseKind.Illegal, UiText.Abuse.KindIllegal),
+                        (AbuseKind.Privacy, UiText.Abuse.KindPrivacy),
+                        (AbuseKind.Other, UiText.Abuse.KindOther),
+                    })
+                    {
+                        @* The whole row is the label, so the sentence is part of the hit target. *@
+                        <label class="choice">
+                            <input type="radio"
+                                   name="kind"
+                                   value="@kind"
+                                   checked="@(kind == AbuseKind.Copyright)" />
+                            <span>@label</span>
+                        </label>
+                    }
+                </div>
+
+                <div class="stack" style="gap: 6px;">
+                    <label class="field-label" for="report-note">@UiText.Abuse.ReportNote</label>
+                    <textarea id="report-note"
+                              name="note"
+                              class="control"
+                              rows="4"
+                              dir="auto"
+                              maxlength="@AbuseReport.MaxNoteLength"></textarea>
+                </div>
+
+                <div class="stack" style="gap: 6px;">
+                    <label class="field-label" for="report-email">@UiText.Abuse.ReportEmail</label>
+                    <input id="report-email"
+                           name="email"
+                           type="email"
+                           class="control"
+                           dir="ltr"
+                           maxlength="@AbuseReport.MaxEmailLength"
+                           autocomplete="email" />
+                    @* «Optional» on its own does not answer «then why are you asking». *@
+                    <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0; max-width: 56ch;">
+                        @UiText.Abuse.ReportEmailWhy
+                    </p>
+                </div>
+
+                <button type="submit" class="btn btn--primary btn--cta">@UiText.Abuse.ReportSend</button>
+            </form>
+        }
+    </div>
+</div>

@@ -56,6 +56,20 @@
     }
 
     @*
+        A clean-up still running, and nearly always nothing at all.
+
+        It is not a progress bar in front of something the reader is waiting for: the files they
+        deleted are already out of the table and already in the trash. It is here so that a workspace
+        whose trash is still filling up half a minute after the press is a workspace that was told,
+        rather than one that noticed. `role="status"` for the same reason the notice above has one —
+        it appears without the reader doing anything.
+    *@
+    @foreach (var tidying in Model.Tidying)
+    {
+        <p class="page-sub" role="status">@tidying.Text</p>
+    }
+
+    @*
         The toolbar: where you are on one side, what you can do to it on the other.
 
         Drawn only while browsing. A search is the whole workspace — it is not standing anywhere, so
@@ -142,13 +156,41 @@
                                     <button type="submit" class="btn btn--block">@UiText.Files.Move</button>
                                 </form>
 
-                                @* No confirmation step, and none is needed: this refuses any folder
-                                   with anything live in it, so the worst it can destroy is a name. *@
-                                <form method="post"
-                                      action="@Url.Action("DeleteFolder", "Files", new { id = current, folder = above })">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" class="btn btn--danger btn--block">@UiText.Files.Delete</button>
-                                </form>
+                                @*
+                                    One delete button, and which one it is depends on what is in the
+                                    folder.
+
+                                    Empty: the plain one, which destroys a name. It refuses anything
+                                    with something live in it, so there is nothing to confirm.
+
+                                    Not empty: the recursive one, whose label is the confirmation.
+                                    Drawing both would put the refusing one next to the one that
+                                    works, and a reader who pressed the wrong of two buttons called
+                                    «حذف» would either be told no for no visible reason or delete
+                                    four hundred files they were only clearing a name off.
+
+                                    What it destroys goes to the trash and comes back for the whole
+                                    retention window, which is why the label is the ceremony rather
+                                    than a dialogue in front of an undo.
+                                *@
+                                @if (Model.IsEmpty)
+                                {
+                                    <form method="post"
+                                          action="@Url.Action("DeleteFolder", "Files", new { id = current, folder = above })">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn--danger btn--block">@UiText.Files.Delete</button>
+                                    </form>
+                                }
+                                else
+                                {
+                                    <form method="post"
+                                          action="@Url.Action("DeleteFolderAndContents", "Files", new { id = current, folder = above })">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="btn btn--danger btn--block">
+                                            @UiText.Files.DeleteFolderAndContents
+                                        </button>
+                                    </form>
+                                }
                             </div>
                         </div>
                     </details>

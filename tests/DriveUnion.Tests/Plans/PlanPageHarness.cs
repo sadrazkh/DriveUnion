@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using DriveUnion.Core.Metering;
 using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
 using DriveUnion.Core.Tenancy;
@@ -145,6 +146,31 @@ public sealed class PlanPageHarness : WebApplicationFactory<Program>
         db.SaveChanges();
 
         return (tenant, link, file);
+    }
+
+    /// <summary>
+    /// Egress already spent this month, as the roll-up row the meter would have written.
+    ///
+    /// <para>Straight to the table rather than through <c>ITrafficMeter.RecordAsync</c>: what these
+    /// tests are about is what the card draws from the rows, and going through the writer would make
+    /// a screen test fail whenever the counter's arithmetic did. That arithmetic has its own file.</para>
+    ///
+    /// <para>Dated today in UTC — the clock the meter stamps with and the month window is computed
+    /// in, so the row lands in the month the card is about on every machine.</para>
+    /// </summary>
+    public void SeedTrafficThisMonth(Guid tenantId, long bytes, int downloads = 1)
+    {
+        using var db = NewDbContext();
+
+        db.TenantUsageDays.Add(new TenantUsageDay
+        {
+            TenantId = tenantId,
+            Day = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime),
+            EgressBytes = bytes,
+            Downloads = downloads,
+        });
+
+        db.SaveChanges();
     }
 
     /// <summary>The plan service over this harness's database, for arranging a downgrade.</summary>

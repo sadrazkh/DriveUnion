@@ -27,6 +27,7 @@ public sealed class PublicDownloadController(
     IDriveClient drive,
     IDownloadIpHasher ipHasher,
     ITrafficMeter traffic,
+    IEgressAllowance allowance,
     IOptions<DriveUnionWebOptions> options,
     ILogger<PublicDownloadController> logger) : Controller
 {
@@ -100,7 +101,8 @@ public sealed class PublicDownloadController(
             file.SharedBy,
             file.Note,
             file.Preview,
-            $"{PublicLinkFormatter.Path(file.Slug)}/preview");
+            $"{PublicLinkFormatter.Path(file.Slug)}/preview",
+            file.Slug);
 
         // The count on the card moves and the link can be revoked while a copy sits in a cache.
         Response.Headers.CacheControl = "no-store";
@@ -165,7 +167,10 @@ public sealed class PublicDownloadController(
     /// spent by five people looking at it.</para>
     ///
     /// <para>Not spending the cap is the awkward half, and <c>Previews.MostBytesToShowWhole</c> is
-    /// what holds it — see there. The egress is metered either way.</para>
+    /// what holds it — see there. The egress is metered either way, and <b>counted against the
+    /// workspace's monthly allowance either way</b>: the link's cap counts deliveries the customer
+    /// chose to allow, the allowance counts bytes the operator buys, and a route that put bytes on
+    /// the wire outside the second would be a hole in it. <see cref="StreamAsync"/> holds both.</para>
     /// </summary>
     [HttpGet("/d/{slug}/preview")]
     [EnableRateLimiting(DriveUnionRateLimits.PublicDownload)]
@@ -213,6 +218,59 @@ public sealed class PublicDownloadController(
         PublicLanguage language,
         CancellationToken cancellationToken)
     {
+        // ── the traffic gate ────────────────────────────────────────────────────────────────────
+        //
+        // Before Google is contacted, for the same reason the download slot is reserved before
+        // Google is contacted: a refusal that arrives after the stream is open has already cost the
+        // operator a connection to Drive, and on a 214 GB file it has already cost them bytes. Until
+        // this line existed the plan's MonthlyEgressBytes was copied onto the tenant row and compared
+        // by nobody, so a workspace on a 300 GB tier could serve ten terabytes and the only thing
+        // that would ever have noticed is Google's bill.
+        //
+        // Read once, here, and never again for this transfer. A stream that starts under the
+        // allowance finishes even though it ends over it, and that is a decision rather than an
+        // omission: cutting a 40 GB download at 99% because a counter crossed a line while it was
+        // running is a worse outcome than serving a little over — the visitor gets a corrupt file,
+        // the customer gets a support ticket, and the operator saves nothing, because the bytes were
+        // already on the wire when the line was crossed. The overage stops the NEXT transfer, which
+        // is exactly the rule TenantStorageMeter.SettleAsync already applies to an upload that came
+        // in larger than it declared. It also means several large transfers in flight at once can
+        // carry a workspace past its cap together; that is bounded by what is in flight, and it is
+        // the same trade the storage meter makes.
+        //
+        // Nothing is reserved and nothing is given back. Unlike the link's download cap, this is not
+        // a slot two requests can take from each other — it is a running total the meter writes at
+        // the end of every transfer, so there is nothing here to hold and no finally to undo. What
+        // that costs is the paragraph above: the check is advisory for the length of the transfer it
+        // admits.
+        //
+        // A preview is gated too. It deliberately does not spend one of the link's downloads — a page
+        // load is not a download, and five people looking at a file must not exhaust a link capped at
+        // five — but that cap counts deliveries the CUSTOMER chose to allow, and this one counts
+        // bytes the OPERATOR pays Google for. A preview puts bytes on the wire, it is already metered
+        // on the way out, and the landing page publishes its URL: exempting it would leave the cap
+        // bypassable by anyone willing to request /preview in a loop, against every image and PDF in
+        // the product. So the two routes share this gate and disagree only about the slot.
+        //
+        // Two things deliberately outside it. HEAD reaches neither Drive nor this method and sends no
+        // body, so a probe costs the operator nothing and is answered. And the landing page is not
+        // gated either: it serves none of the file, and a visitor who is going to be refused is
+        // better served by a card that names the file and a button that explains the refusal
+        // precisely than by a 503 with no sentence on it.
+        var standing = await allowance.ReadAsync(ticket.TenantId, cancellationToken);
+
+        if (standing.IsOverAllowance)
+        {
+            // The workspace is named because this is a server log an operator acts on — it is the
+            // one fact that turns «somebody was refused» into a phone call. Nothing about it reaches
+            // the response; the card below carries no workspace, no slug and no figures.
+            logger.LogInformation(
+                "A public transfer was refused: tenant {TenantId} is over its monthly egress allowance.",
+                ticket.TenantId);
+
+            return OverAllowance(language);
+        }
+
         var reserved = false;
 
         if (counts)
@@ -447,6 +505,66 @@ public sealed class PublicDownloadController(
 
         return result;
     }
+
+    /// <summary>
+    /// The fifth refusal, and the one that is deliberately <b>not</b> the card above.
+    ///
+    /// <para><b>Why the collapse does not apply here.</b> <see cref="Unavailable"/> exists so that
+    /// revoked, expired, capped and never-existed cannot be told apart — the thing it hides is that a
+    /// slug was ever real, because that is what turns the slug space into something worth walking. By
+    /// the time this method is reached the link has already resolved: it is active, unexpired,
+    /// unspent, and on any other day of the month this very request would have answered with the
+    /// file. So a distinct answer here reveals nothing a successful download does not reveal — the
+    /// oracle it is accused of opening is one that a live link opens by working. What the collapse
+    /// protects is the <i>dead</i> slug space, and this is not one.</para>
+    ///
+    /// <para><b>And the collapse would be a lie.</b> «این لینک دیگر در دسترس نیست» is true of the
+    /// other four: each is a permanent property of the link, or one its owner chose. This is neither.
+    /// It is the owner's account being out of traffic, it clears at the turn of the month, and the
+    /// link works again with nothing done to it. Telling a visitor the link is gone makes them delete
+    /// the email and makes the customer re-issue a link that fails identically — which is the product
+    /// failing loudest on the customer's busiest month.</para>
+    ///
+    /// <para><b>503 rather than the alternatives.</b> Not 404: the thing exists. Not 402, which
+    /// asserts the fix is money — <c>PlanLimitBodies</c> already refuses that reasoning for the panel,
+    /// and here the fix may equally be waiting for the first of the month. Not 429, because nothing
+    /// about this is a rate. Not 509, which is a widely-recognised invention with no RFC behind it.
+    /// 503 is what «this works and cannot serve you right now» means, and <c>Retry-After</c> is the
+    /// header for saying when — which for a calendar allowance is a date this method actually knows.</para>
+    ///
+    /// <para>The card names no workspace, no figure and no slug: the visitor is a stranger, and how
+    /// much traffic somebody bought is between them and the operator.</para>
+    /// </summary>
+    private ViewResult OverAllowance(PublicLanguage language)
+    {
+        // The same no-store every refusal carries. It matters more here than anywhere else on this
+        // controller: this is the one refusal that is guaranteed to stop being true, and a copy of it
+        // in a shared cache would outlive the state it describes.
+        Response.Headers.CacheControl = "no-store";
+
+        // Midnight UTC on the first of next month, which is exactly when MonthAsync starts counting
+        // a new window — so the header promises the moment the refusal actually lifts rather than a
+        // round number of hours somebody picked.
+        Response.Headers.RetryAfter = NextMonthStart(DateTimeOffset.UtcNow).ToString("R");
+
+        var result = View(
+            "~/Views/Public/OverTraffic.cshtml",
+            new PublicOverTrafficViewModel(language));
+
+        result.StatusCode = StatusCodes.Status503ServiceUnavailable;
+
+        return result;
+    }
+
+    /// <summary>
+    /// Midnight UTC on the first of the month after <paramref name="now"/>.
+    ///
+    /// <para>UTC because that is the clock <c>TenantUsageDay.Day</c> is stamped in; a rollover
+    /// computed in the reader's own zone would promise a return three and a half hours before the
+    /// counter it is about actually resets.</para>
+    /// </summary>
+    private static DateTimeOffset NextMonthStart(DateTimeOffset now) =>
+        new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
 
     /// <param name="inline">
     /// Only ever true on <see cref="Preview"/>, and only for a type on <c>Previews</c>' list. This is

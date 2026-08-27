@@ -37,7 +37,15 @@ public static class PlanMeter
 /// <para>Nothing here names another workspace, the pool, a Google account or the operator's
 /// commitment. A customer's plan card is about their own four numbers and nothing else.</para>
 /// </summary>
-public sealed class TenantPlanPageViewModel(TenantPlanView plan)
+/// <param name="traffic">
+/// What the workspace has served this month against what it may — the same <see cref="EgressStanding"/>
+/// the public download path refuses on.
+///
+/// <para>The screen and the gate share the type rather than each comparing two longs, which is the
+/// whole of why the type exists: a customer whose downloads are being refused must not be able to
+/// open this page and be told they are inside their allowance.</para>
+/// </param>
+public sealed class TenantPlanPageViewModel(TenantPlanView plan, EgressStanding traffic)
 {
     public string PlanName { get; } = plan.PlanName ?? UiText.Plans.NoPlan;
 
@@ -65,7 +73,32 @@ public sealed class TenantPlanPageViewModel(TenantPlanView plan)
     public string MaxFileExplanation { get; } =
         UiText.Plans.RefusedFileTooLarge(DisplayFormats.Bytes(plan.Limits.MaxFileBytes));
 
-    public string MonthlyTrafficText { get; } = DisplayFormats.Bytes(plan.Limits.MonthlyEgressBytes);
+    /// <summary>
+    /// «۱۲۴ GB / ۳۰۰ GB» — served this month against the allowance, and no longer the allowance on
+    /// its own beside a sentence apologising for it.
+    ///
+    /// <para>The spent half comes from the standing rather than from the plan, and the cap half from
+    /// the standing too: reading the cap off <c>plan.Limits</c> here and off the tenant row in the
+    /// gate would be two paths to one number, which is how a card comes to disagree with the refusal
+    /// a customer is phoning about.</para>
+    /// </summary>
+    public string MonthlyTrafficText { get; } = UiText.Plans.OfCap(
+        DisplayFormats.Bytes(traffic.SpentBytes),
+        DisplayFormats.Bytes(traffic.AllowanceBytes));
+
+    public double TrafficPercent { get; } = PlanMeter.Percent(traffic.SpentBytes, traffic.AllowanceBytes);
+
+    public string TrafficFillClass { get; } =
+        PlanMeter.FillClass(PlanMeter.Percent(traffic.SpentBytes, traffic.AllowanceBytes));
+
+    /// <summary>
+    /// True when public downloads are already being refused.
+    ///
+    /// <para><see cref="EgressStanding.IsOverAllowance"/> and not a comparison written here: this is
+    /// the customer's only warning that strangers are being turned away from their links, and a
+    /// second spelling of the rule is a warning that can be right while the gate is wrong.</para>
+    /// </summary>
+    public bool IsOverTraffic { get; } = traffic.IsOverAllowance;
 
     public string MembersText { get; } = UiText.Plans.MembersOfCap(plan.MembersUsed, plan.Limits.MaxMembers);
 

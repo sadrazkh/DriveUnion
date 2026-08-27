@@ -103,7 +103,15 @@ public sealed record PublicDownloadViewModel(
     PreviewKind Preview = PreviewKind.None,
 
     /// <summary>Where the inline bytes are, for the one of those that is not <c>None</c>.</summary>
-    string PreviewUrl = "");
+    string PreviewUrl = "",
+
+    /// <summary>
+    /// The public address on its own, for the «report this link» link in the footer.
+    ///
+    /// <para>Carried rather than parsed back out of <c>DownloadUrl</c>: two spellings of one fact
+    /// that a change to either would silently separate.</para>
+    /// </summary>
+    string Slug = "");
 
 /// <summary>
 /// The refusal card. It carries no slug, no reason and no file: revoked, expired, capped and
@@ -111,3 +119,28 @@ public sealed record PublicDownloadViewModel(
 /// walking the slug space.
 /// </summary>
 public sealed record PublicUnavailableViewModel(PublicLanguage Language);
+
+/// <summary>
+/// The card for a link whose owner has spent their month's traffic.
+///
+/// <para>It carries a language and nothing else — deliberately no figures, no workspace name and no
+/// date. The visitor is a stranger who was handed a link; what the sender bought, how much of it is
+/// gone and who they bought it from are none of their business, and a card that printed «۳۰۰ GB از
+/// ۳۰۰ GB» would be putting a customer's commercial position on an anonymous page.</para>
+///
+/// <para>It is a second record rather than a flag on <see cref="PublicUnavailableViewModel"/>. That
+/// one exists to make four refusals indistinguishable, and a variant of it is the beginning of the
+/// fifth being told apart by accident — see <c>PublicDownloadController.OverAllowance</c> for why
+/// this one is told apart on purpose.</para>
+/// </summary>
+public sealed record PublicOverTrafficViewModel(PublicLanguage Language);
+
+/// <summary>
+/// The abuse form, before and after.
+/// </summary>
+/// <param name="Sent">
+/// True renders the acknowledgement instead of the form. One flag rather than two views, because
+/// the two states share the heading, the layout and the language, and the only thing that differs
+/// is whether there is anything left to fill in.
+/// </param>
+public sealed record AbuseReportViewModel(PublicLanguage Language, string Slug, bool Sent);

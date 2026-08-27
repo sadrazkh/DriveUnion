@@ -25,6 +25,7 @@ namespace DriveUnion.Infrastructure.Dashboard;
 public sealed class OperatorDashboardReader(
     DriveUnionDbContext db,
     IGoogleAccountDirectory accounts,
+    ITrafficMeter traffic,
     TimeProvider clock) : IOperatorDashboard
 {
     /// <summary>
@@ -32,6 +33,26 @@ public sealed class OperatorDashboardReader(
     /// about — a failure from last week is history, and history belongs to a log.
     /// </summary>
     public const int FailureWindowHours = 24;
+
+    /// <summary>
+    /// How far back the egress chart reaches, in days, counting today.
+    ///
+    /// <para><b>Thirty days and not this calendar month.</b> The question the chart answers is «what
+    /// is the trend right now», and a calendar month answers it with one column on the first and two
+    /// on the second — the operator's screen would be least useful in the week they most want to
+    /// know whether something changed at the turn of the month. A rolling window is the same width
+    /// every day.</para>
+    ///
+    /// <para><b>And daily buckets, because that is already the grain of the table.</b>
+    /// <c>TenantUsageDay</c> is a per-workspace-per-day roll-up written for exactly this reason, so a
+    /// day needs no re-bucketing and cannot come to disagree with the figure the customer's own card
+    /// draws. Anything finer does not exist to be drawn; anything coarser — weeks — would put six
+    /// columns on the screen and hide the spike that is the only thing worth seeing.</para>
+    ///
+    /// <para>It is also what the query costs: the rows are grouped by day in SQL, so at most thirty
+    /// come back however many customers there are.</para>
+    /// </summary>
+    public const int EgressWindowDays = 30;
 
     /// <summary>
     /// The percentage at which a workspace joins the «near their ceiling» list.
@@ -137,6 +158,17 @@ public sealed class OperatorDashboardReader(
             .Select(s => new FailedTransfer(s.Id, s.FileName, s.SizeBytes, s.CreatedAt, s.FailureReason))
             .ToList();
 
+        // The egress window, in UTC days, because that is the clock TenantUsageDay.Day is stamped in.
+        // Reading «today» in the server's own zone would shift every column by one on a box that is
+        // not on UTC, and the chart would disagree with the customer's card about which day is which.
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        var from = today.AddDays(-(EgressWindowDays - 1));
+
+        var egress = FillTheQuietDays(
+            await traffic.EveryTenantRangeAsync(from, today, cancellationToken),
+            from,
+            today);
+
         return new OperatorDashboard(
             cards,
             connected.Sum(a => a.QuotaUsedBytes),
@@ -149,7 +181,37 @@ public sealed class OperatorDashboardReader(
             inFlight,
             failed,
             FailureWindowHours,
-            failures);
+            failures,
+            egress,
+            EgressWindowDays);
+    }
+
+    /// <summary>
+    /// One entry per day of the window, with the days nothing was served on present and zero.
+    ///
+    /// <para>The meter returns only the days that have something on them — right for a caller
+    /// summing them, wrong for one drawing them. A chart handed a sparse list draws Monday's bar
+    /// where Sunday's belongs and silently re-labels every column after it, which is the one way a
+    /// chart can be wrong that a reader cannot see. Filling here rather than in the view keeps the
+    /// arithmetic somewhere a test can reach it.</para>
+    ///
+    /// <para>A dictionary rather than a scan per day: thirty days over thirty rows is nothing either
+    /// way, but the shape stops being quadratic if the window is ever widened.</para>
+    /// </summary>
+    private static List<UsageDay> FillTheQuietDays(
+        IReadOnlyList<UsageDay> served,
+        DateOnly from,
+        DateOnly to)
+    {
+        var byDay = served.ToDictionary(d => d.Day);
+        var days = new List<UsageDay>();
+
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            days.Add(byDay.TryGetValue(day, out var row) ? row : new UsageDay(day, 0, 0));
+        }
+
+        return days;
     }
 
     /// <summary>

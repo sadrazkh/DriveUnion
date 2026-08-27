@@ -193,7 +193,15 @@ public class DashboardScreenTests
         page.Should().NotContain(UiText.Dashboard.PoolHeading);
         page.Should().NotContain(UiText.Dashboard.PoolUsedLabel);
         page.Should().NotContain(UiText.Dashboard.DailyUploadNotMetered);
-        page.Should().NotContain(UiText.Dashboard.EgressNotMetered);
+
+        // The egress chart is every workspace's traffic added together. A customer seeing it would
+        // learn both halves of what M1 §1.4 forbids at once — that other workspaces exist, and how
+        // busy the operator's whole product is. Its heading, its caption and the sentence under it
+        // are all asserted absent, because any one of them on this page is the card being there.
+        page.Should().NotContain(UiText.Dashboard.EgressHeading);
+        page.Should().NotContain(UiText.Dashboard.EgressCounts);
+        page.Should().NotContain(UiText.Dashboard.EgressNothingServed);
+
         page.Should().NotContain(UiText.Dashboard.WorkspacesHeading);
         page.Should().NotContain("Globex", "another workspace's name is not this customer's business");
         page.Should().NotContain(
@@ -248,9 +256,15 @@ public class DashboardScreenTests
     }
 
     /// <summary>
-    /// The two figures the comp draws and this product does not meter, said in words where the bar
-    /// and the chart would be. An empty bar on the operator's home page would read as «the pool is
-    /// idle» on the day it stops accepting uploads.
+    /// The figure the comp draws and this product still does not meter, said in words where the bar
+    /// would be. An empty bar on the operator's home page would read as «the pool is idle» on the day
+    /// it stops accepting uploads.
+    ///
+    /// <para>This used to assert the same about the egress chart, and the assertion was right for as
+    /// long as nothing counted traffic. <c>ITrafficMeter</c> counts it, so the sentence explaining
+    /// why the chart could not exist would now be the screen apologising for a figure it has —
+    /// which is the placeholder the sentence was written to avoid, wearing the opposite costume.
+    /// What replaces it is the test below, which asserts the chart is drawn from real rows.</para>
     /// </summary>
     [Fact]
     public async Task An_operators_dashboard_says_what_is_not_metered_instead_of_drawing_it()
@@ -262,7 +276,82 @@ public class DashboardScreenTests
         var main = PanelMarkup.MainContent(await client.GetStringAsync(new Uri("/", UriKind.Relative)));
 
         main.Should().Contain(UiText.Dashboard.DailyUploadNotMetered);
-        main.Should().Contain(UiText.Dashboard.EgressNotMetered);
+    }
+
+    /// <summary>
+    /// <b>The egress chart, drawn from rows the meter wrote.</b>
+    ///
+    /// <para>What is asserted is that the figures <i>move with the data</i> — a total that matches
+    /// what was seeded, and a busiest-day figure that is the busiest day and not the total. A chart
+    /// whose columns were rendered from a constant would pass a test that only looked for the
+    /// heading, and «a plausible figure nobody counted» on the operator's home page is precisely the
+    /// failure the sentence this card replaced existed to prevent.</para>
+    /// </summary>
+    [Fact]
+    public async Task An_operators_egress_chart_is_drawn_from_what_was_actually_served()
+    {
+        using var harness = new DashboardHarness();
+        harness.SeedAccount("A1", PoolAddress);
+
+        // Two workspaces, because the operator's figure is every workspace added together — and a
+        // chart that quietly read one of them would still look right on a one-customer deployment.
+        var acme = harness.SeedWorkspace("Acme");
+        var globex = harness.SeedWorkspace("Globex");
+
+        const long acmeBytes = 6L * 1024 * 1024 * 1024;
+        const long globexBytes = 2L * 1024 * 1024 * 1024;
+
+        harness.SeedTrafficThisMonth(acme.Id, acmeBytes);
+        harness.SeedTrafficThisMonth(globex.Id, globexBytes);
+
+        using var client = harness.NewClient(tenantId: null, asOperator: true);
+        var main = PanelMarkup.MainContent(await client.GetStringAsync(new Uri("/", UriKind.Relative)));
+
+        main.Should().Contain(UiText.Dashboard.EgressHeading);
+
+        main.Should().Contain(
+            UiText.Dashboard.EgressTotal(DisplayFormats.Bytes(acmeBytes + globexBytes)),
+            "the operator's figure is every workspace's traffic summed, not one of them");
+
+        // Both rows landed on today, so today is the busiest day and its figure is the whole total.
+        // The assertion below is what stops the peak from being a copy of the total in general.
+        main.Should().Contain(UiText.Dashboard.EgressPeak(DisplayFormats.Bytes(acmeBytes + globexBytes)));
+
+        main.Should().NotContain(
+            UiText.Dashboard.EgressNothingServed,
+            "eight gigabytes were served, so the empty-window sentence is a lie");
+
+        // The columns themselves: one per day of the window the reader selected, quiet days included.
+        // Without this the card could be drawing the caption and no chart at all.
+        System.Text.RegularExpressions.Regex
+            .Matches(main, "chart-col", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(5))
+            .Count
+            .Should()
+            .Be(
+                Infrastructure.Dashboard.OperatorDashboardReader.EgressWindowDays,
+                "every day of the window gets a column, including the ones nothing was served on — a "
+                + "chart that skipped the quiet days would put every later column on the wrong date");
+    }
+
+    /// <summary>
+    /// …and a product that has served nothing says so, rather than drawing thirty flat columns.
+    ///
+    /// <para>The pair of the test above. An empty chart is indistinguishable from one that failed to
+    /// load, and the first week of a deployment is exactly when an operator is most likely to read a
+    /// blank card as a broken panel.</para>
+    /// </summary>
+    [Fact]
+    public async Task An_operators_egress_chart_says_so_when_nothing_has_been_served()
+    {
+        using var harness = new DashboardHarness();
+        harness.SeedAccount("A1", PoolAddress);
+        harness.SeedWorkspace("Acme");
+
+        using var client = harness.NewClient(tenantId: null, asOperator: true);
+        var main = PanelMarkup.MainContent(await client.GetStringAsync(new Uri("/", UriKind.Relative)));
+
+        main.Should().Contain(UiText.Dashboard.EgressNothingServed);
+        main.Should().NotContain("chart-col");
     }
 
     [Fact]

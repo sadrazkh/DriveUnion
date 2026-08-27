@@ -193,11 +193,84 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            @*
+                The comp's egress chart, drawn from rows rather than said in a sentence.
+
+                This card used to be one line explaining that traffic was not metered so the chart
+                could not exist. ITrafficMeter counts the bytes as the response body is copied, and
+                the honest move once a figure exists is to draw it.
+
+                No charting library, and the panel must not grow one for a single series of one
+                quantity: it is a column per day, and a column is a height. Every number in it —
+                including each column's own height — is computed in the view model, because
+                arithmetic in a view is arithmetic no test can reach.
+
+                role="img" with a label, because thirty divs are a picture. The label is the window
+                and the total, which is what a sighted reader takes from the shape in one glance; a
+                recitation of thirty days would be longer than the screen and worth less than the
+                figure. The columns themselves are aria-hidden so a screen reader is not read thirty
+                empty boxes on the way past.
+            *@
+            <div class="card card--flush">
+                <div class="card-head">
+                    <div class="card-title">@UiText.Dashboard.EgressHeading</div>
+                    <span class="muted" style="font-size: 11.5px;">@Model.EgressWindowText</span>
+                </div>
+
+                <div class="card-body">
+                    @if (Model.HasEgress)
+                    {
+                        <div class="stack" style="gap: 10px;">
+                            <div class="chart" role="img" aria-label="@Model.EgressChartLabel">
+                                @foreach (var day in Model.Egress)
+                                {
+                                    @* title on the track and not on the fill: an empty day has no
+                                       fill to hover, and «nothing on the 14th» is a fact somebody
+                                       came to this card to check. *@
+                                    <div class="chart-col" title="@day.Title" aria-hidden="true">
+                                        <span class="chart-fill"
+                                              style="height: @day.Percent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></span>
+                                    </div>
+                                }
+                            </div>
+
+                            @* The two ends of the run, in the same flex order as the columns above,
+                               so in the RTL panel the oldest label sits under the oldest column.
+
+                               No dir="ltr" on either, unlike every byte quantity on this screen. A
+                               date in Persian is «۱۴۰۵/۰۵/۳۱» — this language's own numerals, which
+                               is prose by the panel's rule and not a Latin readout — and an ltr
+                               isolate is the thing that lays prose out backwards. The English
+                               rendering is an ISO date on an already-LTR page. *@
+                            <div class="chart-axis">
+                                <span>@Model.EgressFromText</span>
+                                <span>@Model.EgressToText</span>
+                            </div>
+
+                            @* No dir="ltr" on either run: each is a Persian sentence with one byte
+                               quantity in it, and the catalogue already isolates that figure inside
+                               the string with LRI/PDI. A dir attribute cannot reach into a string,
+                               and one around the whole sentence lays the Persian out backwards. *@
+                            <div class="row" style="justify-content: space-between; gap: 12px; font-size: 12.5px;">
+                                <span>@Model.EgressTotalText</span>
+                                <span class="muted">@Model.EgressPeakText</span>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @* Thirty flat columns read as a chart that failed to load. A sentence
+                           cannot. *@
+                        <p class="hint" style="margin: 0;">@UiText.Dashboard.EgressNothingServed</p>
+                    }
+                </div>
+
                 <div class="card-foot">
-                    @* Where the comp's egress chart is. There is no traffic meter to draw one from,
-                       and seven invented bars on the operator's home page would be the worst place
-                       in the product to put a plausible figure. *@
-                    <span class="hint">@UiText.Dashboard.EgressNotMetered</span>
+                    @* What it counts and — the half an operator would otherwise assume — what it is
+                       not: this is delivered bytes, never the box's bandwidth. *@
+                    <span class="hint">@UiText.Dashboard.EgressCounts</span>
                 </div>
             </div>
 

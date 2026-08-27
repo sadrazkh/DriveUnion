@@ -51,7 +51,14 @@ internal static class DashboardReaderSupport
 
         var db = context ?? harness.Db;
 
-        return new OperatorDashboardReader(db, new PoolListing(db), harness.Clock);
+        // The real TrafficMeter, like the customer's reader gets. The egress chart is one of the two
+        // things this reader is now about, and a stub handing back canned days would be testing the
+        // chart's arithmetic against itself rather than against the rows the product writes.
+        return new OperatorDashboardReader(
+            db,
+            new PoolListing(db),
+            new TrafficMeter(db, harness.Clock, NullLogger<TrafficMeter>.Instance),
+            harness.Clock);
     }
 
     public static UploadSession SeedSession(

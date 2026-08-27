@@ -1,0 +1,45 @@
+@using DriveUnion.Web.Models
+@model PublicOverTrafficViewModel
+@{
+    var lang = Model.Language;
+
+    Layout = "_PublicLayout";
+    ViewData["Title"] = PublicText.Pick(lang, "موقتاً در دسترس نیست", "Temporarily unavailable");
+    ViewData["Lang"] = PublicText.LangCode(lang);
+}
+
+@*
+    The one refusal on this site that does not render Unavailable.cshtml, and the reason is in
+    PublicDownloadController.OverAllowance: this card is only ever reached for a link that resolved —
+    live, unexpired, unspent — so it gives away nothing that serving the file would not. The four the
+    other card collapses are all dead, and hiding which kind of dead is the whole of that card's job.
+
+    Three things this deliberately does not say. It does not name the workspace, print the allowance
+    or print what is left: the visitor is a stranger with a link, and a sender's commercial position
+    is not theirs to read. It does not offer a retry button — pressing it for a month would not
+    help — and the Retry-After header carries the honest answer for anything that asks in machine
+    terms. And it does not say «over quota» in a way that reads as the visitor's fault: they cannot
+    fix this, so the sentence points at the only person who can.
+*@
+<div class="public-card">
+    <div class="public-body" style="text-align: center;">
+        <span class="badge badge--warn" style="margin-bottom: 12px;">
+            @PublicText.Pick(lang, "موقتاً در دسترس نیست", "Temporarily unavailable")
+        </span>
+        <h1 class="public-title" style="font-size: 20px;">
+            @PublicText.Pick(
+                lang,
+                "این فایل الان قابل دریافت نیست",
+                "This file cannot be delivered right now")
+        </h1>
+        <p class="public-desc" style="margin: 0 auto;">
+            @PublicText.Pick(
+                lang,
+                "ترافیک ماهانه‌ی فرستنده تمام شده است. لینک هنوز معتبر است و پاک نشده — به فرستنده "
+                + "خبر بدهید، یا اول ماه دوباره امتحان کنید.",
+                "The sender has used up this month's traffic. The link is still valid and nothing "
+                + "has been deleted — tell whoever sent it to you, or try again at the start of the "
+                + "month.")
+        </p>
+    </div>
+</div>

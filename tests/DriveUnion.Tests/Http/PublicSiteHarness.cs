@@ -1,5 +1,6 @@
 using System.Net;
 using DriveUnion.Core.Abstractions;
+using DriveUnion.Core.Metering;
 using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
 using DriveUnion.Core.Tenancy;
@@ -138,6 +139,10 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
     /// A tenant, a pool account, a stored file, its bytes in the fake Drive, and a share link —
     /// written straight through the DbContext, because the panel's own API is not what is under test.
     /// </summary>
+    /// <param name="monthlyEgressBytes">
+    /// The workspace's traffic allowance. Left null it is whatever a new workspace gets, which is
+    /// hundreds of gigabytes and is why every test that is not about the cap can ignore it.
+    /// </param>
     public SeededLink SeedLink(
         string slug,
         byte[]? content = null,
@@ -148,7 +153,8 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
         int downloadCount = 0,
         bool isActive = true,
         string? note = null,
-        long? sizeBytes = null)
+        long? sizeBytes = null,
+        long? monthlyEgressBytes = null)
     {
         var bytes = content ?? TestBytes(4096);
         var now = DateTimeOffset.UtcNow;
@@ -160,6 +166,8 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
             Name = "Acme",
             Slug = $"t-{unique[..12]}",
             CreatedAt = now,
+            MonthlyEgressBytes =
+                monthlyEgressBytes ?? DriveUnion.Core.Plans.PlanCatalogue.Default.MonthlyEgressBytes,
         };
 
         var account = new GoogleAccount
@@ -216,6 +224,44 @@ public sealed class PublicSiteHarness : WebApplicationFactory<Program>
         Drive.SeedFile(account.Id, file.DriveFileId, fileName, mimeType, bytes);
 
         return new SeededLink(link.Id, tenant.Id, slug, fileName, file.DriveFileId, account.Email, bytes);
+    }
+
+    /// <summary>
+    /// Egress already spent this month, as the roll-up row the meter would have written.
+    ///
+    /// <para>Written straight to the table rather than by serving downloads through the pipeline: a
+    /// test about the cap has to be able to put a workspace one byte under it without moving that
+    /// many bytes, and what the counter's own arithmetic does has <c>TrafficMeterTests</c>.</para>
+    ///
+    /// <para>Dated today in UTC, which is the clock <c>TrafficMeter</c> stamps its rows with and the
+    /// clock the month window is computed in — a row dated in the server's own zone would fall out
+    /// of the window on the first and the last of the month, in one direction on some machines and
+    /// the other direction on others.</para>
+    /// </summary>
+    public void SeedTrafficThisMonth(Guid tenantId, long bytes, int downloads = 1)
+    {
+        using var db = NewDbContext();
+
+        db.TenantUsageDays.Add(new TenantUsageDay
+        {
+            TenantId = tenantId,
+            Day = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime),
+            EgressBytes = bytes,
+            Downloads = downloads,
+        });
+
+        db.SaveChanges();
+    }
+
+    /// <summary>Everything the meter has written for one workspace, whatever day it landed on.</summary>
+    public async Task<long> MeteredAsync(Guid tenantId)
+    {
+        await using var db = NewDbContext();
+
+        return await db.TenantUsageDays
+            .AsNoTracking()
+            .Where(u => u.TenantId == tenantId)
+            .SumAsync(u => (long?)u.EgressBytes) ?? 0;
     }
 
     /// <summary>The denormalised counter, read back through the database rather than trusted.</summary>

@@ -1,0 +1,197 @@
+@using DriveUnion.Web.Models
+@model AbuseQueuePageViewModel
+@{
+    ViewData["Title"] = UiText.Abuse.QueueTitle;
+
+    var all = Model.ShowingAll;
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="page-head">
+        <h1 class="page-title">@UiText.Abuse.QueueTitle</h1>
+
+        @* The count on the heading is «waiting» in both views — see the controller. *@
+        <span class="page-sub">@UiText.Abuse.OpenBadge(Numerals.Count(Model.OpenCount))</span>
+    </div>
+
+    <p class="page-sub" style="margin: 0; max-width: 78ch;">@UiText.Abuse.QueueSubtitle</p>
+
+    @if (Model.Message is { Length: > 0 } message)
+    {
+        <p class="notice" role="status">@message</p>
+    }
+
+    @*
+        The toggle offers the other list rather than describing this one: two links where the one
+        you are on is a dead control would be a row of buttons half of which do nothing.
+    *@
+    <div class="row" style="gap: 8px;">
+        <a class="btn btn--sm @(all ? null : "btn--primary")" href="/operator/abuse">
+            @UiText.Abuse.ShowOpen
+        </a>
+        <a class="btn btn--sm @(all ? "btn--primary" : null)" href="/operator/abuse?all=true">
+            @UiText.Abuse.ShowAll
+        </a>
+    </div>
+
+    @if (Model.Reports.Count == 0)
+    {
+        <div class="empty">@UiText.Abuse.QueueEmpty</div>
+    }
+    else
+    {
+        @* Said once, above the queue, because it is the first thing an operator wonders. *@
+        <p class="muted" style="margin: 0; max-width: 78ch; font-size: 12px; line-height: 1.9;">
+            @UiText.Abuse.HowToJudge
+        </p>
+
+        @foreach (var report in Model.Reports)
+        {
+            <div class="card">
+                <div class="card-head">
+                    @*
+                        The file's name, which is a customer's word and may be in any script. It is
+                        interpolated, so Razor encodes it — this is a string one stranger chose and
+                        another is now reading in the operator's panel.
+                    *@
+                    <div class="card-title" dir="auto" title="@report.FileName">@report.FileName</div>
+
+                    <span class="badge @(report.IsOpen ? "badge--warn" : "badge--muted") push-end">
+                        @report.StatusText
+                    </span>
+                </div>
+
+                <div class="card-body stack" style="gap: 14px;">
+                    <div class="row" style="gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <span class="badge">@UiText.Abuse.ReportedFor(report.KindText)</span>
+                        <span class="muted" style="font-size: 12px;">@report.WhenText</span>
+
+                        @if (report.LinkRevoked)
+                        {
+                            <span class="badge badge--muted">@UiText.Abuse.LinkRevoked</span>
+                        }
+
+                        @if (report.TenantSuspended)
+                        {
+                            <span class="badge badge--danger">@UiText.Abuse.Suspended</span>
+                        }
+                    </div>
+
+                    <div class="row" style="gap: 8px; flex-wrap: wrap; align-items: center;">
+                        @*
+                            The public address, and the only way to see the file. There is no viewer
+                            in this panel — the reporter judged it through this link and so does the
+                            operator. target=_blank so the queue is still there afterwards, and
+                            rel=noopener because that is a page this panel does not own.
+                        *@
+                        <span class="mono" dir="ltr" style="font-size: 12px;">/d/@report.Slug</span>
+                        <a class="btn btn--sm" href="/d/@report.Slug" target="_blank" rel="noopener">
+                            @UiText.Abuse.OpenTheLink
+                        </a>
+                    </div>
+
+                    <div class="row" style="gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <span class="field-label" style="margin: 0;">@UiText.Abuse.ColumnWorkspace</span>
+                        <span dir="auto">@report.TenantName</span>
+
+                        @if (report.OtherReportsText is { Length: > 0 } others)
+                        {
+                            @* The number that turns one bad file into a decision about the account. *@
+                            <span class="badge badge--warn">@others</span>
+                        }
+                    </div>
+
+                    <div class="stack" style="gap: 4px;">
+                        <span class="field-label">@UiText.Abuse.ReporterWrote</span>
+
+                        @if (report.Note is { Length: > 0 } note)
+                        {
+                            @* pre-line, so the lines somebody typed are the lines that are read. *@
+                            <p dir="auto" style="margin: 0; white-space: pre-line; line-height: 1.9; max-width: 78ch;">@note</p>
+                        }
+                        else
+                        {
+                            <p class="muted" style="margin: 0;">@UiText.Abuse.NoNote</p>
+                        }
+
+                        @if (report.ReporterEmail is { Length: > 0 } email)
+                        {
+                            <p class="muted mono" dir="ltr" style="margin: 4px 0 0; font-size: 12px;">
+                                @UiText.Abuse.ReporterContact: @email
+                            </p>
+                        }
+                    </div>
+
+                    @if (report.IsOpen)
+                    {
+                        @*
+                            One form, two buttons, one note. Upholding and rejecting are the same
+                            decision answered two ways and they take the same optional sentence, so a
+                            second textarea would only be a second place to type it — and formaction
+                            picks the route with no script involved.
+                        *@
+                        <form method="post" action="/operator/abuse/@report.Id/uphold" class="stack" style="gap: 8px;">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="all" value="@all.ToString().ToLowerInvariant()" />
+
+                            <label class="field-label" for="resolution-@report.Id">@UiText.Abuse.Resolution</label>
+                            <input id="resolution-@report.Id" name="resolution" class="control" dir="auto" maxlength="512" />
+
+                            <div class="row" style="gap: 8px; flex-wrap: wrap;">
+                                <button type="submit" class="btn btn--danger">@UiText.Abuse.Uphold</button>
+                                <button type="submit" class="btn"
+                                        formaction="/operator/abuse/@report.Id/reject">@UiText.Abuse.Reject</button>
+                            </div>
+                        </form>
+                    }
+                    else if (report.Resolution is { Length: > 0 } resolution)
+                    {
+                        <p class="muted" dir="auto" style="margin: 0; font-size: 12px;">@resolution</p>
+                    }
+
+                    @*
+                        The workspace-level switch, under a separator, because it is a decision about
+                        a different subject: not «this file should not be reachable» but «this
+                        customer should not be publishing». It resolves nothing in the queue — every
+                        complaint above still has to be judged, because lifting this puts all of
+                        those links back.
+                    *@
+                    <div class="stack card-part" style="gap: 8px;">
+                        @if (report.TenantSuspended)
+                        {
+                            <form method="post" action="/operator/abuse/tenant/@report.TenantId/restore">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="all" value="@all.ToString().ToLowerInvariant()" />
+                                <button type="submit" class="btn btn--sm">@UiText.Abuse.RestoreTenant</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <form method="post" action="/operator/abuse/tenant/@report.TenantId/suspend"
+                                  class="stack" style="gap: 8px;">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="all" value="@all.ToString().ToLowerInvariant()" />
+
+                                @* What suspension does not do, beside the button rather than after it. *@
+                                <p class="muted" style="margin: 0; font-size: 11.5px; line-height: 1.9; max-width: 78ch;">
+                                    @UiText.Abuse.SuspendWarning
+                                </p>
+
+                                <div class="row" style="gap: 8px; flex-wrap: wrap; align-items: flex-end;">
+                                    <div class="form-field" style="flex: 1 1 240px;">
+                                        <label class="field-label" for="reason-@report.Id">@UiText.Abuse.SuspendReason</label>
+                                        <input id="reason-@report.Id" name="reason" class="control" dir="auto" maxlength="512" />
+                                    </div>
+
+                                    <button type="submit" class="btn btn--danger btn--sm">
+                                        @UiText.Abuse.SuspendTenant
+                                    </button>
+                                </div>
+                            </form>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>

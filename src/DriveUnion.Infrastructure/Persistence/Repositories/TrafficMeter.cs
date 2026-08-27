@@ -130,6 +130,53 @@ public sealed class TrafficMeter(
         return rows.ToDictionary(r => r.TenantId, r => new UsageTotal(r.Bytes, r.Downloads));
     }
 
+    public async Task<IReadOnlyList<UsageDay>> EveryTenantRangeAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        if (to < from) return [];
+
+        // No tenant predicate, and the second method in this product that legitimately has none. It
+        // groups the workspaces away rather than listing them: what comes back is a day and two
+        // quantities, so there is nothing in the result that could name a customer even if a screen
+        // wanted to print one. Its caller is behind DriveUnionPolicies.Operator.
+        //
+        // Grouped and ordered in SQL, which is the whole reason Day is a DateOnly. The same question
+        // over DownloadEvent.OccurredAt could not be asked in SQL at all — SQLite keeps a
+        // DateTimeOffset as text and will neither compare nor ORDER BY one — and this layer runs on
+        // SQLite in the tests and Postgres in production.
+        //
+        // Bounded by the window rather than by the customer count: at most one row per day comes
+        // back, whatever the read cost inside the database, so the operator's home page does not get
+        // slower as customers are added.
+        // An anonymous type and not UsageDay directly, which is the same shape EveryTenantMonthAsync
+        // uses two methods up and for the same reason: EF will translate a grouped projection into
+        // an anonymous type and refuses to translate one into a record's constructor.
+        var rows = await db.TenantUsageDays
+            .AsNoTracking()
+            .Where(u => u.Day >= from && u.Day <= to)
+            .GroupBy(u => u.Day)
+            .Select(g => new
+            {
+                Day = g.Key,
+                Bytes = g.Sum(u => u.EgressBytes),
+                Downloads = g.Sum(u => u.Downloads),
+            })
+            .ToListAsync(cancellationToken);
+
+        // Ordered here rather than in the query. It is a sort over at most one row per day of the
+        // window — thirty of them for the caller this exists for — and ordering a grouped projection
+        // is the other half of what EF would not translate. Nothing about it is the DateTimeOffset
+        // problem: Day is a DateOnly precisely so the WHERE above can happen in SQL on both providers.
+        return
+        [
+            .. rows
+                .OrderBy(r => r.Day)
+                .Select(r => new UsageDay(r.Day, r.Bytes, r.Downloads)),
+        ];
+    }
+
     /// <summary>The first and last day of the calendar month a date falls in.</summary>
     private static (DateOnly From, DateOnly To) MonthOf(DateOnly day)
     {

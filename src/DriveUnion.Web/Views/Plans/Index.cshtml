@@ -55,14 +55,43 @@
                     <p class="hint">@Model.MaxFileExplanation</p>
                 </div>
 
-                @* Traffic. The allowance is real and sold; the usage is not measured yet, and the
-                   subline says so — an unqualified figure here would read as "you have used none". *@
+                @* Traffic: spent against the allowance, with a bar, exactly like storage above it.
+
+                   Both halves are real now. This block used to draw the allowance on its own under a
+                   line saying usage was not measured — which had quietly stopped being true, because
+                   ITrafficMeter counts every delivered transfer and the dashboard beside this page
+                   was already drawing the figure. The bar is the same PlanMeter as storage's, so the
+                   two turn amber at the same percentage and a reader is not asked to learn two
+                   ladders on one card. *@
                 <div class="stack" style="gap: 6px;">
                     <div class="row" style="justify-content: space-between; align-items: baseline; gap: 12px;">
                         <span style="font-size: 12.5px;">@UiText.Plans.TrafficLabel</span>
                         <span class="mono" dir="ltr" style="font-size: 12.5px;">@Model.MonthlyTrafficText</span>
                     </div>
-                    <p class="hint">@UiText.Plans.TrafficNotMeteredYet</p>
+                    <div class="bar">
+                        <div class="@Model.TrafficFillClass" style="width: @Model.TrafficPercent.ToString("0", System.Globalization.CultureInfo.InvariantCulture)%;"></div>
+                    </div>
+                    @if (Model.IsOverTraffic)
+                    {
+                        @* The one state on this card that a stranger is already meeting. Over the
+                           storage cap the customer's own uploads stop; over this one, people holding
+                           their links are being refused — and none of those people can tell them.
+                           So it is said in words, first, and it says what visitors are shown.
+
+                           .notice--danger and role="alert", which is the same pair the operator's
+                           dashboard uses for a disconnected Google account, chosen for the same
+                           reason it was chosen there: this is not «you are getting close», it is
+                           «something is failing right now», and a screen reader has to be told
+                           rather than left to find it. The over-storage line above stays a .hint
+                           because it is the milder state — the customer's own next upload stops,
+                           and nobody else is affected at all. *@
+                        <p class="notice notice--danger" role="alert">@UiText.Plans.OverTraffic</p>
+                        <p class="hint">@UiText.Plans.OverTrafficWhatVisitorsSee</p>
+                    }
+                    else
+                    {
+                        <p class="hint">@UiText.Plans.TrafficCounts</p>
+                    }
                 </div>
 
                 @* Seats: a count of people, so Persian digits rather than a monospace readout. *@

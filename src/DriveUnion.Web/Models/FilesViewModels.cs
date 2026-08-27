@@ -1,3 +1,5 @@
+using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
 using DriveUnion.Web.Localization;
 
 namespace DriveUnion.Web.Models;
@@ -54,6 +56,29 @@ public sealed record FolderRowViewModel(Guid Id, string Name, int FileCount, int
 
 /// <summary>One step of the breadcrumb. <paramref name="Id"/> null is the workspace's root.</summary>
 public sealed record CrumbViewModel(Guid? Id, string Name, bool IsCurrent);
+
+/// <summary>
+/// A clean-up still running, as one line above the table.
+///
+/// <para>It carries the finished sentence rather than the job's scope, because the catalogue cannot
+/// take an enum — a screen text that switched on one would be a string no test could render. The
+/// switch is <see cref="FromJob"/>, here, where it is one expression.</para>
+/// </summary>
+public sealed record DeletionProgressViewModel(string Text)
+{
+    public static DeletionProgressViewModel FromJob(DeletionJobView job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        // A folder job with no name is not a shape the queue writes — but a name is nullable on the
+        // row, and «the folder called nothing» is a worse sentence than the one without a folder in
+        // it at all.
+        return new DeletionProgressViewModel(
+            job.Scope == DeletionScope.Folder && job.FolderName is { Length: > 0 } folder
+                ? UiText.Files.TidyingFolder(folder, job.Done, job.Total)
+                : UiText.Files.TidyingSelection(job.Done, job.Total));
+    }
+}
 
 /// <summary>A «move to…» option: the full path, and the depth so the list can be indented.</summary>
 public sealed record FolderChoiceViewModel(Guid? Id, string Label);
@@ -134,9 +159,21 @@ public sealed record FilesPageViewModel(
     IReadOnlyList<FolderChoiceViewModel>? Choices = null,
     IReadOnlyList<FolderChoiceViewModel>? FolderChoices = null,
     IReadOnlyList<TagViewModel>? Tags = null,
-    Guid? Tag = null)
+    Guid? Tag = null,
+
+    /// <summary>
+    /// The clean-ups this workspace still has running, which is nearly always none.
+    ///
+    /// <para>Drawn on this screen because this is the screen the delete was pressed on. It is not a
+    /// progress bar the reader is waiting behind — their files are already in the trash — it is what
+    /// stops «the trash is still filling up half a minute later» being something they have to
+    /// notice.</para>
+    /// </summary>
+    IReadOnlyList<DeletionProgressViewModel>? Deletions = null)
 {
     public bool IsSearching => Query is { Length: > 0 };
+
+    public IReadOnlyList<DeletionProgressViewModel> Tidying => Deletions ?? [];
 
     public IReadOnlyList<TagViewModel> Labels => Tags ?? [];
 

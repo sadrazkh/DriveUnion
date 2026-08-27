@@ -50,4 +50,82 @@ public interface ITrafficMeter
     Task<IReadOnlyDictionary<Guid, UsageTotal>> EveryTenantMonthAsync(
         DateOnly anyDayInIt,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Every workspace's spend, one row per day, oldest first — the operator's egress over time.
+    ///
+    /// <para>Summed across workspaces rather than keyed by one, which is what makes it the operator's
+    /// figure and not a customer's: what comes back is a day and a quantity, and there is nothing in
+    /// it that could name a workspace, a file or an account. Its callers are behind
+    /// <c>DriveUnionPolicies.Operator</c>, like <see cref="EveryTenantMonthAsync"/>'s.</para>
+    ///
+    /// <para>It exists because neither of the two readers above can answer «what has the whole
+    /// product served, day by day»: <see cref="RangeAsync"/> is per workspace, and
+    /// <see cref="EveryTenantMonthAsync"/> collapses the month into one figure per workspace. Adding
+    /// up thirty calls to the first would mean one query per customer on the operator's home page.</para>
+    ///
+    /// <para>Days with no traffic anywhere are absent rather than present and zero, which is the same
+    /// contract <see cref="RangeAsync"/> keeps. A caller drawing a chart fills the gaps — and it has
+    /// to, because a chart with a missing column is a chart that lies about which day is which.</para>
+    /// </summary>
+    Task<IReadOnlyList<UsageDay>> EveryTenantRangeAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A workspace's traffic standing: what it has served this calendar month, and what it is allowed to.
+///
+/// <para>The comparison lives here rather than at each of the three call sites that need it — the
+/// gate on the public download path, the customer's own «پلن و مصرف» card, and whatever asks next.
+/// Two spellings of «over the allowance» is one spelling too many for a rule that decides whether a
+/// stranger gets a file.</para>
+/// </summary>
+/// <param name="SpentBytes">
+/// Egress this calendar month, from <see cref="ITrafficMeter.MonthAsync"/> — the bytes that actually
+/// reached visitors, counted as the response body was copied.
+/// </param>
+/// <param name="AllowanceBytes">
+/// <c>Tenant.MonthlyEgressBytes</c>: the figure a plan put on the workspace's own row when it was
+/// applied. Nothing joins back to the plan template, so an operator's negotiated override is already
+/// in this number.
+/// </param>
+public sealed record EgressStanding(long SpentBytes, long AllowanceBytes)
+{
+    /// <summary>
+    /// True once the month's bytes have reached the allowance.
+    ///
+    /// <para><c>&gt;=</c> and not <c>&gt;</c>, which is the same edge <c>TenantPlanView.IsOverStorage</c>
+    /// draws: an allowance of exactly what has been spent has nothing left in it. It also means an
+    /// allowance of zero is over from the first byte, which is what a zero has to mean — a workspace
+    /// sold no traffic is a workspace that serves none, and reading zero as «unlimited» would make
+    /// the emptiest possible row the most generous one in the product.</para>
+    /// </summary>
+    public bool IsOverAllowance => SpentBytes >= AllowanceBytes;
+}
+
+/// <summary>
+/// Whether a workspace may still put bytes on the wire.
+///
+/// <para><b>Why this is not a method on <see cref="ITrafficMeter"/>.</b> That interface counts and
+/// reports; this one compares a count against a ceiling that lives on a different table. Folding it
+/// in would give the meter a reason to read <c>Tenants</c>, and the meter is on the write path of
+/// every download in the product.</para>
+///
+/// <para><c>tenantId</c> is an explicit argument here as everywhere else. The one caller that matters
+/// is anonymous — <c>/d/{slug}/file</c> has no principal at all — and it takes the workspace off the
+/// ticket the slug resolved to, which is the answer to the lookup rather than a parameter of it.</para>
+/// </summary>
+public interface IEgressAllowance
+{
+    /// <summary>
+    /// What the workspace has spent this month against what it may.
+    ///
+    /// <para>Zeroes for a workspace that is not there, which reads as <c>IsOverAllowance</c> and so
+    /// refuses. That is the safe direction on a path that costs the operator money: a tenant row
+    /// missing behind a live file is a fault, and serving unmetered egress until somebody notices is
+    /// the wrong way to be wrong about one.</para>
+    /// </summary>
+    Task<EgressStanding> ReadAsync(Guid tenantId, CancellationToken cancellationToken);
 }

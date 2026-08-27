@@ -1115,6 +1115,64 @@ a:hover {
   color: var(--text);
 }
 
+/* ---------------------------------------------------------------- chart
+ *
+ * A run of daily columns, for the operator's egress over time.
+ *
+ * No charting library, and none is wanted: this is one series of one quantity, and the whole of it
+ * is a height per column. A dependency that draws it would also ship an axis engine, a tooltip layer
+ * and a canvas the panel's own theme tokens cannot reach.
+ *
+ * It is not .bar turned on its side. .bar is a progress track — one fill against a known ceiling,
+ * with the amber and red of --warn and --danger meaning "you are running out". There is no ceiling
+ * here to run out of, so a colour ladder would be asserting a limit nobody has measured, and the
+ * columns stay --accent at every height.
+ *
+ * Flex rather than a grid of positioned boxes, and that is the RTL decision as much as a layout one:
+ * a flex row lays its first child at the *start* of the writing direction, so in the Persian panel
+ * the oldest day sits on the right and time runs right to left — which is how a Persian reader reads
+ * a run of anything. The axis labels underneath are the same two children in the same order, so
+ * they cannot come apart from the columns they name.
+ */
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 84px;
+}
+
+/* The track. Every day of the window gets one, including the days nothing was served, so a quiet
+   Sunday is a visible gap rather than a column that silently is not there. */
+.chart-col {
+  display: flex;
+  align-items: flex-end;
+  flex: 1 1 0;
+
+  /* minmax(0,…)'s reason, restated for flex: without it a column refuses to shrink below its content
+     and thirty of them push the card wider than the screen at 375px. */
+  min-width: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.chart-fill {
+  display: block;
+  width: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* ---------------------------------------------------------------- upload dock */
 
 /*
@@ -1800,6 +1858,43 @@ audio.preview-media {
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/*
+ * One option in a list somebody picks from — a radio and its sentence, on one line.
+ *
+ * The whole row is the <label>, so the sentence is part of the hit target rather than a caption
+ * beside a 13px circle. That matters most on the abuse form, which is filled in by strangers on
+ * phones, in a hurry, about something that has upset them.
+ *
+ * `accent-color` for the same reason .rowcheck has it: the browser's own radio already answers to
+ * the keyboard and to every assistive technology, and one property makes it this panel's colour.
+ */
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.choice > input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/*
+ * A second subject inside one card.
+ *
+ * The abuse queue's card is about a report, and the last thing in it is a switch on the whole
+ * workspace — a different decision about a different subject that happens to be reached from here.
+ * The rule is a line rather than a second card because the two are related; it is a line at all
+ * because without one the workspace's «stop everything» button reads as another way to answer the
+ * report above it.
+ */
+.card-part {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
 }
 
 /*

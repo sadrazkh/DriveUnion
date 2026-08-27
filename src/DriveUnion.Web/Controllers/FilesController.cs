@@ -27,6 +27,7 @@ namespace DriveUnion.Web.Controllers;
 public sealed class FilesController(
     IFileCatalog catalog,
     IFolderTree folders,
+    IDeletionQueue deletions,
     ITags tags,
     IShareLinkService shareLinks,
     IFileEncryption encryption,
@@ -34,16 +35,14 @@ public sealed class FilesController(
     IAntiforgery antiforgery,
     IOptions<DriveUnionWebOptions> options) : Controller
 {
-    /// <summary>
-    /// How many files one press of «حذف» may take.
-    ///
-    /// <para>Moving a selection is one UPDATE and has no ceiling. Deleting is a Drive round trip per
-    /// file — roughly a third of a second each against Google — so twenty is about six seconds of
-    /// somebody watching a button, and two hundred is a request that times out with half the
-    /// selection deleted and no way to tell which half. Past this the screen says so and takes
-    /// none of them, rather than doing what it can and leaving the reader to work out the rest.</para>
-    /// </summary>
-    private const int MostDeletableAtOnce = 20;
+    // There is no longer a ceiling on how many files one press of «حذف» may take, and the constant
+    // that held one — MostDeletableAtOnce = 20 — is gone rather than raised.
+    //
+    // The argument for it was sound and is now answered rather than overridden: deleting was a Drive
+    // round trip per file, so two hundred was a request that timed out with half the selection gone
+    // and no way to tell which half. IDeletionQueue does the visible half in one statement — the rows
+    // stamped, the links revoked, the deadline written — and owes the round trips to a worker. What
+    // used to be the reason for a limit is now the part nobody is waiting for.
 
     /// <summary>
     /// The list, and the shell's search box lands here.
@@ -178,6 +177,10 @@ public sealed class FilesController(
             }
         }
 
+        // One indexed query, and nearly always no rows: a workspace has a clean-up running for the
+        // minute or two after somebody deletes a folder full of files, and never otherwise.
+        var tidying = await deletions.LiveAsync(tenantId, cancellationToken);
+
         return View(new FilesPageViewModel(
             rows,
             detail,
@@ -190,7 +193,8 @@ public sealed class FilesController(
             moveTargets,
             folderTargets,
             [.. labels.Select(t => new TagViewModel(t.Id, t.Name, t.FileCount))],
-            tag));
+            tag,
+            [.. tidying.Select(DeletionProgressViewModel.FromJob)]));
     }
 
     /// <summary>
@@ -266,22 +270,12 @@ public sealed class FilesController(
 
             case "delete":
             {
-                if (chosen.Length > MostDeletableAtOnce)
-                {
-                    // None of them, rather than the first twenty. Deleting half a selection and
-                    // saying so is worse than deleting none and saying why: the reader cannot see
-                    // which half without going and looking.
-                    TempData["Notice"] = UiText.Files.TooManyToDelete(MostDeletableAtOnce, chosen.Length);
-                    return RedirectToAction(nameof(Index), new { q, folder, tag });
-                }
+                // Queued rather than looped over, whatever the size. The count is what actually went
+                // and not what was ticked — ids that are not this workspace's and files already in
+                // the trash are never matched — which is the number the notice has to say anyway.
+                var deleted = await deletions.DeleteFilesAsync(tenantId, chosen, cancellationToken);
 
-                var deleted = 0;
-                foreach (var id in chosen)
-                {
-                    if (await catalog.DeleteAsync(tenantId, id, cancellationToken)) deleted++;
-                }
-
-                TempData["Notice"] = UiText.Files.FilesDeleted(deleted);
+                TempData["Notice"] = UiText.Files.FilesDeleted(deleted.Files);
 
                 return RedirectToAction(nameof(Index), new { q, folder, tag });
             }
@@ -367,6 +361,41 @@ public sealed class FilesController(
         var result = await folders.DeleteAsync(tenantId, id, cancellationToken);
 
         TempData["Notice"] = Say(result, null);
+
+        return RedirectToAction(nameof(Index), new { folder });
+    }
+
+    /// <summary>
+    /// The other verb: the folder and everything under it.
+    ///
+    /// <para>A separate route rather than a flag on the one above, because the two destroy different
+    /// things — that one destroys a name and this one destroys a customer's files — and a route
+    /// somebody can post to by accident should not be able to become the wrong one of those by a
+    /// missing form field.</para>
+    ///
+    /// <para>It returns as soon as the rows are stamped, which is the whole point: what is left is a
+    /// Drive move per file that nobody is waiting for. The screen says so while it runs — see
+    /// <see cref="Index"/>.</para>
+    /// </summary>
+    /// <param name="folder">
+    /// Where to land afterwards, which is the folder <i>above</i> the one being deleted. Redirecting
+    /// into it would be redirecting into a folder that no longer exists — the reader would be
+    /// silently dropped at the root with no breadcrumb explaining how they got there.
+    /// </param>
+    [HttpPost("folders/{id:guid}/delete-everything")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteFolderAndContents(
+        Guid id,
+        Guid? folder,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var result = await deletions.DeleteFolderAsync(tenantId, id, cancellationToken);
+
+        TempData["Notice"] = result.Found
+            ? UiText.Files.FolderAndContentsDeleted(result.Files)
+            : UiText.Files.NotFound;
 
         return RedirectToAction(nameof(Index), new { folder });
     }

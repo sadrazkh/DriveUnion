@@ -170,15 +170,72 @@ public static partial class UiText
             "Today's upload is not measured. Google's daily allowance is per account and this panel "
             + "counts none of it yet, so no figure is shown here.");
 
+        // ── the egress chart ────────────────────────────────────────────────────────────────────
+        //
+        // This block replaced one entry — EgressNotMetered — whose whole content was a sentence
+        // explaining that the chart could not be drawn because nothing counted traffic. Something
+        // counts it, so the sentence had stopped being true and the card draws the figure instead.
+
+        public static string EgressHeading => Pick("ترافیک خروجی", "Egress");
+
+        /// <param name="days">The window the reader actually selected the rows with.</param>
+        public static string EgressWindow(int days) => Pick(
+            $"{Numerals.Plain(days)} روز اخیر",
+            days == 1 ? "Today" : $"Last {days} days");
+
+        /// <param name="served">Already a byte quantity, which is Latin in either language.</param>
+        public static string EgressTotal(string served) => Pick(
+            $"مجموع: {Ltr(served)}",
+            $"Total: {Ltr(served)}");
+
+        /// <summary>The tallest column, named — it is the height every other one is drawn against.</summary>
+        /// <param name="served">The same.</param>
+        public static string EgressPeak(string served) => Pick(
+            $"پرترافیک‌ترین روز: {Ltr(served)}",
+            $"Busiest day: {Ltr(served)}");
+
         /// <summary>
-        /// The other missing meter, said where the comp draws its egress chart. Same rule: the
-        /// traffic a plan sells is carried on the tenant row and metered by nobody.
+        /// One column's own label, for the tooltip and for anything reading the markup rather than
+        /// the picture.
         /// </summary>
-        public static string EgressNotMetered => Pick(
-            "نمودار ترافیک خروجی وقتی می‌آید که ترافیک اندازه‌گیری شود. ترافیک ماهانه‌ای که در "
-            + "پلن‌ها فروخته می‌شود روی ردیف هر فضای کاری هست، اما چیزی مصرفش را نمی‌شمارد.",
-            "The egress chart arrives when traffic is metered. The monthly traffic the plans sell is "
-            + "carried on each workspace's row, and nothing counts what is spent against it.");
+        /// <param name="day">Already in this language's own calendar and numerals.</param>
+        /// <param name="served">Already a byte quantity.</param>
+        [VerbatimText("a date and a byte quantity with a dash between them; there are no words in it to translate")]
+        public static string EgressDay(string day, string served) => Pick(
+            $"{day} — {Ltr(served)}",
+            $"{day} — {Ltr(served)}");
+
+        /// <summary>
+        /// What the chart says to a reader who is not looking at it.
+        ///
+        /// <para>Thirty columns of <c>div</c> are a picture, and a picture needs a sentence. The
+        /// sentence is the window and the total, which is what a sighted reader takes from the shape
+        /// in a glance — not a recitation of thirty days, which is longer than the screen and less
+        /// useful than the figure.</para>
+        /// </summary>
+        /// <param name="days">The window.</param>
+        /// <param name="served">The total across it, already a byte quantity.</param>
+        public static string EgressChartLabel(int days, string served) => Pick(
+            $"نمودار ترافیک خروجی روزانه در {Numerals.Plain(days)} روز اخیر. مجموع {Ltr(served)}.",
+            $"Daily egress over the last {days} days. {Ltr(served)} in total.");
+
+        public static string EgressNothingServed => Pick(
+            "در این بازه هیچ فایلی از هیچ لینک عمومی‌ای تحویل داده نشده است.",
+            "No file was delivered through any public link in this window.");
+
+        /// <summary>
+        /// What the chart is, and — the half an operator will otherwise assume — what it is not.
+        ///
+        /// <para>It is every workspace's delivered bytes added together, per UTC calendar day. It is
+        /// not the box's bandwidth and it is not what the operator is billed for by anybody: nothing
+        /// in this product measures the uplink, and reading these columns as «how close am I to the
+        /// server's limit» is the wrong conclusion to let somebody reach quietly.</para>
+        /// </summary>
+        public static string EgressCounts => Pick(
+            "بایت‌هایی که از لینک‌های عمومی همه‌ی فضاهای کاری تحویل داده شده، روز به روز و به وقت "
+            + "UTC. این عدد پهنای‌باند سرور نیست و سقفی برایش اندازه‌گیری نشده.",
+            "Bytes delivered through every workspace's public links, day by day in UTC. It is not "
+            + "the box's bandwidth, and nothing here has measured a ceiling for that.");
 
         public static string WorkspacesHeading => Pick("نزدیک به سقف", "Near their ceiling");
 

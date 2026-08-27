@@ -124,6 +124,71 @@ public class TrafficMeterTests
         all[two.Id].EgressBytes.Should().Be(700);
     }
 
+    /// <summary>
+    /// The operator's own range: every workspace added together, one row per day.
+    ///
+    /// <para>It is the reader the egress chart is drawn from, and the property that matters is the
+    /// summing: a chart that quietly reported one workspace's traffic would look perfectly right on a
+    /// one-customer deployment and be wrong for ever afterwards.</para>
+    /// </summary>
+    [Fact]
+    public async Task The_operators_range_adds_every_workspace_up_day_by_day()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var one = harness.SeedTenant("acme");
+        var two = harness.SeedTenant("globex");
+        var today = Today(harness);
+
+        Seed(harness, one.Id, today, 100);
+        Seed(harness, two.Id, today, 700);
+        Seed(harness, one.Id, today.AddDays(-2), 50);
+
+        var days = await Meter(harness).EveryTenantRangeAsync(today.AddDays(-6), today, default);
+
+        // Oldest first, the two workspaces on today added together, and the quiet days absent —
+        // which is the same contract RangeAsync keeps, so a caller drawing a chart fills the gaps
+        // and a caller adding them up does not have to care.
+        days.Select(d => d.Day).Should().Equal(today.AddDays(-2), today);
+        days.Select(d => d.EgressBytes).Should().Equal(50, 800);
+        days.Select(d => d.Downloads).Should().Equal(1, 2);
+    }
+
+    [Fact]
+    public async Task The_operators_range_stops_at_the_days_it_was_given()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+        var today = Today(harness);
+
+        Seed(harness, tenant.Id, today.AddDays(-4), 9_000);
+        Seed(harness, tenant.Id, today.AddDays(-3), 10);
+        Seed(harness, tenant.Id, today, 20);
+        Seed(harness, tenant.Id, today.AddDays(1), 9_000);
+
+        var days = await Meter(harness).EveryTenantRangeAsync(today.AddDays(-3), today, default);
+
+        // Both ends inclusive, and neither neighbour. A window that leaked a day would put a spike
+        // on a chart whose axis says it belongs to a day outside the window it is labelled with.
+        days.Select(d => d.EgressBytes).Should().Equal(10, 20);
+    }
+
+    [Fact]
+    public async Task A_backwards_range_is_empty_rather_than_everything()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+
+        Seed(harness, tenant.Id, Today(harness), 5_000);
+
+        // The same guard RangeAsync keeps. A predicate that could never match would come back empty
+        // anyway; what this pins is that it is not accidentally the *whole table* on the day
+        // somebody swaps the two arguments at a call site.
+        var days = await Meter(harness).EveryTenantRangeAsync(
+            Today(harness), Today(harness).AddDays(-1), default);
+
+        days.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task A_negative_count_is_floored_rather_than_written()
     {

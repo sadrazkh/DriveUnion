@@ -83,6 +83,22 @@ public static class DisplayFormats
         : IsoDateTime(value);
 
     /// <summary>
+    /// A calendar day, in the language the panel is being read in: «۱۴۰۵/۰۵/۳۱» or <c>2026-08-22</c>.
+    ///
+    /// <para>Takes a <see cref="DateOnly"/> rather than a moment, because its callers hold one:
+    /// <c>TenantUsageDay.Day</c> is a bare UTC date on purpose — SQLite will neither compare nor
+    /// <c>ORDER BY</c> a <c>DateTimeOffset</c> — and turning it into an instant just to format it
+    /// would invite a timezone conversion that moves the roll-up onto the wrong day.</para>
+    ///
+    /// <para>The Persian side goes through <see cref="PersianDate"/>, so the Jalali conversion has
+    /// one implementation. Midnight is used as the instant and the display zone is ahead of UTC, so
+    /// the date that comes back is the date that went in.</para>
+    /// </summary>
+    public static string PanelDate(DateOnly day) => PanelCulture.IsPersian
+        ? PersianDate(new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero))
+        : day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// The file table's modified column, in the language the row is read in.
     ///
     /// Both halves live here rather than in <c>UiText</c>, and that is deliberate: this is one

@@ -47,6 +47,12 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     /// <summary>One file's move, and where its old copy still is.</summary>
     public DbSet<FileRelocation> FileRelocations => Set<FileRelocation>();
 
+    /// <summary>
+    /// Deletions too big to finish inside a request. See <see cref="DeletionJob"/> for why the
+    /// visible half of a delete happens immediately and the Drive moves are owed.
+    /// </summary>
+    public DbSet<DeletionJob> DeletionJobs => Set<DeletionJob>();
+
     /// <summary>The customer's API keys. Hashes, never secrets — see <see cref="ApiToken"/>.</summary>
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
@@ -77,6 +83,9 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
 
     public DbSet<ShareLinkKey> ShareLinkKeys => Set<ShareLinkKey>();
+
+    /// <summary>Complaints about public links. See <see cref="AbuseReport"/> for what they prevent.</summary>
+    public DbSet<AbuseReport> AbuseReports => Set<AbuseReport>();
     public DbSet<DownloadEvent> DownloadEvents => Set<DownloadEvent>();
 
     /// <summary>
@@ -141,6 +150,12 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             e.Property(t => t.Name).HasMaxLength(200);
             e.Property(t => t.Slug).HasMaxLength(64);
             e.HasIndex(t => t.Slug).IsUnique();
+
+            // Why an operator stopped this workspace's public links. AbuseReports trims to the same
+            // constant before writing; the column carries it too so the bound is one fact in both
+            // places rather than a service-layer habit an unrelated caller can skip.
+            e.Property(t => t.PublicSuspendedReason)
+                .HasMaxLength(Tenant.MaxSuspensionReasonLength);
 
             // The four effective limits carry the smallest seeded tier as their column default, so a
             // row inserted by something that has not been taught about plans — the sign-up path, a
@@ -282,6 +297,15 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             // the index holds the trash rather than the whole catalogue — live files are the vast
             // majority and none of them has a deadline.
             e.HasIndex(f => f.PurgeAfter).HasFilter("\"PurgeAfter\" IS NOT NULL");
+
+            // The deletion worker's only query: what does this job still owe. Filtered for the same
+            // reason as the one above and to the same shape — the column is null on every live file
+            // and on every file whose move has landed, which between them is the whole table.
+            //
+            // The predicate is spelled the way both providers spell it: Postgres runs it in
+            // production and SQLite runs it in the tests, and a filter written for one of them is a
+            // constraint that exists in exactly one of the two places it matters.
+            e.HasIndex(f => f.PendingDeletionJobId).HasFilter("\"PendingDeletionJobId\" IS NOT NULL");
         });
 
         builder.Entity<Folder>(e =>
@@ -475,6 +499,24 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             // Which is exactly what a foreign key here did before it was taken out again.
         });
 
+        builder.Entity<DeletionJob>(e =>
+        {
+            e.Property(j => j.FolderName).HasMaxLength(Folder.MaxNameLength);
+            e.Property(j => j.FailureReason).HasMaxLength(DeletionJob.MaxFailureReasonLength);
+
+            // The worker's question — what is still owed — and the screen's, which is this
+            // workspace's clean-ups. Status first: every row is Completed within minutes of being
+            // made and is skipped on it alone.
+            e.HasIndex(j => j.Status);
+            e.HasIndex(j => new { j.TenantId, j.CreatedAt });
+
+            // No foreign key to Tenant, and that is not an omission — UploadSession and RemoteFetch
+            // deliberately have none either, and the reasoning is written out on RemoteFetch below.
+            // The short version: TenantStorageMeter detaches the Tenant it reserved against, and
+            // detaching a principal detaches its tracked dependents, so a job row tied to that tenant
+            // by a real FK stops being written halfway through its own work.
+        });
+
         builder.Entity<AccountMigration>(e =>
         {
             e.Property(m => m.FailureReason).HasMaxLength(AccountMigration.MaxFailureReasonLength);
@@ -510,6 +552,33 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             // No cascade from StoredFile. A file purged while its old copy is still standing would
             // otherwise take the only record of where that copy is, and the bytes would sit in the
             // operator's pool for ever with nothing left that knows about them.
+        });
+
+        builder.Entity<AbuseReport>(e =>
+        {
+            e.Property(r => r.Note).HasMaxLength(AbuseReport.MaxNoteLength);
+            e.Property(r => r.ReporterEmail).HasMaxLength(AbuseReport.MaxEmailLength);
+            e.Property(r => r.ReporterIpHash).HasMaxLength(128);
+            e.Property(r => r.Resolution).HasMaxLength(AbuseReport.MaxResolutionLength);
+
+            // The queue's own question, and the badge's.
+            e.HasIndex(r => r.Status);
+
+            // «Has this link been reported already» on the way in, and «how many for this
+            // workspace» on the way out — the number that decides whether one file is a mistake.
+            e.HasIndex(r => new { r.ShareLinkId, r.Status });
+            e.HasIndex(r => new { r.TenantId, r.Status });
+
+            // No foreign key to ShareLink or Tenant, and neither is an oversight.
+            //
+            // The report has to outlive both. A link revoked and purged, a workspace closed — that
+            // is precisely when somebody asks what was reported and what was done about it, and a
+            // cascade would have taken the answer with the thing it was about. It is also the same
+            // reason AccountMigration keeps no key to GoogleAccount.
+            //
+            // And a key to Tenant would be actively harmful here: TenantStorageMeter detaches the
+            // tenant it reserves against, which detaches its tracked dependents with it. A row
+            // silently detached mid-request is every write after that point becoming a no-op.
         });
 
         builder.Entity<ShareLinkKey>(e =>

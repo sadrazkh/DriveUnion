@@ -185,12 +185,137 @@ public class OperatorDashboardReaderTests
         dashboard.IsOverCommitted.Should().BeTrue();
     }
 
+    /// <summary>
+    /// <b>The egress chart's window: one entry per day, quiet days included.</b>
+    ///
+    /// <para><c>ITrafficMeter</c> returns only the days that have something on them, which is right
+    /// for a caller adding them up and catastrophic for one drawing them — a chart handed a sparse
+    /// list puts Monday's column where Sunday's belongs and silently re-labels every column after it.
+    /// That is the one way a chart can be wrong that a reader cannot see, so the filling happens here
+    /// where a test can reach it rather than in a Razor loop where it cannot.</para>
+    /// </summary>
+    [Fact]
+    public async Task The_egress_window_has_one_entry_per_day_including_the_quiet_ones()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+        var today = DateOnly.FromDateTime(Now.UtcDateTime);
+
+        Served(harness, tenant.Id, today, 400);
+        Served(harness, tenant.Id, today.AddDays(-3), 100);
+
+        var dashboard = await harness.OperatorDashboard().ReadAsync(default);
+
+        dashboard.EgressWindowDays.Should().Be(OperatorDashboardReader.EgressWindowDays);
+        dashboard.EgressByDay.Should().HaveCount(OperatorDashboardReader.EgressWindowDays);
+
+        // Oldest first, ending on today: the window is thirty days counting today, so the last entry
+        // is today and the first is twenty-nine days before it.
+        dashboard.EgressByDay[^1].Day.Should().Be(today);
+        dashboard.EgressByDay[0].Day.Should()
+            .Be(today.AddDays(-(OperatorDashboardReader.EgressWindowDays - 1)));
+
+        dashboard.EgressByDay.Select(d => d.Day).Should().BeInAscendingOrder();
+
+        // The two days that had traffic, in their own places, and the rest present and zero.
+        dashboard.EgressByDay[^1].EgressBytes.Should().Be(400);
+        dashboard.EgressByDay[^4].EgressBytes.Should().Be(100);
+        dashboard.EgressByDay.Count(d => d.EgressBytes == 0).Should()
+            .Be(OperatorDashboardReader.EgressWindowDays - 2);
+    }
+
+    /// <summary>
+    /// The two figures the caption is drawn from: the window's total, and the day the columns are
+    /// scaled against.
+    ///
+    /// <para>They are separate on purpose. There is no ceiling to draw an egress column against —
+    /// what a plan sells is per workspace and this is every workspace, and nothing has measured what
+    /// the box's uplink can do — so the tallest day is the scale, and a peak that was quietly the
+    /// total would flatten every chart in the product into one full column and twenty-nine empty ones.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task The_window_carries_its_total_and_its_busiest_day_apart()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var one = harness.SeedTenant("acme");
+        var two = harness.SeedTenant("globex");
+        var today = DateOnly.FromDateTime(Now.UtcDateTime);
+
+        Served(harness, one.Id, today, 300);
+        Served(harness, two.Id, today, 200);
+        Served(harness, one.Id, today.AddDays(-1), 900);
+
+        var dashboard = await harness.OperatorDashboard().ReadAsync(default);
+
+        dashboard.EgressWindowBytes.Should().Be(1_400, "every workspace on every day of the window");
+        dashboard.EgressPeakDayBytes.Should().Be(900, "yesterday, and not the total");
+    }
+
+    /// <summary>
+    /// A product that has served nothing has a peak of zero, which is what the screen checks before
+    /// it divides by it. An empty window is the ordinary state of a fresh deployment, not an edge.
+    /// </summary>
+    [Fact]
+    public async Task A_window_with_nothing_in_it_has_a_peak_of_zero_rather_than_no_days()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        harness.SeedTenant("acme");
+
+        var dashboard = await harness.OperatorDashboard().ReadAsync(default);
+
+        dashboard.EgressByDay.Should().HaveCount(OperatorDashboardReader.EgressWindowDays);
+        dashboard.EgressWindowBytes.Should().Be(0);
+        dashboard.EgressPeakDayBytes.Should().Be(0);
+    }
+
+    /// <summary>
+    /// Traffic older than the window is out of it, however much of it there was.
+    ///
+    /// <para>The rolling window is the whole reason this is not a calendar month: an operator's
+    /// question is «what is happening now», and a spike from six weeks ago answering it would be the
+    /// dashboard reporting history as news.</para>
+    /// </summary>
+    [Fact]
+    public async Task Traffic_older_than_the_window_is_not_in_it()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+        var today = DateOnly.FromDateTime(Now.UtcDateTime);
+
+        Served(harness, tenant.Id, today.AddDays(-OperatorDashboardReader.EgressWindowDays), 9_000);
+        Served(harness, tenant.Id, today, 7);
+
+        var dashboard = await harness.OperatorDashboard().ReadAsync(default);
+
+        dashboard.EgressWindowBytes.Should().Be(7);
+    }
+
     private static void Fill(ServiceTestHarness harness, Guid tenantId, long used, long cap)
     {
         var tenant = harness.Db.Tenants.Single(t => t.Id == tenantId);
 
         tenant.StorageUsedBytes = used;
         tenant.StorageQuotaBytes = cap;
+
+        harness.Db.SaveChanges();
+    }
+
+    /// <summary>
+    /// One day's traffic for one workspace, as the roll-up row the meter would have written.
+    ///
+    /// <para>Written straight to the table: what is under test is the window and the filling, and
+    /// going through <c>RecordAsync</c> would date every row today and leave nothing to draw.</para>
+    /// </summary>
+    private static void Served(ServiceTestHarness harness, Guid tenantId, DateOnly day, long bytes)
+    {
+        harness.Db.TenantUsageDays.Add(new Core.Metering.TenantUsageDay
+        {
+            TenantId = tenantId,
+            Day = day,
+            EgressBytes = bytes,
+            Downloads = 1,
+        });
 
         harness.Db.SaveChanges();
     }

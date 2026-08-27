@@ -79,6 +79,97 @@ public class PlanScreenTests
         text.Should().Contain("bar-fill--danger");
     }
 
+    /// <summary>
+    /// The traffic figure is what was served, against what was sold — not the allowance on its own.
+    ///
+    /// <para>This card used to draw the ceiling with a line under it saying usage was not measured.
+    /// That had quietly stopped being true: <c>ITrafficMeter</c> writes a row for every delivered
+    /// transfer, and the dashboard and the sidebar's capacity card were both drawing the real figure
+    /// while «پلن و مصرف» — the screen named for usage — was still apologising for not having one.</para>
+    /// </summary>
+    [Fact]
+    public async Task The_customers_card_draws_the_traffic_that_was_actually_served()
+    {
+        using var harness = new PlanPageHarness();
+        var (tenant, _, _) = harness.SeedWorkspace("Acme");
+
+        await harness.Plans().SetTenantPlanAsync(
+            tenant.Id, PlanCatalogue.StandardCode, "Signed up.", null, default);
+
+        harness.SeedTrafficThisMonth(tenant.Id, 7L * 1024 * 1024 * 1024);
+
+        using var client = harness.NewClient(tenant.Id);
+        using var response = await client.GetAsync(new Uri("/plans", UriKind.Relative));
+
+        var text = await LocalizationHarness.TextAsync(response);
+
+        text.Should().Contain("7 GB", "what the meter counted off the response bodies");
+        text.Should().Contain("این ماه", "and the sentence saying which downloads make it move");
+
+        text.Should().NotContain(
+            "مصرف ترافیک هنوز اندازه‌گیری نمی‌شود",
+            "the sentence apologising for the figure went when the figure arrived");
+    }
+
+    /// <summary>
+    /// <b>Over the traffic allowance, the owner is told — and this is the only place they can be.</b>
+    ///
+    /// <para>Over the storage cap a customer finds out the next time they upload. Over this one the
+    /// person meeting the refusal is a <i>stranger holding one of their links</i>, who cannot fix it,
+    /// may never mention it, and has no way to reach the panel. So the owner's own screen has to say
+    /// it in words — that downloads are being refused, that nothing was deleted, and what the visitor
+    /// on the far end is actually shown.</para>
+    /// </summary>
+    [Fact]
+    public async Task Over_the_traffic_allowance_the_card_says_downloads_are_being_refused()
+    {
+        using var harness = new PlanPageHarness();
+        var (tenant, _, _) = harness.SeedWorkspace("Acme");
+
+        await harness.Plans().SetTenantQuotaOverrideAsync(
+            tenant.Id, QuotaField.MonthlyEgressBytes, 10L * 1024 * 1024 * 1024, "Downgraded.", null, default);
+
+        harness.SeedTrafficThisMonth(tenant.Id, 10L * 1024 * 1024 * 1024);
+
+        using var client = harness.NewClient(tenant.Id);
+        using var response = await client.GetAsync(new Uri("/plans", UriKind.Relative));
+
+        var text = await LocalizationHarness.TextAsync(response);
+
+        text.Should().Contain("دانلود از لینک‌های عمومی شما تا اول ماه میلادی بعد رد می‌شود");
+        text.Should().Contain("هیچ فایلی حذف نشده و هیچ لینکی باطل نشده");
+
+        // The owner's first question is «what do my customers see», and the honest answer is what
+        // makes a recipient's report actionable rather than «your link is broken».
+        text.Should().Contain("ترافیک فرستنده تمام شده و لینک هنوز معتبر است");
+
+        // A full bar, the same PlanMeter ladder the storage bar above it uses.
+        text.Should().Contain("bar-fill--danger");
+    }
+
+    /// <summary>
+    /// …and a workspace inside its allowance is told none of that.
+    ///
+    /// <para>The pair of the test above. A card that printed the refusal notice unconditionally
+    /// would pass that one and would tell every customer in the product that their links are dark.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_workspace_inside_its_allowance_is_not_warned()
+    {
+        using var harness = new PlanPageHarness();
+        var (tenant, _, _) = harness.SeedWorkspace("Acme");
+
+        harness.SeedTrafficThisMonth(tenant.Id, 1024);
+
+        using var client = harness.NewClient(tenant.Id);
+        using var response = await client.GetAsync(new Uri("/plans", UriKind.Relative));
+
+        var text = await LocalizationHarness.TextAsync(response);
+
+        text.Should().NotContain("دانلود از لینک‌های عمومی شما تا اول ماه میلادی بعد رد می‌شود");
+        text.Should().Contain("آپلود و پیش‌نمایش‌های داخل پنل حساب نمی‌شوند");
+    }
+
     [Fact]
     public async Task There_is_no_upgrade_button_because_there_is_nowhere_for_it_to_go()
     {
@@ -140,8 +231,14 @@ public class PlanScreenTests
         using var client = harness.NewClient(null);
         using var response = await client.GetAsync(new Uri($"/d/{link.Slug}", UriKind.Relative));
 
-        // The link still works. Being over a cap costs a tenant their uploads and nothing else, and
-        // §4's four-cause refusal card gains no fifth cause.
+        // The link still works. Being over the *storage* cap costs a tenant their uploads and
+        // nothing else — their links keep serving, and §4's four-cause refusal card gains no fifth
+        // cause from it.
+        //
+        // The traffic allowance is the one limit that does reach a visitor, and it is a different
+        // limit on a different counter: PublicEgressCapTests holds that half, including why its
+        // refusal is deliberately not this card. Nothing here is near it — this workspace has served
+        // no bytes at all.
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var raw = await response.Content.ReadAsStringAsync();

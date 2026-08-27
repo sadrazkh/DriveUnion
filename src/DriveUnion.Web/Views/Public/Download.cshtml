@@ -11,6 +11,10 @@
     // decided it from ?lang= and Accept-Language before any HTML existed, so the page is readable
     // with JavaScript off and cacheable per language.
     ViewData["Lang"] = PublicText.LangCode(lang);
+
+    // The footer draws its «report this link» link from here, and only this page sets it: the
+    // refusal card must go on saying nothing at all, and the report form must not link to itself.
+    ViewData["ReportSlug"] = Model.Slug;
 }
 
 <div class="public-card">

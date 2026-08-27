@@ -136,11 +136,15 @@ public sealed record FailedTransfer(
 /// actually has — <b>is storage running out</b>, and <b>is anything broken</b>. Everything on it
 /// serves one of the two, and nothing on it is a figure nobody meters.</para>
 ///
-/// <para><b>There is no daily-upload figure and no egress chart</b>, and both absences are
-/// deliberate. Google allows each account 750 GB of upload a day and this product counts none of it;
-/// the monthly traffic a plan sells is carried on the tenant row and metered by nobody. Drawing
-/// either as a zero, or as a bar that is always empty, would be the dashboard telling an operator
-/// their pool is idle on the day it is not. The screen says the words instead.</para>
+/// <para><b>There is still no daily-upload figure</b>, and the absence is deliberate. Google allows
+/// each account 750 GB of upload a day and this product counts none of it; a bar drawn from nothing
+/// is a bar that is always empty, and an operator reading it would conclude the pool is idle on the
+/// day it stops accepting uploads. The screen says the words instead.</para>
+///
+/// <para><b>The egress chart used to be in that paragraph and is not any more.</b> It was absent
+/// because nothing metered traffic; <c>ITrafficMeter</c> has metered it for a while, and the honest
+/// thing once a figure exists is to draw it rather than to keep printing the sentence explaining why
+/// it cannot be drawn.</para>
 /// </summary>
 /// <param name="PoolTotalBytes">
 /// What the connected accounts hold between them. A disconnected account is not capacity — nothing
@@ -161,6 +165,24 @@ public sealed record FailedTransfer(
 /// prints the number that actually chose the list rather than a literal of its own that can drift
 /// away from it.
 /// </param>
+/// <param name="EgressByDay">
+/// What the whole product put on the wire, one entry per day, oldest first — and <b>every day in the
+/// window, including the quiet ones</b>.
+///
+/// <para><see cref="ITrafficMeter.EveryTenantRangeAsync"/> returns only the days that have something
+/// on them, which is right for a caller adding them up and wrong for one drawing them: a chart that
+/// skipped Sunday would put Monday where Sunday was and quietly re-label the whole axis. The reader
+/// fills the gaps with zeroes so the screen has one entry per column and no arithmetic to do.</para>
+///
+/// <para>It sums every workspace and names none. That is what makes it an operator figure rather
+/// than a cross-tenant leak: a day and two quantities carry nothing that could identify a customer,
+/// a file or a Google account, which is the same rule every other aggregate on this record follows.</para>
+/// </param>
+/// <param name="EgressWindowDays">
+/// How many days <see cref="EgressByDay"/> covers, carried so the screen prints the window the
+/// figures actually came from rather than a literal of its own — the same arrangement
+/// <paramref name="NearCeilingPercent"/> and <paramref name="FailureWindowHours"/> already use.
+/// </param>
 public sealed record OperatorDashboard(
     IReadOnlyList<PoolAccount> Accounts,
     long PoolUsedBytes,
@@ -173,9 +195,22 @@ public sealed record OperatorDashboard(
     int TransfersInFlight,
     int TransfersFailedInWindow,
     int FailureWindowHours,
-    IReadOnlyList<FailedTransfer> RecentFailures)
+    IReadOnlyList<FailedTransfer> RecentFailures,
+    IReadOnlyList<UsageDay> EgressByDay,
+    int EgressWindowDays)
 {
     public bool IsOverCommitted => CommittedStorageBytes > PoolTotalBytes;
+
+    /// <summary>Everything served across the window, which is what the caption under the chart says.</summary>
+    public long EgressWindowBytes => EgressByDay.Sum(d => d.EgressBytes);
+
+    /// <summary>
+    /// The busiest day in the window, and the height every column is drawn against.
+    ///
+    /// <para>Zero when nothing was served, which the screen has to check before it divides by it —
+    /// an empty window is the ordinary state of a product on its first week, not an edge case.</para>
+    /// </summary>
+    public long EgressPeakDayBytes => EgressByDay.Count == 0 ? 0 : EgressByDay.Max(d => d.EgressBytes);
 }
 
 /// <summary>

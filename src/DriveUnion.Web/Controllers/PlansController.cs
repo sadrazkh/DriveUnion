@@ -31,7 +31,8 @@ public sealed class PlansController(
     ITenantPlanService plans,
     IPlanCatalogueReader catalogue,
     IPlanCatalogueEditor editor,
-    IOperatorPlanReader operatorView) : Controller
+    IOperatorPlanReader operatorView,
+    IEgressAllowance egress) : Controller
 {
     /// <summary>Carries one sentence across the redirect that follows a write. Strings only.</summary>
     private const string MessageKey = "PlansMessage";
@@ -49,11 +50,18 @@ public sealed class PlansController(
 
     /// <summary>
     /// The customer's own card: their four numbers, what they have spent, and — when they are over
-    /// their storage cap — what that does and does not mean.
+    /// their storage cap or their traffic allowance — what each of those does and does not mean.
     ///
     /// <para>There is no upgrade button, because there is no checkout for one to lead to. A plan
     /// change is an operator action until money is scoped, and an affordance that goes nowhere is
     /// worse than its absence.</para>
+    ///
+    /// <para><b>The traffic figure is read here rather than carried on <see cref="TenantPlanView"/>.</b>
+    /// That record is the four ceilings and what is stored against them, and it is read by the
+    /// operator's cross-tenant table as well as by this page — putting a per-workspace month sum on
+    /// it would put one query per customer behind a screen that lists every customer. This page is
+    /// one workspace, so it asks about one workspace, which is the same arrangement
+    /// <c>V1UsageController</c> already uses for the same two numbers.</para>
     /// </summary>
     [HttpGet("/plans")]
     [Authorize(Policy = DriveUnionPolicies.Tenant)]
@@ -70,7 +78,14 @@ public sealed class PlansController(
         // session reads as a customer with no files.
         if (plan is null) return NotFound();
 
-        return View(new TenantPlanPageViewModel(plan));
+        // The same reader the public download path refuses on, asked the same question. It is not
+        // ITrafficMeter.MonthAsync plus plan.Limits.MonthlyEgressBytes assembled here, and that is
+        // the point of it being a reader at all: an owner whose visitors are being turned away has
+        // to be able to open this page and see the state that is turning them away, rather than a
+        // second opinion about it computed a different way.
+        var traffic = await egress.ReadAsync(tenantId, cancellationToken);
+
+        return View(new TenantPlanPageViewModel(plan, traffic));
     }
 
     /// <summary>The catalogue, every workspace's usage, and the commitment against the real pool.</summary>

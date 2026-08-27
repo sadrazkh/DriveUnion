@@ -56,6 +56,11 @@ public static class ServiceCollectionExtensions
         // both dashboards — the three places that said «— / ۵۰۰ GB» because nothing counted.
         services.TryAddScoped<ITrafficMeter, TrafficMeter>();
 
+        // …and the thing that reads it back as a yes or a no, before Google is contacted. Separate
+        // from the meter because it compares against a ceiling on another table — see
+        // IEgressAllowance — and because the meter must stay a writer on the download path.
+        services.TryAddScoped<IEgressAllowance, EgressAllowanceReader>();
+
         // The API's keys, and the server-only lookup that turns a file id into somewhere to stream
         // from — see IStoredFileBytes for why that is not a method on IFileCatalog.
         services.TryAddScoped<IApiTokens, ApiTokenStore>();
@@ -71,6 +76,13 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<S3StagingDirectory>();
         services.TryAddScoped<IS3Multipart, S3MultipartStore>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
+        // Two interfaces, one class: an anonymous visitor writes a row and an operator reads it.
+        // Registered separately so the anonymous surface cannot reach the operator.s — a controller
+        // has to ask for IAbuseQueue by name, which is a line a reader will notice.
+        services.TryAddScoped<AbuseReports>();
+        services.TryAddScoped<IAbuseReports>(sp => sp.GetRequiredService<AbuseReports>());
+        services.TryAddScoped<IAbuseQueue>(sp => sp.GetRequiredService<AbuseReports>());
+
         services.TryAddScoped<IPublicLinkReader, PublicLinkReader>();
         services.TryAddScoped<IUploadCoordinator, UploadCoordinator>();
         services.TryAddScoped<IUploadTargetSelector, SingleAccountUploadTargetSelector>();

@@ -227,6 +227,10 @@ public sealed class FolderTree(DriveUnionDbContext db, TimeProvider clock) : IFo
 
         if (files + subfolders > 0)
         {
+            // Refused rather than emptied, and it stays that way: this method destroys a name, and
+            // taking a customer's files with it is a different decision that a different verb makes
+            // — IDeletionQueue.DeleteFolderAsync, which sends the contents to the trash where they
+            // can be got back from and hands the Drive moves to a worker.
             return new FolderResult(FolderOutcome.NotEmpty, folderId, files + subfolders);
         }
 

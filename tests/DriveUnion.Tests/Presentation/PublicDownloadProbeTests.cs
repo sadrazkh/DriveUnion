@@ -203,6 +203,11 @@ public class PublicDownloadProbeTests
             drive ?? new StubDriveClient(),
             new FixedIpHasher(),
             new RecordingTrafficMeter(),
+
+            // A workspace with room to spare, because nothing in this file is about the traffic
+            // gate: what is here is HEAD's headers and the counting rule. A double that refused
+            // would make every test in it fail for a reason none of them is written about.
+            FixedEgressAllowance.WithRoom(),
             Options.Create(new DriveUnionWebOptions()),
             NullLogger<PublicDownloadController>.Instance)
         {

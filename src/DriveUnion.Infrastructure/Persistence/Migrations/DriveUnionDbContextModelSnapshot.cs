@@ -362,6 +362,60 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DriveUnion.Core.Sharing.AbuseReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ReporterEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ReporterIpHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ShareLinkId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("ShareLinkId", "Status");
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.ToTable("AbuseReports");
+                });
+
             modelBuilder.Entity("DriveUnion.Core.Sharing.DownloadEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -506,6 +560,53 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                     b.HasIndex("SourceAccountId", "Status");
 
                     b.ToTable("AccountMigrations");
+                });
+
+            modelBuilder.Entity("DriveUnion.Core.Storage.DeletionJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("FilesFailed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FilesMoved")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FilesTotal")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FolderName")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.ToTable("DeletionJobs");
                 });
 
             modelBuilder.Entity("DriveUnion.Core.Storage.FileEncryption", b =>
@@ -741,6 +842,9 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("DeletionAttempts")
+                        .HasColumnType("integer");
+
                     b.Property<string>("DriveFileId")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -772,6 +876,9 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OwnerUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("PendingDeletionJobId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset?>("PurgeAfter")
                         .HasColumnType("timestamp with time zone");
 
@@ -786,6 +893,9 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PendingDeletionJobId")
+                        .HasFilter("\"PendingDeletionJobId\" IS NOT NULL");
 
                     b.HasIndex("PurgeAfter")
                         .HasFilter("\"PurgeAfter\" IS NOT NULL");
@@ -1117,6 +1227,13 @@ namespace DriveUnion.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("PlanId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("PublicSuspendedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PublicSuspendedReason")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
 
                     b.Property<string>("Slug")
                         .IsRequired()

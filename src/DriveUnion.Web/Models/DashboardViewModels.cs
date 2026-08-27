@@ -254,12 +254,31 @@ public sealed record FailedTransferRowViewModel(
 }
 
 /// <summary>
+/// One column of the egress chart: a day, what was served on it, and how tall that makes it.
+/// </summary>
+/// <param name="Percent">
+/// The day's bytes as a share of the <b>busiest</b> day in the window, not of any ceiling.
+///
+/// <para>There is no ceiling to draw against. What a plan sells is per workspace and this chart is
+/// every workspace at once; what the box's uplink can do is a bandwidth figure nobody has measured.
+/// A bar against an invented denominator would be the operator's home page quietly asserting a limit
+/// that does not exist — so the tallest column is full height and the rest are read against it.</para>
+/// </param>
+/// <param name="Title">
+/// The column's own label, for a tooltip and for anything reading the markup rather than the
+/// picture. Every column carries one, including the empty days: «nothing on the 14th» is a fact, and
+/// a column with no label is one a reader cannot ask about.
+/// </param>
+public sealed record EgressDayViewModel(string Title, double Percent);
+
+/// <summary>
 /// «داشبورد» as the operator's screen renders it: the pool, who is running out, and what is broken.
 ///
-/// <para>Every figure on it is counted from rows that exist. The two the comp draws and this product
-/// does not meter — each account's daily upload allowance, and the egress chart — are absent and
-/// said in words, because a bar drawn from nothing is a bar that is always empty and an operator
-/// reading it would conclude the pool is idle on the day it is not.</para>
+/// <para>Every figure on it is counted from rows that exist. The one the comp draws and this product
+/// still does not meter — each account's daily upload allowance — is absent and said in words,
+/// because a bar drawn from nothing is a bar that is always empty and an operator reading it would
+/// conclude the pool is idle on the day it is not. The egress chart used to be in that sentence with
+/// it; <c>ITrafficMeter</c> counts those bytes, so it is drawn.</para>
 /// </summary>
 public sealed class OperatorDashboardPageViewModel
 {
@@ -313,6 +332,51 @@ public sealed class OperatorDashboardPageViewModel
         // and the figure above it stays the truth.
         var hidden = dashboard.TransfersFailedInWindow - Failures.Count;
         MoreFailuresText = hidden > 0 ? UiText.Dashboard.MoreFailures(hidden) : null;
+
+        // ── the egress chart ────────────────────────────────────────────────────────────────────
+        //
+        // Every column's height is worked out here rather than in the view, for the reason the rest
+        // of this file gives: arithmetic in a view is arithmetic no test can reach. What the view
+        // gets is a percentage and a sentence per column.
+        var peak = dashboard.EgressPeakDayBytes;
+
+        EgressWindowText = UiText.Dashboard.EgressWindow(dashboard.EgressWindowDays);
+        EgressTotalText = UiText.Dashboard.EgressTotal(DisplayFormats.Bytes(dashboard.EgressWindowBytes));
+        EgressPeakText = UiText.Dashboard.EgressPeak(DisplayFormats.Bytes(peak));
+
+        // False on a product whose links have served nothing in the window — a new deployment, and a
+        // quiet fortnight. Thirty empty columns say «zero» far less clearly than the sentence does,
+        // and the sentence cannot be misread as a chart that failed to load.
+        HasEgress = peak > 0;
+
+        EgressChartLabel = UiText.Dashboard.EgressChartLabel(
+            dashboard.EgressWindowDays,
+            DisplayFormats.Bytes(dashboard.EgressWindowBytes));
+
+        Egress =
+        [
+            .. dashboard.EgressByDay.Select(day => new EgressDayViewModel(
+                UiText.Dashboard.EgressDay(
+                    DisplayFormats.PanelDate(day.Day),
+                    DisplayFormats.Bytes(day.EgressBytes)),
+
+                // Against the busiest day, because there is no ceiling here to draw against — see
+                // EgressDayViewModel.Percent. A day with traffic on it never rounds to nothing: two
+                // percent is the floor, so «a little» and «none at all» stay two different pictures
+                // rather than two identical empty columns. It is the one place this chart is not
+                // linear, and it is deliberately at the bottom where it cannot flatter a spike.
+                day.EgressBytes <= 0 || peak <= 0
+                    ? 0d
+                    : Math.Max(2d, Math.Round(day.EgressBytes * 100d / peak, 2)))),
+        ];
+
+        EgressFromText = dashboard.EgressByDay.Count == 0
+            ? string.Empty
+            : DisplayFormats.PanelDate(dashboard.EgressByDay[0].Day);
+
+        EgressToText = dashboard.EgressByDay.Count == 0
+            ? string.Empty
+            : DisplayFormats.PanelDate(dashboard.EgressByDay[^1].Day);
     }
 
     public IReadOnlyList<PoolAccountCardViewModel> Accounts { get; }
@@ -355,4 +419,29 @@ public sealed class OperatorDashboardPageViewModel
     public IReadOnlyList<FailedTransferRowViewModel> Failures { get; }
 
     public string? MoreFailuresText { get; }
+
+    /// <summary>One entry per day of the window, oldest first, with the quiet days present and flat.</summary>
+    public IReadOnlyList<EgressDayViewModel> Egress { get; }
+
+    /// <summary>
+    /// False when nothing was served in the window at all, which is a sentence rather than thirty
+    /// empty columns — an empty chart reads as one that failed to load.
+    /// </summary>
+    public bool HasEgress { get; }
+
+    public string EgressWindowText { get; }
+
+    public string EgressTotalText { get; }
+
+    /// <summary>The tallest column, named: it is the height every other one is drawn against.</summary>
+    public string EgressPeakText { get; }
+
+    /// <summary>The chart said in a sentence, for a reader who is not looking at the picture.</summary>
+    public string EgressChartLabel { get; }
+
+    /// <summary>The oldest day in the window — the axis label at the start of the run.</summary>
+    public string EgressFromText { get; }
+
+    /// <summary>…and the newest, at the end of it. Empty strings when the window holds nothing.</summary>
+    public string EgressToText { get; }
 }

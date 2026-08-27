@@ -95,10 +95,14 @@ public interface IFolderTree
     ///
     /// <para><b>Empty only, and a hard delete.</b> An empty folder is a name; there is nothing in it
     /// to keep, so it does not go to the trash and there is no folder to restore. A folder with
-    /// files in it is refused with the count, because deleting it would mean a Drive round trip per
-    /// descendant inside one form post — a folder of two hundred files is a minute of somebody
-    /// watching a spinner, and half of it landing is a tree that disagrees with the pool. Recursive
-    /// delete belongs to whatever runs the purge sweeper, not to a button.</para>
+    /// files in it is refused with the count, and stays refused here: deleting it means a Drive
+    /// round trip per descendant, which is not something a form post can wait for.</para>
+    ///
+    /// <para><b>«And everything in it» is a different verb</b> — see
+    /// <see cref="IDeletionQueue.DeleteFolderAsync"/>, which sends the contents to the trash in one
+    /// statement and owes the Drive moves to a worker. It is deliberately not this method with a
+    /// flag: this one destroys a name and that one destroys a customer's files, and a boolean
+    /// parameter is the wrong amount of ceremony between those two.</para>
     ///
     /// <para>Files already in the trash do not block it, and a folder can be deleted out from under
     /// them: a restore whose folder is gone lands at the root and says so.</para>

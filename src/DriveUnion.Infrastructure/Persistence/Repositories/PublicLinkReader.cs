@@ -34,6 +34,15 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
         // revokes links as it soft-deletes. There is nothing to serve either way.
         if (file is null) return PublicLinkResolution.NotFound;
 
+        // The operator has switched this workspace's public half off — see Tenant.PublicSuspendedAt
+        // for what that is for. The same card as every other refusal and no reason travelling with
+        // it: a visitor who could tell «suspended» from «expired» could tell a live workspace from a
+        // dead one by trying a slug, and the reason is the operator's note about somebody else.
+        if (await IsSuspendedAsync(file.TenantId, cancellationToken))
+        {
+            return PublicLinkResolution.NotFound;
+        }
+
         // Read only once the link is known to be available, so a revoked or spent one gives away
         // nothing more than the identical card it already gives. Null for the ordinary file, which
         // is nearly every file, and one query either way.
@@ -111,6 +120,12 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
 
         if (link is null || file is null) return null;
         if (link.Evaluate(clock.GetUtcNow()) != ShareLinkAvailability.Available) return null;
+
+        // Asked again on the streaming path rather than trusted from the page that linked here. The
+        // two routes are reached independently — a visitor holding a direct /file address never
+        // loads the card — so a suspension enforced only on the page would stop the button and leave
+        // the bytes served.
+        if (await IsSuspendedAsync(file.TenantId, cancellationToken)) return null;
 
         return new PublicDownloadTicket(
             link.Id,
@@ -215,6 +230,18 @@ public sealed class PublicLinkReader(DriveUnionDbContext db, TimeProvider clock)
 
         if (stale is not null) stale.State = EntityState.Detached;
     }
+
+    /// <summary>
+    /// Whether the operator has switched this workspace's public half off.
+    ///
+    /// <para>A tenant appears on this anonymous path for the same reason it does on the download
+    /// ticket: the file that was found belongs to somebody, and this is a fact about them rather
+    /// than about the visitor. Nothing about resolving a slug is scoped by workspace.</para>
+    /// </summary>
+    private async Task<bool> IsSuspendedAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        await db.Tenants
+            .AsNoTracking()
+            .AnyAsync(t => t.Id == tenantId && t.PublicSuspendedAt != null, cancellationToken);
 
     private async Task<(ShareLink? Link, StoredFile? File)> LookUpAsync(
         string slug,

@@ -93,6 +93,27 @@ internal static class TrashTestSupport
     public static TrashService Trash(this ServiceTestHarness harness, DriveUnionDbContext? context = null) =>
         new(context ?? harness.Db, harness.Drive, NullLogger<TrashService>.Instance);
 
+    /// <summary>The customer's side of deleting a lot at once: the half that happens in the request.</summary>
+    public static DeletionQueue Deletions(
+        this ServiceTestHarness harness,
+        DriveUnionDbContext? context = null) =>
+        new(context ?? harness.Db, harness.Settings(context), harness.Clock);
+
+    /// <summary>
+    /// The half that owes Drive moves, driven directly.
+    ///
+    /// <para>The hosted service around it is a <c>while</c> loop and a timer; everything worth
+    /// asserting is here, which is exactly why the two are separate types.</para>
+    /// </summary>
+    public static DeletionRunner Deleter(
+        this ServiceTestHarness harness,
+        DriveUnionDbContext? context = null) =>
+        new(
+            context ?? harness.Db,
+            harness.Mover(context),
+            harness.Clock,
+            NullLogger<DeletionRunner>.Instance);
+
     public static TrashPurge Sweeper(this ServiceTestHarness harness, DriveUnionDbContext? context = null) =>
         new(context ?? harness.Db, harness.Drive, harness.Clock, NullLogger<TrashPurge>.Instance);
 

@@ -423,6 +423,31 @@ public static partial class UiText
                 ? "That folder still has 1 thing in it. Empty it first."
                 : $"That folder still has {Numerals.Count(contains)} things in it. Empty it first.");
 
+        /// <summary>
+        /// The other verb, on the folder somebody is standing in: take the folder <i>and</i> what is
+        /// in it.
+        ///
+        /// <para>Long, and deliberately. It sits under «این پوشه» next to «تغییر نام» and «انتقال»,
+        /// and a button there labelled «حذف» would read as the one that refuses when the folder is
+        /// full — which is the one thing it is not. The label is the whole of the confirmation this
+        /// has: what it destroys goes to the trash and can be brought back for the retention window,
+        /// so a second «are you sure» would be a dialogue in front of an undo.</para>
+        /// </summary>
+        public static string DeleteFolderAndContents => Pick(
+            "حذف پوشه و هرچه داخلش است",
+            "Delete the folder and everything in it");
+
+        /// <summary>
+        /// Said after it, and it says the number because the number is the point: somebody who meant
+        /// to delete an empty folder and finds out here that it held four hundred files has a week to
+        /// do something about it, and needs to know now.
+        /// </summary>
+        public static string FolderAndContentsDeleted(int files) => Pick(
+            $"پوشه حذف شد و {Numerals.Count(files)} فایلش به زباله‌دان رفت.",
+            files == 1
+                ? "The folder is gone, and its 1 file went to the trash."
+                : $"The folder is gone, and its {Numerals.Count(files)} files went to the trash.");
+
         public static string FolderWouldLoop => Pick(
             "یک پوشه را نمی‌شود داخل خودش برد.",
             "A folder cannot go inside itself.");
@@ -588,13 +613,32 @@ public static partial class UiText
             $"{Numerals.Count(files)} فایل به زباله‌دان رفت.",
             files == 1 ? "1 file went to the trash." : $"{Numerals.Count(files)} files went to the trash.");
 
+        // Removed: TooManyToDelete, «یک‌بار حداکثر ۲۰ فایل». It was the honest sentence for a screen
+        // that could not delete more than a request had time for, and there is no such limit now —
+        // a selection of any size is stamped deleted in one statement and the Drive moves are owed to
+        // a worker. See DeletionJob for why that is safe.
+
         /// <summary>
-        /// The refusal when a selection is bigger than one request can honestly delete. It names both
-        /// numbers, because «too many» without the limit is a sentence somebody has to guess at.
+        /// A clean-up still running, said on the screen the delete was pressed on.
+        ///
+        /// <para>The files are already gone from the list and already in the trash, so this is not a
+        /// progress bar for something the reader is waiting on — it is there so that «the trash is
+        /// still filling up» is something they are told rather than something they notice. Which is
+        /// why both halves of it say they can leave.</para>
         /// </summary>
-        public static string TooManyToDelete(int limit, int chosen) => Pick(
-            $"یک‌بار حداکثر {Numerals.Count(limit)} فایل؛ {Numerals.Count(chosen)} تا انتخاب شده. هیچ‌کدام حذف نشد.",
-            $"Up to {Numerals.Count(limit)} at a time, and {Numerals.Count(chosen)} are selected. None were deleted.");
+        public static string TidyingSelection(int done, int total) => Pick(
+            $"{Numerals.Count(total)} فایل حذف شد؛ {Numerals.Count(done)} تای آن تا اینجا جابه‌جا شده. لازم نیست منتظر بمانید.",
+            $"{Numerals.Count(total)} files were deleted, and {Numerals.Count(done)} of them have been "
+            + "put away so far. You do not have to wait.");
+
+        /// <summary>
+        /// The same for a folder, which is named — «۵٬۰۰۰ فایل» with no folder beside it is a number
+        /// somebody has to work out the source of, and the name is what they pressed.
+        /// </summary>
+        public static string TidyingFolder(string name, int done, int total) => Pick(
+            $"«{Ltr(name)}» و {Numerals.Count(total)} فایلش حذف شد؛ {Numerals.Count(done)} تای آن تا اینجا جابه‌جا شده. لازم نیست منتظر بمانید.",
+            $"“{name}” and its {Numerals.Count(total)} files were deleted, and {Numerals.Count(done)} "
+            + "of them have been put away so far. You do not have to wait.");
 
         public static string Label => Pick("برچسب", "Label");
 
@@ -1890,12 +1934,61 @@ public static partial class UiText
             "A plan is changed by us; there is no checkout in the panel.");
 
         /// <summary>
-        /// Said where the traffic allowance is shown, because a number with no meter behind it would
-        /// otherwise read as «شما هیچ ترافیکی مصرف نکرده‌اید», which is not what it means.
+        /// What the traffic figure counts, said where it is drawn.
+        ///
+        /// <para>This entry used to say the opposite — that usage was not measured and the number
+        /// beside it was only the allowance. That was honest while nothing counted, and it had
+        /// already stopped being true: <c>ITrafficMeter</c> writes a row for every delivered
+        /// transfer, and the dashboard and the sidebar's capacity card were both drawing the real
+        /// figure while this page was still apologising for not having one.</para>
+        ///
+        /// <para>It says what makes the number move, because that is the question somebody looking at
+        /// a figure next to a ceiling actually has. Same sentence as
+        /// <c>UiText.Capacity.TrafficCounts</c> is answering on the sidebar, and it has to keep
+        /// agreeing with it: two screens describing one meter differently is how a customer decides
+        /// the panel is guessing.</para>
         /// </summary>
-        public static string TrafficNotMeteredYet => Pick(
-            "مصرف ترافیک هنوز اندازه‌گیری نمی‌شود؛ این عدد سقف فروخته‌شده است.",
-            "Traffic usage is not being measured yet; this figure is the allowance, not the usage.");
+        public static string TrafficCounts => Pick(
+            "بایت‌هایی که این ماه از طریق لینک‌های عمومی شما تحویل داده شده. آپلود و پیش‌نمایش‌های "
+            + "داخل پنل حساب نمی‌شوند. این شمارنده اول هر ماه میلادی صفر می‌شود.",
+            "Bytes delivered through your public links this month. Uploads do not count. The counter "
+            + "resets on the first of each calendar month.");
+
+        /// <summary>
+        /// <b>The sentence that tells an owner their visitors are being turned away.</b>
+        ///
+        /// <para>It is the traffic twin of <see cref="OverStorage"/> and it says something much worse,
+        /// so it is blunter: over the storage cap the customer stops being able to upload, and over
+        /// this one <i>strangers holding their links stop being able to download</i>. Somebody who is
+        /// not the customer, cannot fix it and may never tell them about it is meeting a refusal — so
+        /// the one place the customer can find that out has to say it in words and not in an amber
+        /// bar.</para>
+        ///
+        /// <para>It names what is still true, for the same reason <see cref="OverStorage"/> does:
+        /// nothing has been deleted, the links are not revoked, and it clears by itself. An owner who
+        /// reads «تمام شد» and starts re-issuing links would be doing work that cannot help.</para>
+        /// </summary>
+        public static string OverTraffic => Pick(
+            "ترافیک این ماه تمام شده است — دانلود از لینک‌های عمومی شما تا اول ماه میلادی بعد رد "
+            + "می‌شود. هیچ فایلی حذف نشده و هیچ لینکی باطل نشده؛ آپلود و خودِ پنل کار می‌کنند. "
+            + "برای بالا بردن این سقف با ما تماس بگیرید.",
+            "This month's traffic is spent, so downloads from your public links are refused until the "
+            + "first of next month. Nothing has been deleted and no link has been revoked — uploading "
+            + "and the panel itself keep working. Ask us to raise this allowance.");
+
+        /// <summary>
+        /// The other half of the warning above: what the visitor on the far end is actually shown.
+        ///
+        /// <para>An owner's first question is «what do my customers see», and the honest answer
+        /// matters — the page says the sender is out of traffic and the link is still good, so a
+        /// recipient who reports it is reporting something the owner can act on rather than «your
+        /// link is broken».</para>
+        /// </summary>
+        public static string OverTrafficWhatVisitorsSee => Pick(
+            "کسی که لینک را باز می‌کند صفحه‌ای می‌بیند که می‌گوید ترافیک فرستنده تمام شده و لینک "
+            + "هنوز معتبر است — نه «این لینک وجود ندارد».",
+            "Whoever opens the link sees a page saying the sender is out of traffic and the link is "
+            + "still valid — not «this link does not exist».");
 
         // ── The operator's side ──────────────────────────────────────────────────────────────────
 
@@ -2129,6 +2222,160 @@ public static partial class UiText
         public static string PasswordsDoNotMatch => Pick(
             "دو گذرواژه یکسان نیستند.",
             "The two passwords are not the same.");
+    }
+
+    /// <summary>
+    /// Reporting a public link, and the operator's queue of reports.
+    ///
+    /// <para>The public half of this is read by people who are not customers and never will be, so
+    /// it says nothing about workspaces, plans or accounts — only about the one link in front of
+    /// them.</para>
+    /// </summary>
+    public static class Abuse
+    {
+        // ───────────────────────────────────────────────────────────── what a visitor sees
+
+        public static string ReportLink => Pick("گزارش این لینک", "Report this link");
+
+        public static string ReportTitle => Pick("گزارش سوءاستفاده", "Report abuse");
+
+        public static string ReportIntro => Pick(
+            "اگر این فایل متعلق به شماست و بدون اجازه‌تان منتشر شده، یا محتوایش خطرناک یا غیرقانونی است، همین‌جا بگویید. گزارش‌ها را خودمان می‌خوانیم.",
+            "If this file is yours and was published without your permission, or its contents are dangerous or illegal, say so here. We read these ourselves.");
+
+        public static string ReportWhat => Pick("مسئله چیست", "What is wrong");
+
+        public static string KindCopyright => Pick(
+            "کارِ من است و بدون اجازه منتشر شده",
+            "It is my work, published without permission");
+
+        public static string KindMalware => Pick("بدافزار یا فیشینگ است", "It is malware or phishing");
+
+        public static string KindIllegal => Pick("محتوای غیرقانونی است", "The content is illegal");
+
+        public static string KindPrivacy => Pick(
+            "اطلاعات شخصی کسی است که اجازه نداده",
+            "It is somebody's private information, published without consent");
+
+        public static string KindOther => Pick("چیز دیگری", "Something else");
+
+        public static string ReportNote => Pick("توضیح", "Tell us more");
+
+        public static string ReportEmail => Pick("ایمیل شما (اختیاری)", "Your email (optional)");
+
+        /// <summary>Said beside the field, because «optional» on its own does not answer «then why ask».</summary>
+        public static string ReportEmailWhy => Pick(
+            "فقط برای این‌که اگر لازم شد بتوانیم چیزی بپرسیم. اجباری نیست و گزارش بدون آن هم خوانده می‌شود.",
+            "Only so we can ask you something if we need to. It is not required and the report is read either way.");
+
+        public static string ReportSend => Pick("فرستادن گزارش", "Send the report");
+
+        /// <summary>
+        /// The one answer every report gets, whatever happened to it.
+        ///
+        /// <para>Including the refusals. A form that said «no such link» would confirm which
+        /// addresses exist to anybody willing to type — the same enumeration the public card's
+        /// single refusal exists to prevent, and a strange thing to reopen through the abuse form of
+        /// all places.</para>
+        /// </summary>
+        public static string ReportThanks => Pick(
+            "گزارش شما رسید. خودمان نگاه می‌کنیم.",
+            "Your report has reached us. We will look at it ourselves.");
+
+        // ───────────────────────────────────────────────────────────── what the operator sees
+
+        public static string QueueTitle => Pick("گزارش‌های سوءاستفاده", "Abuse reports");
+
+        public static string QueueSubtitle => Pick(
+            "فایلی که به گوگل گزارش شود، اکانتِ استخر را تعلیق می‌کند — و آن اکانت فایل‌های ده‌ها ورک‌اسپیس را دارد. رسیدن به فایل پیش از گوگل، تنها چیزی است که جلوی این را می‌گیرد.",
+            "A file reported to Google gets the pool account suspended — and that account holds the files of dozens of workspaces. Reaching the file before Google does is the only thing that stops it.");
+
+        public static string QueueEmpty => Pick("گزارشی در انتظار نیست.", "Nothing is waiting.");
+
+        public static string ShowOpen => Pick("در انتظار", "Waiting");
+
+        public static string ShowAll => Pick("همه", "All");
+
+        public static string OpenTheLink => Pick("باز کردن لینک", "Open the link");
+
+        /// <summary>Said once above the queue, because it is the thing an operator will wonder about.</summary>
+        public static string HowToJudge => Pick(
+            "برای بررسی، همان لینک عمومی را باز کنید — گزارش‌دهنده هم فایل را از همان‌جا دیده. این پنل نمایشگر فایل مشتری ندارد و قرار هم نیست داشته باشد.",
+            "To judge one, open the public link — that is how the reporter saw the file. This panel has no viewer for a customer's files and is not getting one.");
+
+        public static string Uphold => Pick("باطل کردن لینک", "Take the link down");
+
+        public static string Reject => Pick("ایرادی ندارد", "Nothing wrong");
+
+        public static string Resolution => Pick("یادداشت (اختیاری)", "A note (optional)");
+
+        public static string SuspendTenant => Pick(
+            "توقف همه‌ی لینک‌های این ورک‌اسپیس",
+            "Stop every public link this workspace has");
+
+        public static string RestoreTenant => Pick("برگرداندن", "Restore");
+
+        public static string SuspendReason => Pick("دلیل", "Reason");
+
+        /// <summary>The two things suspension does not do, said where the button is.</summary>
+        public static string SuspendWarning => Pick(
+            "هیچ فایلی حذف نمی‌شود و هیچ لینکی باطل نمی‌شود — فقط عموم به آن‌ها نمی‌رسند. صاحبش همچنان وارد پنل می‌شود، فایل‌هایش را می‌بیند و می‌تواند ببردشان. برگرداندنش دقیقاً همان چیزی را برمی‌گرداند که بود.",
+            "Nothing is deleted and no link is revoked — the public simply cannot reach them. The owner can still sign in, see their files and take them away. Restoring puts back exactly what was there.");
+
+        public static string Suspended => Pick("متوقف‌شده", "Suspended");
+
+        public static string LinkRevoked => Pick("لینک باطل شده", "Link revoked");
+
+        public static string ReportsFromThisWorkspace => Pick(
+            "گزارش در انتظار از این ورک‌اسپیس",
+            "waiting from this workspace");
+
+        public static string Upheld => Pick("پذیرفته شد", "Upheld");
+
+        public static string Rejected => Pick("رد شد", "Rejected");
+
+        public static string Waiting => Pick("در انتظار", "Waiting");
+
+        public static string ReportedFor(string kind) => Pick($"گزارش: {kind}", $"Reported as: {kind}");
+
+        // The same five kinds, shortly. The form's labels are first person — «It is my work,
+        // published without permission» — which is right where somebody is choosing one and wrong
+        // in a column, where it reads as the panel asserting that the claim is true.
+
+        public static string ShortCopyright => Pick("کپی‌رایت", "Copyright");
+
+        public static string ShortMalware => Pick("بدافزار", "Malware");
+
+        public static string ShortIllegal => Pick("غیرقانونی", "Illegal");
+
+        public static string ShortPrivacy => Pick("حریم خصوصی", "Privacy");
+
+        public static string ShortOther => Pick("دیگر", "Other");
+
+        public static string ColumnLink => Pick("لینک", "Link");
+
+        public static string ColumnWorkspace => Pick("ورک‌اسپیس", "Workspace");
+
+        public static string ColumnKind => Pick("گزارش", "Report");
+
+        public static string ColumnWhen => Pick("زمان", "When");
+
+        public static string NoNote => Pick("توضیحی ننوشته‌اند.", "They wrote nothing further.");
+
+        public static string ReporterWrote => Pick("گزارش‌دهنده نوشته", "The reporter wrote");
+
+        public static string ReporterContact => Pick("تماس", "Contact");
+
+        /// <summary>The count on the sidebar item, so an operator sees a queue without opening it.</summary>
+        public static string OpenBadge(string count) => Pick(
+            $"{count} گزارش در انتظار",
+            $"{count} reports waiting");
+
+        public static string NothingToDo => Pick(
+            "این گزارش دیگر باز نیست.",
+            "That report is not open any more.");
+
+        public static string Done => Pick("انجام شد.", "Done.");
     }
 }
 

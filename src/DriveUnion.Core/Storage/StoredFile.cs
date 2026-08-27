@@ -86,4 +86,33 @@ public sealed class StoredFile
 
     /// <summary>Soft delete: a revoked link must not resurrect a file the tenant removed.</summary>
     public DateTimeOffset? DeletedAt { get; set; }
+
+    /// <summary>
+    /// The queued deletion that still owes this file its move into the trash folder, or null.
+    ///
+    /// <para>The queue is a column here rather than a table beside <see cref="DeletionJob"/> on
+    /// purpose: claiming five thousand files is then one UPDATE, and a row per file would put the
+    /// size of the job back into the request the customer is waiting on — which is the thing the
+    /// queue exists to take out of it.</para>
+    ///
+    /// <para>Non-null means the row already says deleted and the bytes have not physically moved
+    /// yet. Nothing a customer can see depends on the difference, and three things depend on the
+    /// value: the worker finds its work by it, restoring clears it so a job cannot move a file that
+    /// came back, and a value left behind on a finished job is the record of a file Drive would not
+    /// move.</para>
+    ///
+    /// <para>No foreign key to <see cref="DeletionJob"/>. A cascade would take a customer's file with
+    /// a job row somebody tidied up, and the same detach hazard that keeps <c>RemoteFetch</c> free of
+    /// one applies here — see <c>DriveUnionDbContext</c>.</para>
+    /// </summary>
+    public Guid? PendingDeletionJobId { get; set; }
+
+    /// <summary>
+    /// How many times the worker has tried to move this file into the trash and been refused.
+    ///
+    /// <para>Zero for every live file and for every file whose move landed. It is on the row rather
+    /// than on a per-file job row for the reason above, and it is what stops one file Drive will not
+    /// move from being retried for ever in front of the rest of the pile.</para>
+    /// </summary>
+    public int DeletionAttempts { get; set; }
 }

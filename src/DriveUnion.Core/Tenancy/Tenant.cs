@@ -27,6 +27,30 @@ public sealed class Tenant
 
     public DateTimeOffset CreatedAt { get; set; }
 
+    /// <summary>
+    /// When the operator stopped this workspace's public links from resolving, or null.
+    ///
+    /// <para><b>What it is for.</b> One customer publishing something that gets reported to Google
+    /// costs every other customer on the same pool account their files, because Google suspends the
+    /// account and not the file. So the operator needs one control that stops a whole workspace
+    /// handing anything out, faster than they can revoke links one at a time.</para>
+    ///
+    /// <para><b>What it deliberately does not do.</b> It does not delete anything, does not lock the
+    /// owner out of their own panel, and does not touch a single byte. The customer can still sign
+    /// in, see their files, and take them away. Suspension is about what the <i>public</i> can
+    /// reach — an accusation is not a finding, and a control that destroyed data on one would be a
+    /// control nobody could afford to use quickly.</para>
+    /// </summary>
+    public DateTimeOffset? PublicSuspendedAt { get; set; }
+
+    /// <summary>Why, in the operator's words. Never shown to a visitor — see the public card's rule.</summary>
+    public string? PublicSuspendedReason { get; set; }
+
+    /// <summary>Whether the public half of this workspace is switched off.</summary>
+    public bool IsPubliclySuspended => PublicSuspendedAt is not null;
+
+    public const int MaxSuspensionReasonLength = 512;
+
     // ────────────────────────────────────────────────────────────────────────────────────────────
     // The effective limits.
     //

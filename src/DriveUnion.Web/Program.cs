@@ -131,6 +131,18 @@ builder.Services.AddDriveUnionTrash();
 // returned, which is a quieter version of the bug this phase set out to fix.
 builder.Services.AddDriveUnionTrashSweeper();
 
+// Deleting more than one thing: a selection of any size, and a folder with everything under it.
+// After AddDriveUnionTrash, whose ITrashMover the worker moves files with and whose operator
+// settings row the retention deadline is stamped from.
+//
+// The worker is a second line for the reason the sweeper above is: every in-process test host boots
+// this pipeline over one shared SQLite connection, and a background loop opening scopes against it
+// turns unrelated suites into "database is locked". Without it a delete still deletes — the customer
+// sees exactly what they expect — and the files never leave the folder they were uploaded to, which
+// is the quiet version of the bug this pair exists to prevent.
+builder.Services.AddDriveUnionDeletions();
+builder.Services.AddDriveUnionDeletionWorker();
+
 // The trash screen's own reader, plus the capacity card the layout draws for a tenant. After
 // AddDriveUnionTrash, whose ITrash it reads, and AddDriveUnionPlans, whose figures it puts beside it.
 builder.Services.AddDriveUnionTrashPanel();

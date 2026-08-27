@@ -108,7 +108,16 @@ public sealed class TrashService(
                     .SetProperty(f => f.DriveFolderId, folderNow)
                     .SetProperty(f => f.FolderId, filedIn)
                     .SetProperty(f => f.RestoreFolderId, (string?)null)
-                    .SetProperty(f => f.PurgeAfter, (DateTimeOffset?)null),
+                    .SetProperty(f => f.PurgeAfter, (DateTimeOffset?)null)
+
+                    // …and the claim, if a queued deletion had one on this file and has not reached
+                    // it yet. This is how restore beats a job in flight without either of them
+                    // knowing about the other: the worker looks for its work by this column, and a
+                    // file that no longer carries the claim is a file it never touches. Left set, a
+                    // deletion queued minutes ago would move a live file into the trash folder some
+                    // time after the customer had put it back.
+                    .SetProperty(f => f.PendingDeletionJobId, (Guid?)null)
+                    .SetProperty(f => f.DeletionAttempts, 0),
                 cancellationToken);
 
         // The file's links stay revoked. Deleting it revoked them, and a restore is not an

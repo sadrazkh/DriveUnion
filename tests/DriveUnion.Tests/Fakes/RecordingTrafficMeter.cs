@@ -42,4 +42,15 @@ public sealed class RecordingTrafficMeter : ITrafficMeter
             _recorded
                 .GroupBy(r => r.TenantId)
                 .ToDictionary(g => g.Key, g => new UsageTotal(g.Sum(r => r.Bytes), g.Count())));
+
+    /// <summary>
+    /// Empty, like <see cref="RangeAsync"/> above and for the same reason: this double keeps what it
+    /// was told and not when it was told it, so it has no day to put a row on. What draws a chart
+    /// from real rows is tested over a real <c>TrafficMeter</c>, which is where the grouping lives.
+    /// </summary>
+    public Task<IReadOnlyList<UsageDay>> EveryTenantRangeAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<UsageDay>>([]);
 }

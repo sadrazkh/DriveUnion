@@ -61,6 +61,22 @@
         }
     }
 
+    // How many complaints are waiting, drawn on the sidebar rather than found by opening the screen.
+    //
+    // A queue nobody looks at is the failure this whole feature exists to prevent: one file reported
+    // to Google suspends the pool account holding it, and that account holds the files of every
+    // workspace that landed on it. The number has to be somewhere an operator sees without deciding
+    // to look.
+    //
+    // Behind isOperator for the same reason every other pool fact is — see below. One indexed COUNT,
+    // asked the same way the capacity card above asks for its figure.
+    var openReports = 0;
+
+    if (isOperator && Context.RequestServices.GetService<IAbuseQueue>() is { } abuseQueue)
+    {
+        openReports = await abuseQueue.OpenCountAsync(Context.RequestAborted);
+    }
+
     string NavClass(string name) =>
         string.Equals(controller, name, StringComparison.OrdinalIgnoreCase)
             ? "nav-item is-active"
@@ -196,6 +212,21 @@
                 </a>
                 <a class="@NavClass("Plans")" href="/operator/plans">
                     <span class="nav-dot" aria-hidden="true"></span>@UiText.Plans.OperatorTitle
+                </a>
+                @*
+                    The count rides the item rather than sitting on a screen of its own, and it is
+                    absent at zero: a badge showing «0» is a badge that has to be read before it can
+                    be dismissed, every time.
+                *@
+                <a class="@NavClass("AbuseQueue") nav-item--split" href="/operator/abuse">
+                    <span class="row"><span class="nav-dot" aria-hidden="true"></span>@UiText.Abuse.QueueTitle</span>
+                    @if (openReports > 0)
+                    {
+                        @* aria-label, because «3» on its own is a number with no noun. *@
+                        <span class="badge badge--count" aria-label="@UiText.Abuse.OpenBadge(Numerals.Count(openReports))">
+                            @Numerals.Count(openReports)
+                        </span>
+                    }
                 </a>
             }
             else if (hasWorkspace)
