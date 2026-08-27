@@ -60,7 +60,7 @@ apps in the EU under the DMA. This product's audience is not in the EU.
 
 Size: small. Depends on nothing.
 
-### M2 — safe areas and a phone layout
+### M2 — safe areas and a phone layout — **done, 5979bb5**
 - `env(safe-area-inset-*)` on the header, the sidebar and `.sidebar-foot`.
 - A real breakpoint below 760px for the *panel*, not only the public card.
 - `.dtable` is a `--cols` grid; on a phone it has to become cards, not a squeezed table.
@@ -90,7 +90,7 @@ Size: small. Depends on nothing. Highest value per line in this plan.
 > binds to `true` anyway — silently, on exactly the shared-computer case the box exists for. It needs
 > a hidden companion field after it.
 
-### M4 — uploads that survive the phone
+### M4 — uploads that survive the phone — **done, cb4a602**
 - On `visibilitychange` → visible, resume anything stalled, automatically. The machinery exists; it
   currently waits for a tap.
 - `navigator.wakeLock` while an upload is running, released on finish — Safari 16.4+.
@@ -99,7 +99,7 @@ Size: small. Depends on nothing. Highest value per line in this plan.
 
 Size: small. Depends on nothing.
 
-### M5 — service worker
+### M5 — service worker — **done, 12c250f**
 - **It cannot be a Vite entry as things stand.** Vite hashes everything into `/build/`; a service
   worker needs a stable URL at the root of its scope. Either a second Vite input with a fixed
   `entryFileNames`, or a hand-written `/sw.js` outside the bundle.
