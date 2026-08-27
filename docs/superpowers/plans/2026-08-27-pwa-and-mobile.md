@@ -43,7 +43,7 @@ apps in the EU under the DMA. This product's audience is not in the EU.
 
 ## Phases
 
-### M1 — installable
+### M1 — installable — **done, 8a4152d**
 - Design the icon first, as a small set of directions to choose from, *before* generating eight
   sizes of the wrong thing.
 - `manifest.webmanifest`: `display: standalone`, `scope: /`, `start_url`, `background_color` and
@@ -69,13 +69,26 @@ Size: small. Depends on nothing.
 
 Size: medium. Depends on M1 (so it can be judged in standalone, where the insets exist).
 
-### M3 — staying signed in
+### M3 — staying signed in — **done, 6e1e2e1**
+
 `ConfigureApplicationCookie` sets no `ExpireTimeSpan`, and `RememberMe` is off by default, so an
 ordinary sign-in is a session cookie. An installed iOS web app gets its own cookie jar and is
 evicted from memory often, so today the answer is "sign in again, most times you open it". Set an
 explicit sliding expiry and default the checkbox on.
 
 Size: small. Depends on nothing. Highest value per line in this plan.
+
+> **Correction, written after the work.** The diagnosis above is wrong in its first sentence and it
+> is worth leaving visible rather than editing away. The missing `ExpireTimeSpan` was *not* what made
+> an ordinary sign-in a session cookie — Identity already defaults the ticket to fourteen days.
+> `RememberMe` defaulting to off was the entire cause: a cookie only gets a browser expiry when the
+> sign-in was persistent. The explicit thirty days is a deliberate ceiling rather than the fix.
+>
+> The trap the work nearly shipped with, for anyone touching a checkbox default again: an unticked
+> checkbox posts nothing, and the model binder leaves a property it finds no value for at its
+> initialiser. Flipping the initialiser to `true` on its own renders a box that can be unticked and
+> binds to `true` anyway — silently, on exactly the shared-computer case the box exists for. It needs
+> a hidden companion field after it.
 
 ### M4 — uploads that survive the phone
 - On `visibilitychange` → visible, resume anything stalled, automatically. The machinery exists; it
@@ -100,7 +113,7 @@ Size: small. Depends on nothing.
 
 Size: medium. Depends on M1.
 
-### M6 — the iOS share sheet
+### M6 — the iOS share sheet — **done, 5c3ab4e**
 `navigator.share` on the created-link screen, behind a feature test, beside the existing copy
 button rather than replacing it — the desktop panel has no share sheet.
 
