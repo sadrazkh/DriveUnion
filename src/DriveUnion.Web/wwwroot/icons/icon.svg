@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The app icon, and the source every other size is drawn from.
+
+  Three discs that overlap into one shape, which is the product rather than a decoration: the
+  storage under every workspace is a pool of Google accounts, and what the customer sees is one
+  space. It is also, literally, the name.
+
+  Stroked rather than filled, and at 180 on a 180 grid, so it survives being 20 pixels wide in a
+  browser tab — three filled circles at that size are a green blob. No gradient and no shadow: iOS
+  draws its own mask and its own shading over whatever this is, and a second light source fights it.
+
+  Full-bleed square with no rounded corners on purpose. iOS masks a home-screen icon itself, and an
+  icon that arrives pre-rounded is one rounded twice, with a ring of background colour outside the
+  corner it drew.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <title>Drive Union</title>
+  <rect width="180" height="180" fill="#0f9d77"/>
+  <g fill="none" stroke="#ffffff" stroke-width="11">
+    <circle cx="90" cy="66" r="30"/>
+    <circle cx="64" cy="110" r="30"/>
+    <circle cx="116" cy="110" r="30"/>
+  </g>
+</svg>

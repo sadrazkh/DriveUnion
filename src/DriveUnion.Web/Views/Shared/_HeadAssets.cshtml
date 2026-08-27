@@ -33,6 +33,51 @@
         document.documentElement.dataset.theme = theme;
     })();
 </script>
+@*
+    Installing this to a home screen.
+
+    crossorigin="use-credentials" is load bearing and does not look it. A manifest is fetched
+    without cookies unless the tag says otherwise, and ManifestController reads PanelCulture to
+    decide which language it answers in — so without this attribute an installed app is labelled in
+    the default language whatever the panel is set to. The two halves only work together.
+*@
+<link rel="manifest" href="~/manifest.webmanifest" crossorigin="use-credentials" />
+
+@*
+    The status bar's colour, twice, because the manifest may only carry one and a panel that follows
+    the system theme would have the wrong one half the time. A browser that understands these
+    prefers them over the manifest's theme_color.
+*@
+<meta name="theme-color" content="@BrandColours.LightBackground" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="@BrandColours.DarkBackground" media="(prefers-color-scheme: dark)" />
+
+@*
+    iOS, which reads none of the above for the icon.
+
+    apple-touch-icon is the only icon Safari uses for a home screen, and it must be a PNG — an SVG
+    here is ignored and the phone screenshots the page instead, which is how a home screen ends up
+    with a tiny picture of a sign-in form on it. No rounded corners in the file: iOS masks it itself,
+    and one that arrives pre-rounded is rounded twice.
+
+    apple-mobile-web-app-capable is the older spelling of display: standalone. Recent iOS honours the
+    manifest, older iOS honours only this, and there is no cost to saying both.
+
+    black-translucent puts the page under the status bar rather than beside it, which is what makes
+    the app fill the screen — and it is exactly why M2 has to add env(safe-area-inset-*) to the
+    header. Until it does, the header sits under the clock.
+*@
+<link rel="apple-touch-icon" href="~/icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="@UiText.Pwa.ShortName" />
+
+@*
+    The tab icon. SVG first for anything current — one file, sharp at every size, and it follows no
+    theme so it reads on a light or a dark tab strip. The PNG is for what cannot read it.
+*@
+<link rel="icon" href="~/icons/icon.svg" type="image/svg+xml" />
+<link rel="icon" href="~/icons/favicon-32.png" sizes="32x32" type="image/png" />
+
 @* Same-origin, and still crossorigin: fonts are fetched in CORS mode whatever the origin, and
    without the attribute the browser downloads the file twice. *@
 <link rel="preload" href="~/fonts/Vazirmatn-Variable.woff2" as="font" type="font/woff2" crossorigin />

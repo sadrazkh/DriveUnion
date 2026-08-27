@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The same mark, drawn smaller, for a launcher that is going to cut a shape out of it.
+
+  A maskable icon may be masked to a circle, a squircle, a rounded square or a teardrop depending on
+  the device, and the only thing guaranteed to survive is the inner circle covering 80% of the width
+  — the «safe zone». icon.svg fills 84% of its canvas and would lose the outer discs to a circular
+  mask on some Android launchers.
+
+  So the mark is scaled to 62% about the centre. That is inside the safe zone with room to spare,
+  which is the right side to err on: an icon that is slightly small looks deliberate, and one that is
+  clipped looks broken.
+
+  Not used by iOS, which applies its own mask to the ordinary icon and never reads `purpose`.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <title>Drive Union</title>
+  <rect width="180" height="180" fill="#0f9d77"/>
+  <g transform="translate(90 90) scale(0.62) translate(-90 -90)">
+    <g fill="none" stroke="#ffffff" stroke-width="11">
+      <circle cx="90" cy="66" r="30"/>
+      <circle cx="64" cy="110" r="30"/>
+      <circle cx="116" cy="110" r="30"/>
+    </g>
+  </g>
+</svg>
