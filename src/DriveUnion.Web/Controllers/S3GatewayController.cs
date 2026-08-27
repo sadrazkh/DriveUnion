@@ -30,9 +30,17 @@ namespace DriveUnion.Web.Controllers;
 /// Complete and Abort — which is what the AWS CLI switches to above its threshold and therefore
 /// what large files actually travel by.</para>
 ///
-/// <para><b>What is not:</b> presigned URLs, POST policies, bucket lifecycle, versioning, ACLs, and
-/// server-side copy. None is reachable through the operations above, and each would be a surface
-/// with nothing behind it.</para>
+/// <para><b>Presigned URLs, for reads.</b> <c>aws s3 presign</c> and every SDK's
+/// <c>GetPreSignedURL</c> produce a link whose signature is in the query string and whose caller
+/// holds no credential, and every «share a temporary link out of my bucket» workflow is built on
+/// one. They arrive at the same actions as everything else and are refused by the same rules —
+/// tenant scoping, missing keys, encrypted objects. A presigned <b>write</b> is refused explicitly;
+/// the argument is on <c>S3RequestAuthenticator.MayBePresigned</c> and is about what a URL in a chat
+/// log is allowed to do.</para>
+///
+/// <para><b>What is not:</b> POST policies, bucket lifecycle, versioning, ACLs, and server-side
+/// copy. None is reachable through the operations above, and each would be a surface with nothing
+/// behind it.</para>
 ///
 /// <para><b>Multipart needs a staging directory configured</b> — see <c>S3StagingOptions</c> — and
 /// answers NotImplemented without one rather than pretending. Parts arrive out of order and Drive's
@@ -434,6 +442,24 @@ public sealed class S3GatewayController(
         S3Refusal.SignatureDoesNotMatch => Error(StatusCodes.Status403Forbidden, "SignatureDoesNotMatch", "The request signature does not match."),
         S3Refusal.RequestTimeTooSkewed => Error(StatusCodes.Status403Forbidden, "RequestTimeTooSkewed", "The request time is too far from the server's."),
         S3Refusal.MissingSecurityHeader => Error(StatusCodes.Status400BadRequest, "MissingSecurityHeader", "The request was not signed with AWS4-HMAC-SHA256."),
+
+        // AccessDenied and not an invented «RequestExpired» code: S3 answers an expired presigned
+        // URL with 403 AccessDenied and «Request has expired», and clients — the CLI's error output
+        // included — switch on the code. The Message is where the difference goes.
+        S3Refusal.RequestExpired => Error(StatusCodes.Status403Forbidden, "AccessDenied", "Request has expired."),
+
+        S3Refusal.MalformedPresignedQuery => Error(
+            StatusCodes.Status400BadRequest,
+            "AuthorizationQueryParametersError",
+            "Query-string authentication requires X-Amz-Algorithm, X-Amz-Credential, X-Amz-Date, "
+            + "X-Amz-Expires, X-Amz-SignedHeaders and X-Amz-Signature, with X-Amz-Expires a whole "
+            + "number of seconds between 1 and 604800."),
+
+        S3Refusal.PresignedMethodNotAllowed => Error(
+            StatusCodes.Status403Forbidden,
+            "AccessDenied",
+            "A presigned URL may only read here. Sign a write with an Authorization header instead."),
+
         _ => Error(StatusCodes.Status403Forbidden, "AccessDenied", "That credential may not do this."),
     };
 

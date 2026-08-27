@@ -153,10 +153,19 @@ public static partial class UiText
             "نام باکت، همان اسم کوتاه فضای کاری شماست و یکی بیشتر ندارید.",
             "The bucket is your workspace's slug, and there is exactly one.");
 
-        /// <summary>What is and is not implemented, where somebody will read it before hitting it.</summary>
+        /// <summary>
+        /// What is and is not implemented, where somebody will read it before hitting it.
+        ///
+        /// <para>This used to say «no presigned URLs» flatly, which stopped being true the day the
+        /// gateway learned to verify a query-string signature. It is a sentence about reading and
+        /// writing separately now, because that is what the gateway does: a presigned GET is a link
+        /// somebody can be handed, and a presigned PUT is refused on purpose — see
+        /// <c>S3RequestAuthenticator.MayBePresigned</c> for why a leaked write URL is not the same
+        /// risk as a leaked read one.</para>
+        /// </summary>
         public static string S3Limits => Pick(
-            "ls، cp، rm، فهرست‌کردن و آپلود چندبخشی. لینک‌های presigned، نسخه‌بندی و ACL نیست. آپلود چندبخشی به یک مسیر موقت روی سرور نیاز دارد؛ اگر اپراتور تنظیمش نکرده باشد، فایل بزرگ رد می‌شود با پیام روشن نه با خرابی بی‌صدا.",
-            "ls, cp, rm, listing and multipart upload. No presigned URLs, versioning or ACLs. Multipart needs a staging path on the server; without one a large file is refused with a clear message rather than failing quietly.");
+            "ls، cp، rm، فهرست‌کردن و آپلود چندبخشی. لینک presigned برای خواندن کار می‌کند (حداکثر ۷ روز)؛ برای نوشتن نه. نسخه‌بندی و ACL نیست. آپلود چندبخشی به یک مسیر موقت روی سرور نیاز دارد؛ اگر اپراتور تنظیمش نکرده باشد، فایل بزرگ رد می‌شود با پیام روشن نه با خرابی بی‌صدا.",
+            "ls, cp, rm, listing and multipart upload. Presigned URLs work for reading, up to 7 days; not for writing. No versioning or ACLs. Multipart needs a staging path on the server; without one a large file is refused with a clear message rather than failing quietly.");
 
         [VerbatimText("a shell session is a command, not a sentence")]
         public static string S3Example(string endpoint, string bucket) =>

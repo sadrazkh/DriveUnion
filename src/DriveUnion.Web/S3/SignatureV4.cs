@@ -14,6 +14,25 @@ public sealed record SignatureV4Header(
     string Signature);
 
 /// <summary>
+/// What a presigned URL's query string claimed, before any of it is believed.
+/// </summary>
+/// <param name="AmzDate">
+/// The <c>X-Amz-Date</c> parameter as it arrived, not a reformatting of <paramref name="SignedAt"/>.
+/// It goes into the string to sign verbatim, so keeping the original text beside the parsed instant
+/// is what stops a round trip through <see cref="DateTimeOffset"/> from silently signing a different
+/// string than the client did.
+/// </param>
+public sealed record SignatureV4Presigned(
+    SignatureV4Header Header,
+    string AmzDate,
+    DateTimeOffset SignedAt,
+    TimeSpan Lifetime)
+{
+    /// <summary>The instant after which this URL is a refusal rather than an object.</summary>
+    public DateTimeOffset ExpiresAt => SignedAt + Lifetime;
+}
+
+/// <summary>
 /// AWS Signature Version 4, verified.
 ///
 /// <para>The protocol in one paragraph: the client builds a <i>canonical request</i> — method, path,
@@ -23,12 +42,21 @@ public sealed record SignatureV4Header(
 /// Every step is specified to the byte, and getting one wrong produces a signature mismatch with no
 /// clue which step it was — so each step below says what it is doing and why.</para>
 ///
-/// <para><b>Scope of this implementation</b>, stated rather than discovered: header-based SigV4
-/// only. Presigned URLs and POST policies are not accepted, because neither is reachable through
-/// the operations this gateway offers. Region and service in the credential scope are checked for
-/// shape and then used verbatim — a gateway that insisted on <c>us-east-1</c> would refuse a client
-/// configured for anywhere else for no reason, since there is one storage pool and it is not in a
-/// region.</para>
+/// <para><b>Scope of this implementation</b>, stated rather than discovered: both halves of SigV4 —
+/// the signature in an <c>Authorization</c> header, and the signature in a query string, which is
+/// what <c>aws s3 presign</c> and every SDK's <c>GetPreSignedURL</c> produce. POST policies are not
+/// accepted, because a browser form post is not reachable through the operations this gateway
+/// offers. Region and service in the credential scope are checked for shape and then used verbatim —
+/// a gateway that insisted on <c>us-east-1</c> would refuse a client configured for anywhere else
+/// for no reason, since there is one storage pool and it is not in a region.</para>
+///
+/// <para><b>The two halves differ in four places and nowhere else.</b> The signature lives in
+/// <c>X-Amz-Signature</c> rather than in a header; that one parameter is left out of the canonical
+/// query while every other <c>X-Amz-*</c> stays in; the payload is the literal
+/// <see cref="UnsignedPayload"/> because there was no body when the URL was made; and the request
+/// carries its own lifetime in <c>X-Amz-Expires</c> instead of borrowing the clock-skew window.
+/// Everything after that — canonical request, string to sign, the four chained HMACs — is the same
+/// code, which is the point of having written it once.</para>
 /// </summary>
 public static class SignatureV4
 {
@@ -55,6 +83,27 @@ public static class SignatureV4
     /// not worth what it costs.</para>
     /// </summary>
     public static readonly TimeSpan MaxClockSkew = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// The longest a presigned URL may live, which is AWS's own cap rather than a number of ours.
+    ///
+    /// <para>Seven days is where every SDK refuses to sign, so a URL asking for more was not made by
+    /// a client this gateway can hope to interoperate with. It is also the outer edge of what a
+    /// bearer credential in a query string should ever be: a presigned URL survives in browser
+    /// history, in a <c>Referer</c>, in whatever chat client unfurled it, and the cap is the only
+    /// thing bounding how long a copy of it stays useful.</para>
+    /// </summary>
+    public static readonly TimeSpan MaxPresignedLifetime = TimeSpan.FromDays(7);
+
+    // The six query parameters a presigned URL carries. Named constants because two places have to
+    // agree on them exactly — the parser below and the canonical query, which must omit
+    // «X-Amz-Signature» and keep the other five.
+    public const string AlgorithmParameter = "X-Amz-Algorithm";
+    public const string CredentialParameter = "X-Amz-Credential";
+    public const string DateParameter = "X-Amz-Date";
+    public const string ExpiresParameter = "X-Amz-Expires";
+    public const string SignedHeadersParameter = "X-Amz-SignedHeaders";
+    public const string SignatureParameter = "X-Amz-Signature";
 
     /// <summary>
     /// Parses the header, or null when it is not an <c>AWS4-HMAC-SHA256</c> one this can read.
@@ -90,20 +139,58 @@ public static class SignatureV4
 
         if (credential is null || signedHeaders is null || signature is null) return null;
 
-        // <access key>/<yyyyMMdd>/<region>/<service>/aws4_request — five parts, and the last is a
-        // fixed terminator. Anything else is not a scope this can verify against.
-        var scope = credential.Split('/');
+        return FromCredential(credential, signedHeaders, signature);
+    }
 
-        if (scope.Length != 5 || scope[4] != "aws4_request") return null;
-        if (scope[0].Length == 0 || scope[1].Length != 8) return null;
+    /// <summary>
+    /// A presigned URL's query parameters, parsed, or null when they are not a set that can be
+    /// verified at all.
+    ///
+    /// <para>One null for every shape of «this cannot be checked» — a parameter missing, an algorithm
+    /// this does not implement, a credential that is not a scope, a date that is not a date, and an
+    /// <c>X-Amz-Expires</c> that is not a positive number of seconds inside the week AWS caps it at.
+    /// S3 answers all of them with <c>AuthorizationQueryParametersError</c>, so there is nothing for
+    /// a caller to do with them separately, and naming which parameter offended tells somebody
+    /// probing the gateway how far they got.</para>
+    ///
+    /// <para>Nothing here is compared against the clock. Whether a URL is <i>expired</i> depends on
+    /// the server's own time and belongs where the rest of the timing checks are; this decides only
+    /// whether the query is a signature at all.</para>
+    /// </summary>
+    public static SignatureV4Presigned? ParsePresigned(
+        string? algorithm,
+        string? credential,
+        string? amzDate,
+        string? expires,
+        string? signedHeaders,
+        string? signature)
+    {
+        // Ordinal and exact. «aws4-hmac-sha256» is not the algorithm name the client put in its own
+        // canonical query, so accepting it here would only produce a mismatch two steps later.
+        if (!string.Equals(algorithm, Algorithm, StringComparison.Ordinal)) return null;
 
-        return new SignatureV4Header(
-            scope[0],
-            scope[1],
-            scope[2],
-            scope[3],
-            [.. signedHeaders.Split(';', StringSplitOptions.RemoveEmptyEntries)],
-            signature);
+        if (string.IsNullOrEmpty(credential)) return null;
+        if (string.IsNullOrEmpty(signedHeaders)) return null;
+        if (string.IsNullOrEmpty(signature)) return null;
+
+        if (ParseAmzDate(amzDate) is not { } signedAt) return null;
+
+        // Whole seconds and nothing else: NumberStyles.None refuses a sign, a decimal point,
+        // exponent notation and surrounding whitespace, so «-1», «3600.0» and « 60» are all refused
+        // rather than guessed at. An expiry the signer did not agree to is not one to invent.
+        if (!long.TryParse(expires, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds))
+        {
+            return null;
+        }
+
+        // Range-checked as a number before it becomes a TimeSpan. TimeSpan.FromSeconds throws on
+        // anything near long.MaxValue, so a comparison written the other way round would turn an
+        // absurd X-Amz-Expires into a 500 instead of a refusal.
+        if (seconds <= 0 || seconds > (long)MaxPresignedLifetime.TotalSeconds) return null;
+
+        return FromCredential(credential, signedHeaders, signature) is { } header
+            ? new SignatureV4Presigned(header, amzDate!, signedAt, TimeSpan.FromSeconds(seconds))
+            : null;
     }
 
     /// <summary>
@@ -247,6 +334,30 @@ public static class SignatureV4
     }
 
     public static string Hex(byte[] bytes) => Convert.ToHexStringLower(bytes);
+
+    /// <summary>
+    /// The credential scope, split and checked, or null when it is not one.
+    ///
+    /// <para><c>&lt;access key&gt;/&lt;yyyyMMdd&gt;/&lt;region&gt;/&lt;service&gt;/aws4_request</c> —
+    /// five parts, and the last is a fixed terminator. Anything else is not a scope this can verify
+    /// against. Shared by the header and the query string because AWS specifies one credential
+    /// format for both, and two copies of this would eventually disagree about which.</para>
+    /// </summary>
+    private static SignatureV4Header? FromCredential(string credential, string signedHeaders, string signature)
+    {
+        var scope = credential.Split('/');
+
+        if (scope.Length != 5 || scope[4] != "aws4_request") return null;
+        if (scope[0].Length == 0 || scope[1].Length != 8) return null;
+
+        return new SignatureV4Header(
+            scope[0],
+            scope[1],
+            scope[2],
+            scope[3],
+            [.. signedHeaders.Split(';', StringSplitOptions.RemoveEmptyEntries)],
+            signature);
+    }
 
     private static byte[] HmacSha256(byte[] key, byte[] data) => HMACSHA256.HashData(key, data);
 
