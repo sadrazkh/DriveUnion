@@ -153,6 +153,26 @@ export function createUploadStore(readConfig: () => UploadConfig) {
 
   const busy = computed(() => inFlightItems.value.length > 0);
 
+  /**
+   * Anything that still has committed bytes and a `File` handle behind it — moving or not.
+   *
+   * <p>Separate from <c>busy</c> rather than folded into it, because the two answer different
+   * questions. <c>busy</c> is «is the queue moving», which is what the dock's label counts and what
+   * the wake lock is held over; widening it would make the dock say «uploading 3» about files that
+   * have stopped and hold the screen awake over a queue doing nothing.</p>
+   *
+   * <p>This one is «would closing the page lose work», and it is what <c>beforeunload</c> asks. A
+   * paused or interrupted upload is exactly as lost as a running one: the handle goes with the page
+   * and no amount of session state brings it back. Before this existed the browser warned about a
+   * transfer in flight and said nothing about one the phone had just stopped — which, since transfers
+   * on a phone stop constantly, was silence in the case the warning was for.</p>
+   */
+  const unfinished = computed(() => items.value.some((i) =>
+    i.status === 'uploading'
+    || i.status === 'queued'
+    || i.status === 'paused'
+    || i.status === 'interrupted'));
+
   const totalPercent = computed(() => {
     const live = items.value.filter((i) => i.status !== 'cancelled');
     if (live.length === 0) return 0;
@@ -765,6 +785,7 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     concurrency,
     inFlightItems,
     busy,
+    unfinished,
     totalPercent,
     selected,
     add,

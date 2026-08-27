@@ -1,0 +1,49 @@
+@{
+    Layout = null;
+}
+@*
+    The offline notice — the one page the service worker keeps on the device.
+
+    Layout = null, and that is the point of the file rather than a shortcut. The panel's shell is
+    rendered for whoever asked: it carries their email, their capacity card, their antiforgery token
+    and the nav items their claims allow. None of that may be written to a phone's disk, and a page
+    that inherited the shell would be one `@@if` away from carrying it. This draws the public page's
+    chrome-less frame instead, out of the same stylesheet, and holds nothing that varies by reader.
+
+    No island either. The theme control is Vue, and this page may be shown with no network at all —
+    the bundle is normally in the worker's cache and normally loads, but "normally" is not a thing to
+    hang a control on. Everything here is server-rendered and works with no script at all.
+*@
+<!DOCTYPE html>
+<html dir="@PanelCulture.Direction" lang="@PanelCulture.Code" data-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>@UiText.Brand.PageTitle(UiText.Offline.Title)</title>
+    <partial name="_HeadAssets" />
+</head>
+<body>
+<div class="public-page">
+    <div class="public-wrap">
+        <header class="public-head">
+            <div class="row">
+                <span class="brand-mark" aria-hidden="true">@UiText.Brand.Mark</span>
+                <span class="brand-name">@UiText.Brand.Name</span>
+            </div>
+        </header>
+
+        <div class="card card--pad">
+            <h1 class="page-title" style="margin-bottom: 8px;">@UiText.Offline.Title</h1>
+            <p class="page-sub" style="margin-bottom: 14px;">@UiText.Offline.Body</p>
+
+            @* role="status" because this page arrives without anybody navigating to it by name:
+               the address bar still says /files, and a reader who cannot see the screen is
+               otherwise told nothing about why that is not what loaded. *@
+            <p class="notice" role="status" style="margin-bottom: 16px;">@UiText.Offline.NothingStored</p>
+
+            <a class="btn btn--primary" href="/">@UiText.Offline.Retry</a>
+        </div>
+    </div>
+</div>
+</body>
+</html>

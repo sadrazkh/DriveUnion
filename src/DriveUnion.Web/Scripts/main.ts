@@ -10,6 +10,7 @@ import { mountFileGrid } from './fileGrid';
 import { mountGoogleConnect } from './googleConnect';
 import { mountNavToggle } from './nav';
 import { startNavigation } from './navigate';
+import { registerServiceWorker } from './serviceWorker';
 
 /**
  * The one entry Vite compiles. Everything the panel loads on every page hangs off this file.
@@ -238,6 +239,16 @@ startNavigation({
   },
 });
 
+// The service worker, which is what makes this installable rather than merely bookmarkable: the
+// shell and its assets on disk, and a page that says «no connection» instead of the browser's error
+// screen. It is registered from here because here is the one file every page in the panel loads,
+// and because there must be exactly one registration — see Scripts/serviceWorker.ts, which is also
+// where anything needing the worker itself asks for it rather than registering a second one.
+//
+// After the islands on purpose. An install fetches the offline page, and the screen the reader is
+// looking at has the better claim on that connection.
+registerServiceWorker();
+
 // Not every navigation can be a swap, and the ones that cannot still end the queue: a cross-origin
 // link, a POST, a reload, and every fallback navigate.ts makes when a response is not something it
 // can swap in. The File handles go with the page and there is no way to get them back — the plan
@@ -245,8 +256,13 @@ startNavigation({
 //
 // This is the last moment anything can be said. The browser writes the sentence, not us, and shows
 // it only if the reader has interacted with the page — which somebody who started an upload has.
+//
+// `unfinished` rather than `busy`: a transfer the phone stopped is as lost as one in flight — the
+// File handle goes with the page either way — and on a phone stopping is the ordinary case, not the
+// rare one. Asking `busy` here meant the browser warned about a running upload and said nothing at
+// all about the four the customer had just been told would carry on when they came back.
 addEventListener('beforeunload', (event) => {
-  if (uploads?.busy.value !== true) return;
+  if (uploads?.unfinished.value !== true) return;
 
   event.preventDefault();
 
