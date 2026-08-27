@@ -475,6 +475,34 @@
                                             class="btn btn--sm"
                                             data-island="copy-link"
                                             data-value="@link.PublicUrl">@UiText.Files.Copy</button>
+                                    @*
+                                        The phone's own share sheet, beside the copy button and not
+                                        instead of it: on a phone nobody wants this link on their
+                                        clipboard, they want it in a message to one person — and on
+                                        a desktop there is no sheet to open at all.
+
+                                        Rendered hidden, and shown by copyLink.ts only where
+                                        `navigator.share` exists. That is a question no server can
+                                        answer: the call is absent outside a secure context and on
+                                        every browser without a sheet, and a button that throws when
+                                        pressed leaves the reader believing they have sent the link.
+                                        Nothing is lost by hiding it — the button beside it is what
+                                        that reader has always used.
+
+                                        It carries no address of its own. The one on the copy button
+                                        is the address, and two copies of it in one box are two to
+                                        keep in step. The wording travels on the element for the
+                                        reason the redirect-URI copy control's does: a bundle is
+                                        compiled once and cannot ask which language this request is
+                                        in.
+                                    *@
+                                    <button type="button"
+                                            class="btn btn--sm"
+                                            data-share
+                                            data-share-title="@Model.Selected.Name"
+                                            data-share-text="@UiText.Sharing.ShareMessage(Model.Selected.Name)"
+                                            data-share-refused="@UiText.Sharing.ShareRefused"
+                                            hidden>@UiText.Sharing.Share</button>
                                 </div>
                                 <div class="row mono muted" style="gap: 14px; font-size: 11px; margin-top: 9px;">
                                     <span>@link.DownloadsText</span>
