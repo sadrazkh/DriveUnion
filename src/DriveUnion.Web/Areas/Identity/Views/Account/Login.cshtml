@@ -64,10 +64,29 @@
                 </span>
             </div>
 
-            <label class="row" style="gap: 8px; font-size: 12.5px;">
-                <input type="checkbox" name="RememberMe" value="true" @(Model.RememberMe ? "checked" : null) />
-                <span>@UiText.Identity.RememberMe</span>
-            </label>
+            <div class="stack" style="gap: 6px;">
+                <label class="row" style="gap: 8px; font-size: 12.5px;">
+                    <input type="checkbox" name="RememberMe" value="true" @(Model.RememberMe ? "checked" : null) />
+                    <span>@UiText.Identity.RememberMe</span>
+                </label>
+
+                @* The hidden field is not decoration and cannot be dropped. An unticked checkbox
+                   posts nothing at all, and MVC leaves a property it finds no value for at its
+                   initialiser — which is now true. Without this line the box would render ticked,
+                   post nothing when somebody unticked it, and bind to true anyway: the one control
+                   that protects a person on a shared computer would do exactly nothing, silently.
+
+                   After the checkbox, not before it. Both go on the wire under one name, and the
+                   binder takes the first value — so the order is what makes a ticked box mean true.
+                   It is the pair and the order Razor's own asp-for emits for a bool. *@
+                <input type="hidden" name="RememberMe" value="false" />
+
+                @* Said here rather than in a help page nobody opens: the moment this matters is the
+                   moment somebody is typing a password into a machine that is not theirs. *@
+                <p class="page-sub" style="font-size: 12px; margin: 0;">
+                    @UiText.SignIn.StaySignedInHint(Model.StaySignedInDays)
+                </p>
+            </div>
 
             <button type="submit" class="btn btn--primary btn--lg btn--block">@UiText.Identity.SignInTitle</button>
         </form>

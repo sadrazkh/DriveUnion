@@ -85,6 +85,52 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/Identity/Account/Login";
     options.LogoutPath = "/Identity/Account/Logout";
     options.AccessDeniedPath = "/Identity/Account/AccessDenied";
+
+    // ── How long a session lasts, and what a long one costs ─────────────────────────────────────
+    //
+    // Thirty days, and the clock restarts on use. Both are written down rather than inherited: the
+    // framework's fourteen days and its sliding default are defensible numbers nobody here chose,
+    // and a number nobody chose is a number nobody can be argued out of when it turns out to be
+    // wrong.
+    //
+    // What it is for. Installed on an iPhone home screen this panel gets its own cookie jar, and
+    // iOS evicts a standalone web app from memory whenever it wants the RAM — which ends that jar's
+    // browser session and throws away every cookie that has no expiry of its own. Until now every
+    // ordinary sign-in produced exactly that, so the app asked for a password on almost every cold
+    // open, which is the whole of why it was unusable on a phone.
+    //
+    // This line alone does not fix that, and it is worth being exact about why: ExpireTimeSpan has
+    // always bounded the *ticket*, and the ticket was never the problem. A cookie is only written
+    // to disk when the sign-in was persistent, and it was persistent only when the sign-in form's
+    // checkbox was ticked — which it never was, because it shipped unticked. So the other half of
+    // this change is LoginViewModel.RememberMe defaulting to on. Sliding then means the ticket is
+    // reissued once it is over halfway through its life, so a panel opened at least once a
+    // fortnight never asks again.
+    //
+    // What it costs, said plainly, because this is a security decision and not a convenience one.
+    // An authentication cookie is a bearer credential: whoever holds the bytes is the user, and
+    // lengthening its life lengthens exactly that. Thirty days is thirty days in which a phone left
+    // in a taxi, a borrowed laptop, or a copied profile directory is still signed in to somebody
+    // else's files. Three things are what make that price payable here rather than reckless:
+    //
+    //   * The stamp is compared on every request. AddDriveUnionTenancy sets
+    //     SecurityStampValidatorOptions.ValidationInterval to zero, and disabling an account or
+    //     resetting its password bumps the stamp — so every outstanding cookie, however long-lived
+    //     and however many devices it is on, stops working on its holder's next request. Without
+    //     that line this number would also be the time-to-revoke, and thirty days would be
+    //     indefensible. The two settings have to be read together or not at all.
+    //   * The cookie is HttpOnly and SameSite=Lax, which are Identity's defaults and are left
+    //     alone: it is not readable from script and does not ride along on a cross-site request.
+    //   * Turning it off is one click on the sign-in form, and the form says, at the moment it
+    //     matters, why somebody on a shared computer would want to. An unticked box is a session
+    //     cookie again — exactly the behaviour this replaces, kept for the case it was right for.
+    //
+    // Not ninety days, and not a year, which is what a consumer product picks. Nothing here needs a
+    // session that outlives a phone, and a customer has no «sign out everywhere» of their own —
+    // ending a session that has gone astray means asking the operator to reset the password. The
+    // window has to stay short enough that asking stays a rare favour rather than the support queue.
+    options.ExpireTimeSpan = TimeSpan.FromDays(30);
+    options.SlidingExpiration = true;
 });
 
 // The Drive client, the OAuth token service and the account directory. It has no ValidateOnStart on

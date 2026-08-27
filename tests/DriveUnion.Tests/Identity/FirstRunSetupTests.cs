@@ -102,6 +102,41 @@ public class FirstRunSetupTests
         accounts.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// The one sign-in in the panel that is deliberately not persistent, pinned so that «not» stays
+    /// a decision rather than the line somebody forgot when the sign-in form got its default.
+    ///
+    /// <para>Everywhere else the answer to "stay signed in?" is yes, because the form asks it, ticks
+    /// it and says what it means. This screen has two password boxes and a button and asks nothing —
+    /// so a persistent cookie here would mint the longest-lived credential in the product, for the
+    /// account that owns every Google account and every workspace, without the person ever being
+    /// offered the choice. The cost of the other answer is one sign-in on the form that does offer
+    /// it.</para>
+    /// </summary>
+    [Fact]
+    public async Task The_operator_the_setup_screen_creates_is_not_kept_signed_in()
+    {
+        using var harness = new IdentityPagesHarness();
+        using var client = harness.NewClient(keepCookies: true);
+
+        var token = await IdentityPagesHarness.AntiforgeryTokenAsync(client, Setup);
+
+        using var created = await client.PostAsync(
+            new Uri(Setup, UriKind.Relative),
+            Form(token, OperatorEmail, GoodPassword));
+
+        created.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        var cookie = harness.PanelCookieOn(created);
+
+        cookie.Should().NotBeNull("the operator is signed in by this request");
+
+        // No expiry: a session cookie, gone when the browser is closed. ExpireTimeSpan still bounds
+        // the ticket, so this is shorter than an ordinary sign-in and never longer.
+        cookie!.Expires.Should().BeNull();
+        cookie.MaxAge.Should().BeNull();
+    }
+
     [Fact]
     public async Task Once_an_operator_exists_the_route_is_gone_on_get_and_on_post()
     {

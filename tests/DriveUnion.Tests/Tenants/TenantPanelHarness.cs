@@ -5,6 +5,7 @@ using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Infrastructure.Tenancy;
 using DriveUnion.Tests.Hosting;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,6 +15,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 namespace DriveUnion.Tests.Tenants;
 
@@ -117,24 +120,55 @@ public sealed class TenantPanelHarness : WebApplicationFactory<Program>
     /// <para>A 302 means the credentials were accepted. A 200 means the form came back with a
     /// message on it, which is what a wrong password and a locked-out account both look like.</para>
     /// </summary>
+    /// <param name="rememberMe">
+    /// Whether the checkbox was left ticked. It ships ticked, so <c>false</c> here is somebody
+    /// deliberately unticking it — which is what most of these tests want, since a session cookie is
+    /// the shorter-lived of the two and proves the same things. What goes on the wire is what a
+    /// browser sends: an unticked checkbox posts nothing at all, so the form carries a hidden
+    /// <c>false</c> underneath it and a ticked box is a second value in front of that one.
+    /// </param>
     public static async Task<HttpResponseMessage> SignInAsync(
         HttpClient client,
         string email,
-        string password)
+        string password,
+        bool rememberMe = false)
     {
         ArgumentNullException.ThrowIfNull(client);
 
         var token = await AntiforgeryTokenAsync(client, "/Identity/Account/Login");
 
+        var fields = new List<KeyValuePair<string, string>>
+        {
+            new("__RequestVerificationToken", token),
+            new("Email", email),
+            new("Password", password),
+        };
+
+        if (rememberMe) fields.Add(new("RememberMe", "true"));
+
+        fields.Add(new("RememberMe", "false"));
+
         return await client.PostAsync(
             new Uri("/Identity/Account/Login", UriKind.Relative),
-            new FormUrlEncodedContent(new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["__RequestVerificationToken"] = token,
-                ["Email"] = email,
-                ["Password"] = password,
-                ["RememberMe"] = "false",
-            }));
+            new FormUrlEncodedContent(fields));
+    }
+
+    /// <summary>
+    /// The <c>Set-Cookie</c> the panel wrote on this response, parsed — name, expiry and all. Null
+    /// when it wrote none, which is what a refused sign-in looks like.
+    /// </summary>
+    public SetCookieHeaderValue? PanelCookieOn(HttpResponseMessage response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+
+        var name = Services
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(IdentityConstants.ApplicationScheme)
+            .Cookie.Name;
+
+        return response.Headers.TryGetValues(HeaderNames.SetCookie, out var written)
+            ? written.Select(header => SetCookieHeaderValue.Parse(header)).SingleOrDefault(c => c.Name == name)
+            : null;
     }
 
     /// <summary>The token a page renders, fetched the way a browser gets it.</summary>

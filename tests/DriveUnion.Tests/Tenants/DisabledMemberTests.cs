@@ -54,6 +54,67 @@ public class DisabledMemberTests
         after.Headers.Location?.ToString().Should().Contain("/Identity/Account/Login");
     }
 
+    /// <summary>
+    /// The same thing again, with the cookie the panel actually ships now — and it is the one test
+    /// that has to hold for the thirty-day window to be defensible at all.
+    ///
+    /// <para>The sign-in form ticks «keep me signed in» by default, so an ordinary session is a
+    /// persistent cookie with an expiry a month out, sitting on a phone and on however many other
+    /// devices its owner signed in from. That is a bearer credential with a long life, and the only
+    /// reason it is not also a long time-to-revoke is
+    /// <c>SecurityStampValidatorOptions.ValidationInterval = TimeSpan.Zero</c> in
+    /// <c>AddDriveUnionTenancy</c>: the stamp is compared against the row on every authenticated
+    /// request, and disabling somebody bumps it.</para>
+    ///
+    /// <para>Lengthening the cookie without that line — or somebody later restoring the framework's
+    /// thirty-minute interval because one database lookup per request looked expensive — turns
+    /// "revoked" into "revoked, and then still signed in for up to a month". The two settings are a
+    /// pair, and nothing but this test says so at run time.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_long_lived_cookie_does_not_outlive_being_disabled()
+    {
+        using var harness = new TenantPanelHarness();
+        using var operatorClient = await harness.SignedInOperatorAsync();
+
+        var (tenantId, userId) = await OnboardAsync(harness, operatorClient);
+
+        using var customer = harness.NewClient();
+
+        using var signedIn = await TenantPanelHarness.SignInAsync(
+            customer, CustomerEmail, TenantPanelHarness.Password, rememberMe: true);
+
+        signedIn.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        // Established first, so this cannot pass on a session cookie that happened to be short. What
+        // is about to be revoked is a credential the browser was told to keep for weeks.
+        var cookie = harness.PanelCookieOn(signedIn);
+
+        cookie.Should().NotBeNull();
+        cookie!.Expires.Should().NotBeNull("the box is ticked, so the browser is handed an expiry");
+        cookie.Expires!.Value.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(7));
+
+        using (var before = await customer.GetAsync(new Uri("/files", UriKind.Relative)))
+        {
+            before.StatusCode.Should().Be(HttpStatusCode.OK, "the cookie works before anything happens");
+        }
+
+        using var disabled = await TenantPanelHarness.PostAsync(
+            operatorClient,
+            $"/operator/tenants/{tenantId}",
+            $"/operator/tenants/{tenantId}/members/{userId}/disable",
+            new Dictionary<string, string>());
+
+        disabled.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        // The very next request, with the same month-long cookie still in the jar and nothing slept
+        // through. The expiry the browser holds is not what decides this; the stamp on the row is.
+        using var after = await customer.GetAsync(new Uri("/files", UriKind.Relative));
+
+        after.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        after.Headers.Location?.ToString().Should().Contain("/Identity/Account/Login");
+    }
+
     [Fact]
     public async Task A_disabled_user_cannot_sign_in_again_either()
     {

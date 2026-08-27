@@ -5,12 +5,16 @@ using DriveUnion.Infrastructure.Persistence;
 using DriveUnion.Infrastructure.Seeding;
 using DriveUnion.Tests.Hosting;
 using FluentAssertions;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 namespace DriveUnion.Tests.Identity;
 
@@ -80,6 +84,12 @@ public class IdentityPagesTests
 /// </param>
 public sealed class IdentityPagesHarness(string environment = "Production") : WebApplicationFactory<Program>
 {
+    /// <summary>The address the cookie handler points at, and the form's own action.</summary>
+    public const string LoginPath = "/Identity/Account/Login";
+
+    /// <summary>Over Identity's ten-character minimum, and not a credential to anything.</summary>
+    public const string Password = "Correct-Horse-9!";
+
     private readonly SqliteConnection connection = OpenSchema();
 
     public HttpClient NewClient(bool keepCookies = false) => CreateClient(
@@ -116,6 +126,96 @@ public sealed class IdentityPagesHarness(string environment = "Production") : We
     /// <see cref="FirstOperator.SlotId"/>: the setup route is gated on there being an operator at
     /// all, not on that one particular key being filled.
     /// </summary>
+    /// <summary>
+    /// An operator with a real password hash, made through the real user manager.
+    ///
+    /// <para><see cref="SeedOperator"/> writes a row and no credential, which is everything the
+    /// page tests need and nothing a sign-in can use. Anything that is about what the sign-in form
+    /// <i>does</i> — the cookie it writes, how long it lasts — has to walk the whole form, and that
+    /// needs a password somebody could actually type.</para>
+    /// </summary>
+    public async Task<AppUser> CreateOperatorWithPasswordAsync(
+        string email = "operator-with-a-password@driveunion.test")
+    {
+        using var scope = Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+
+        var user = new AppUser
+        {
+            Id = Guid.NewGuid(),
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            IsOperator = true,
+            LockoutEnabled = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        var result = await users.CreateAsync(user, Password);
+        Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(e => e.Description)));
+
+        return user;
+    }
+
+    /// <summary>
+    /// Signs in the way a person does: fetch the form, take its token, post what the form posts.
+    ///
+    /// <para>A 302 means the credentials were accepted; a 200 means the form came back with a
+    /// message on it.</para>
+    /// </summary>
+    /// <param name="rememberMe">
+    /// Whether the checkbox was left ticked. What goes on the wire is deliberately what a browser
+    /// would send and not a tidy <c>RememberMe=true|false</c>: an unticked checkbox posts nothing at
+    /// all, so the form carries a hidden <c>false</c> underneath it and a ticked box is a second
+    /// value in front of that one. Posting the tidy version instead would pass against a form that
+    /// had lost the hidden field — which is the bug this is here to catch.
+    /// </param>
+    public static async Task<HttpResponseMessage> SignInAsync(
+        HttpClient client,
+        string email,
+        string password,
+        bool rememberMe)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+
+        var token = await AntiforgeryTokenAsync(client, LoginPath);
+
+        var fields = new List<KeyValuePair<string, string>>
+        {
+            new("__RequestVerificationToken", token),
+            new("Email", email),
+            new("Password", password),
+        };
+
+        if (rememberMe) fields.Add(new("RememberMe", "true"));
+
+        fields.Add(new("RememberMe", "false"));
+
+        return await client.PostAsync(
+            new Uri(LoginPath, UriKind.Relative),
+            new FormUrlEncodedContent(fields));
+    }
+
+    /// <summary>The panel cookie as the running app has it configured — name, life and all.</summary>
+    public CookieAuthenticationOptions PanelCookie() => Services
+        .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+        .Get(IdentityConstants.ApplicationScheme);
+
+    /// <summary>
+    /// The <c>Set-Cookie</c> the panel wrote on this response, parsed. Null when it wrote none,
+    /// which is what a refused sign-in looks like.
+    /// </summary>
+    public SetCookieHeaderValue? PanelCookieOn(HttpResponseMessage response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+
+        var name = PanelCookie().Cookie.Name;
+
+        return response.Headers.TryGetValues(HeaderNames.SetCookie, out var written)
+            ? written.Select(header => SetCookieHeaderValue.Parse(header)).SingleOrDefault(c => c.Name == name)
+            : null;
+    }
+
     public AppUser SeedOperator(string email = "seeded-operator@driveunion.test")
     {
         var user = new AppUser

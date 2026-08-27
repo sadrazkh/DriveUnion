@@ -19,7 +19,33 @@ public sealed class LoginViewModel
     [DataType(DataType.Password)]
     public string Password { get; set; } = string.Empty;
 
-    public bool RememberMe { get; set; }
+    /// <summary>
+    /// Ticked when the form is drawn, which is the half of "stay signed in" that a phone can see.
+    ///
+    /// <para>Program.cs gives the cookie an explicit thirty-day sliding life, and that bounds the
+    /// ticket whatever this says. What this decides is whether the browser is handed an expiry at
+    /// all: a sign-in that is not persistent produces a session cookie, an installed iOS web app
+    /// loses its session every time the system evicts it from memory, and the panel then asks for a
+    /// password on nearly every cold open. Defaulting to <c>false</c> was that bug.</para>
+    ///
+    /// <para>Defaulted rather than forced. The box is still there, unticking it still produces a
+    /// session cookie, and the form says why somebody on a shared computer would want that — see
+    /// the hidden companion field in Login.cshtml, without which unticking it would post nothing
+    /// and this initialiser would silently win.</para>
+    /// </summary>
+    public bool RememberMe { get; set; } = true;
+
+    /// <summary>
+    /// How long ticking the box actually keeps somebody signed in, so the form can say so.
+    ///
+    /// <para><see cref="BindNeverAttribute"/> and filled by the controller from the cookie
+    /// handler's own <c>ExpireTimeSpan</c>, on the same rule as the setup screen's password
+    /// rules: a sentence here that transcribed «thirty» would go on saying thirty the day a
+    /// deployment sets seven, and the one thing this line exists to do is tell the truth about how
+    /// long a credential is being left on the machine in front of them.</para>
+    /// </summary>
+    [BindNever]
+    public int StaySignedInDays { get; set; }
 }
 
 /// <summary>

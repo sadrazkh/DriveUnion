@@ -4,6 +4,7 @@ using DriveUnion.Web.Areas.Identity.Models;
 using DriveUnion.Web.Infrastructure;
 using DriveUnion.Web.Localization;
 using DriveUnion.Web.Security;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,7 @@ namespace DriveUnion.Web.Areas.Identity.Controllers;
 public sealed class AccountController(
     SignInManager<AppUser> signInManager,
     IOptions<IdentityOptions> identityOptions,
+    IOptionsMonitor<CookieAuthenticationOptions> cookieOptions,
     IWebHostEnvironment environment,
     TimeProvider clock,
     ILogger<AccountController> logger) : Controller
@@ -74,7 +76,7 @@ public sealed class AccountController(
             return View(SetupViewName, NewSetupModel());
         }
 
-        return View(new LoginViewModel());
+        return View(NewLoginModel());
     }
 
     /// <summary>
@@ -160,6 +162,18 @@ public sealed class AccountController(
 
         var user = result.User!;
 
+        // Deliberately not persistent, and now the only sign-in in the panel that is not.
+        //
+        // Everywhere else the answer to "stay signed in?" is yes, because the form asks it, ticks it
+        // and explains it — a thirty-day cookie somebody was shown and can undo in one click. This
+        // screen has no such control; it has two password boxes and a button. Making it persistent
+        // would mint the longest-lived credential in the product for the account that owns every
+        // Google account and every workspace, on a request where nobody was ever offered the choice.
+        //
+        // The cost of the other answer is one sign-in. This screen runs exactly once, at a desk,
+        // with the password still in the operator's hands, and the form it sends them to is the one
+        // that does offer the choice — so the phone this whole change is about never meets this
+        // path at all. ExpireTimeSpan bounds the ticket either way.
         await signInManager.SignInAsync(user, isPersistent: false);
 
         logger.LogInformation("The first operator {Email} was created from the setup screen.", user.Email);
@@ -178,6 +192,7 @@ public sealed class AccountController(
         ArgumentNullException.ThrowIfNull(model);
 
         SetShell();
+        Describe(model);
         ViewData["ReturnUrl"] = returnUrl;
 
         if (!ModelState.IsValid)
@@ -282,6 +297,33 @@ public sealed class AccountController(
         Describe(model);
 
         return model;
+    }
+
+    private LoginViewModel NewLoginModel()
+    {
+        var model = new LoginViewModel();
+        Describe(model);
+
+        return model;
+    }
+
+    /// <summary>
+    /// Fills in what the sign-in form says about staying signed in.
+    ///
+    /// <para>The same rule <see cref="Rules"/> follows for the password policy: read from the
+    /// options the deployment is actually running with, so the sentence cannot promise a window the
+    /// cookie handler is not granting. It is the one place the panel tells somebody how long a
+    /// credential is about to be left on the machine they are sitting at, and being wrong about that
+    /// is worse than being silent.</para>
+    /// </summary>
+    private void Describe(LoginViewModel model)
+    {
+        var window = cookieOptions.Get(IdentityConstants.ApplicationScheme).ExpireTimeSpan;
+
+        // Floored at a day rather than rounded to nothing. A deployment that chose twelve hours
+        // would otherwise have the form promise «for 0 days», which reads as a bug in the panel
+        // rather than as a short session somebody configured on purpose.
+        model.StaySignedInDays = Math.Max(1, (int)Math.Round(window.TotalDays));
     }
 
     /// <summary>
