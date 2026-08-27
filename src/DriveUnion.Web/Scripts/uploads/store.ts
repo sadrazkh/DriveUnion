@@ -1,4 +1,4 @@
-import { computed, markRaw, reactive, ref, type Ref } from 'vue';
+import { computed, markRaw, reactive, ref, watch, type Ref } from 'vue';
 import { deriveWrapping, sealWith, type Secret, type Wrapping } from '../crypto/envelope';
 import { cipherLength, type EncryptionHeader } from '../crypto/format';
 import { cipherSource, plainSource, type ByteSource } from '../crypto/stream';
@@ -13,9 +13,38 @@ import { cipherSource, plainSource, type ByteSource } from '../crypto/stream';
  *
  * Two views read it and neither owns it: the dock in the shell, and the upload screen. A page that
  * owned the queue would end it on the way out, which is the bug this replaces.
+ *
+ * It also survives a phone, as far as a phone allows. iOS suspends a web app the moment it is
+ * backgrounded and WebKit has no Background Fetch, so a transfer genuinely stops when the customer
+ * switches apps or the screen locks, and no amount of code changes that. What this file does is make
+ * coming back work without being asked: see `interrupted` below, and `resumeStalled`.
  */
 
-export type UploadStatus = 'queued' | 'uploading' | 'paused' | 'done' | 'failed' | 'cancelled';
+/**
+ * Where a file is, and — for the two ways it can be stopped — who stopped it.
+ *
+ * <p><c>paused</c> and <c>interrupted</c> both mean «not moving, with bytes already committed», and
+ * keeping them apart is the whole point of having two words. Only <c>pause</c> writes
+ * <c>paused</c> and only a person calls <c>pause</c>, so returning to the app must never restart
+ * one: a customer who stopped an upload on purpose and found it running again on their mobile data
+ * would be right to call that the worst bug in the product.</p>
+ *
+ * <p><c>interrupted</c> is what the environment did — a request that never came back, which is what
+ * a backgrounded phone, a lift and a tunnel all look like from in here. Those are picked up again
+ * automatically.</p>
+ *
+ * <p><c>failed</c> is neither, and is deliberately not resumed: the server answered and said no. A
+ * plan ceiling, a full workspace or an expired session will say the same thing again on every app
+ * switch, so that one waits for a person and the «Try again» button.</p>
+ */
+export type UploadStatus =
+  | 'queued'
+  | 'uploading'
+  | 'paused'
+  | 'interrupted'
+  | 'done'
+  | 'failed'
+  | 'cancelled';
 
 export interface UploadItem {
   readonly id: number;
@@ -56,6 +85,18 @@ export interface UploadItem {
   source: ByteSource | null;
 }
 
+/**
+ * What the server says about a session: what storage has acknowledged, and whether it went wrong.
+ *
+ * <p>Named once because three places read it and all three have to agree — the progress read on the
+ * way in, the answer to every chunk, and the failure that ends a transfer.</p>
+ */
+interface SessionProgress {
+  bytesConfirmed: number;
+  status: string;
+  failureReason: string | null;
+}
+
 export interface UploadConfig {
   beginUrl: string;
   antiforgeryHeader: string;
@@ -81,6 +122,21 @@ const MaxChunkAttempts = 3;
 export const ConcurrencyChoices = [1, 2, 3, 5] as const;
 
 const ConcurrencyKey = 'driveunion.upload.concurrency';
+
+/**
+ * How long after the app comes back the queue looks for stalled transfers, and why it looks twice.
+ *
+ * <p>The first pass catches what had already stopped while the app was away. The second exists
+ * because of the other order, which is the common one on a phone: a chunk iOS killed cannot report
+ * its failure until the page runs again, so the item is still saying «uploading» during the first
+ * pass and only exhausts its three attempts a second or two later — with the radio still coming up.
+ * Without the second pass that file sits stopped until somebody switches apps again.</p>
+ *
+ * <p>Both are delayed rather than immediate for the same reason: a phone that has just been unlocked
+ * has a network interface before it has a working connection, and resuming into that spends the
+ * chunk retries on nothing.</p>
+ */
+const WakeSweepDelaysMs = [500, 8000];
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -167,9 +223,19 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     return items.value.find((i) => i.id === id);
   }
 
+  /**
+   * The one thing that writes <c>paused</c>, and the only caller is a person pressing a button.
+   *
+   * <p>An interrupted file is pausable too, and that is not a nicety: it is how somebody says «stop
+   * picking this back up». Selecting everything and pressing Pause on a flaky connection has to
+   * settle the whole list, and a file that was between attempts at that moment would otherwise be
+   * the one that started again by itself two minutes later.</p>
+   */
   function pause(id: number) {
     const item = find(id);
-    if (!item || (item.status !== 'uploading' && item.status !== 'queued')) return;
+
+    if (!item || (item.status !== 'uploading' && item.status !== 'queued'
+      && item.status !== 'interrupted')) return;
 
     // Abort the chunk in flight and keep what the server confirmed. Nothing is lost: the bytes the
     // abort discarded were never committed, and a resume asks Drive what it actually has.
@@ -179,13 +245,18 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     item.inFlight = 0;
     item.samples = [];
     item.bytesPerSecond = 0;
+    // Whatever the interruption said about itself is no longer why this is stopped.
+    item.error = '';
     pump();
   }
 
   function resume(id: number) {
     const item = find(id);
-    if (!item || item.status !== 'paused') return;
+    if (!item || (item.status !== 'paused' && item.status !== 'interrupted')) return;
 
+    // No new AbortController here, from either state: `pause` already put a fresh one in place of
+    // the one it aborted, and an interruption never aborted anything — it is the answer that did
+    // not arrive rather than a request somebody stopped.
     item.status = 'queued';
     item.error = '';
     pump();
@@ -234,6 +305,150 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     for (const item of [...selected.value]) act(item.id);
   };
 
+  // ── coming back to the app ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Everything the phone stopped, put back in the queue. Nothing a person stopped.
+   *
+   * <p>Only <c>interrupted</c> is touched, which is the whole of the safety here: a deliberate pause
+   * is a different word (see <see cref="UploadStatus"/>) and a refusal the server actually gave is a
+   * third, so neither is reachable from this loop.</p>
+   *
+   * <p>There is no stagger and there does not need to be. Resuming marks a file <c>queued</c>, and
+   * <c>pump</c> starts at most <c>concurrency</c> of those — so thirty stalled files coming back at
+   * once is thirty files waiting their turn on a phone's connection, exactly as thirty freshly
+   * dropped ones would be. Staggering on top of that would be a second answer to a question that
+   * already has one.</p>
+   */
+  function resumeStalled() {
+    // Hidden means the app is not in front, and on iOS not in front means frozen — a resume issued
+    // now is a request that cannot leave and a chunk retry spent on nothing. The next visibility
+    // change runs this again.
+    if (document.visibilityState !== 'visible') return;
+
+    // Believed only when it says no. `onLine` false is «this device has no network interface at
+    // all», which is worth not resuming into; true means no more than «an interface exists», which
+    // on a phone holding one bar of a captive wifi is not a claim worth acting on.
+    if (navigator.onLine === false) return;
+
+    for (const item of items.value.filter((i) => i.status === 'interrupted')) resume(item.id);
+  }
+
+  /** Sweeps already booked, so three events arriving together do not make six passes. */
+  const booked = new Set<number>();
+
+  function sweepAfterWaking() {
+    for (const delay of WakeSweepDelaysMs) {
+      if (booked.has(delay)) continue;
+
+      booked.add(delay);
+      setTimeout(() => {
+        booked.delete(delay);
+        resumeStalled();
+      }, delay);
+    }
+  }
+
+  /**
+   * The screen kept awake while bytes are moving, and nothing beyond that.
+   *
+   * <p>A phone whose display times out suspends the page, and a suspended page is a stopped
+   * transfer — so a lock is what lets somebody start a large upload and put the phone down. It is
+   * not a background permission and there is no such thing on iOS: the browser takes the lock away
+   * the moment the app is not in front, which is why it is asked for again on every return to
+   * visible rather than held once.</p>
+   *
+   * <p>Safari has had it since 16.4, so every path here is allowed to do nothing. A refusal — an
+   * older phone, a battery-saver policy, a document that went hidden mid-request — is not a failure
+   * of the upload and is not reported as one.</p>
+   */
+  let screenLock: WakeLockSentinel | null = null;
+  let asking = false;
+
+  async function keepScreenAwake() {
+    // The browser takes the lock away by itself when the page is hidden, and hands back a sentinel
+    // that says so rather than a null. Forgetting a spent one is what makes the next return to
+    // visible ask again instead of holding a reference to a lock that stopped existing.
+    if (screenLock?.released === true) screenLock = null;
+
+    // Asked on every return to visible, including the ones where nothing is uploading. A lock taken
+    // then is a screen that will not dim on a screen nobody is transferring anything from.
+    if (!busy.value || screenLock !== null || asking) return;
+
+    if (!('wakeLock' in navigator)) return;
+
+    // request() rejects outright on a hidden document, so this is not a precaution — it is the
+    // difference between asking and throwing.
+    if (document.visibilityState !== 'visible') return;
+
+    asking = true;
+
+    try {
+      const sentinel = await navigator.wakeLock.request('screen');
+
+      // The queue may have emptied while the request was in flight. A lock nobody is waiting on is
+      // a screen that never dims again.
+      if (!busy.value) {
+        void sentinel.release().catch(() => undefined);
+        return;
+      }
+
+      screenLock = sentinel;
+    } catch {
+      // Refused, or unavailable. Either way the upload is unaffected and the screen behaves as it
+      // did before this feature existed.
+    } finally {
+      asking = false;
+    }
+  }
+
+  function letScreenSleep() {
+    const sentinel = screenLock;
+    if (sentinel === null) return;
+
+    screenLock = null;
+    void sentinel.release().catch(() => undefined);
+  }
+
+  // Synchronous, so the lock is taken in the same turn the first chunk starts rather than a tick
+  // later. `busy` is a boolean over the whole queue and changes only when the queue starts or stops
+  // moving, so «sync» here is a handful of calls per upload rather than one per progress event.
+  watch(busy, (moving) => (moving ? void keepScreenAwake() : letScreenSleep()), { flush: 'sync' });
+
+  /**
+   * The three events that mean «the app is back», and the ones deliberately not listened to.
+   *
+   * <p><b>visibilitychange</b> is the one that matters. It is what iOS fires when a web app returns
+   * to the foreground, whether the customer switched apps, unlocked the screen or came back to the
+   * tab, and it is the only such signal WebKit gives.</p>
+   *
+   * <p><b>pageshow</b> covers the restore that visibilitychange can miss: a page brought back from
+   * the back/forward cache resumes with its sockets long dead, and Safari has not always marked it
+   * hidden on the way in. It costs one listener to not depend on that.</p>
+   *
+   * <p><b>online</b> is the other reason a transfer stops on a phone, and the one the customer
+   * cannot see the cause of — a lift, a tunnel, a train. Without it a file that stalled while the
+   * app was in front waits for somebody to switch apps and come back, which is a strange thing to
+   * have to teach anybody.</p>
+   *
+   * <p>Not <c>focus</c>: on a desktop it fires on every click back into the window, which is several
+   * times a minute and carries nothing visibilitychange has not already said. Not the Page Lifecycle
+   * <c>resume</c> event: Chromium only, and the phone this phase is about is not running Chromium.</p>
+   */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+
+    void keepScreenAwake();
+    sweepAfterWaking();
+  });
+
+  window.addEventListener('pageshow', () => {
+    void keepScreenAwake();
+    sweepAfterWaking();
+  });
+
+  window.addEventListener('online', sweepAfterWaking);
+
   function pump() {
     while (active < concurrency.value) {
       const next = items.value.find((i) => i.status === 'queued');
@@ -266,6 +481,24 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     return { [config.antiforgeryHeader]: config.antiforgeryToken, ...extra };
   }
 
+  /**
+   * Stopped by the environment rather than by anybody, and the line is exactly one thing: no answer
+   * came back at all.
+   *
+   * <p>That is what decides whether a file resumes by itself. A server that answered has said
+   * something — a plan ceiling, a full workspace, an expired session — and saying it again on every
+   * app switch would not change it, so those stay <c>failed</c>. A request that produced no response
+   * is what a backgrounded phone, a lift and a dropped wifi all look like from in here, and it is
+   * the only thing <c>resumeStalled</c> will pick up.</p>
+   */
+  function stall(item: UploadItem) {
+    item.status = 'interrupted';
+    item.error = text().interrupted;
+    item.inFlight = 0;
+    item.samples = [];
+    item.bytesPerSecond = 0;
+  }
+
   async function run(item: UploadItem) {
     try {
       if (!item.sessionId && !(await begin(item))) return;
@@ -295,8 +528,11 @@ export function createUploadStore(readConfig: () => UploadConfig) {
       item.inFlight = 0;
     } catch {
       if (item.abort.signal.aborted) return;
-      item.status = 'failed';
-      item.error = text().networkError;
+
+      // Everything inside that block which can throw without being an abort is a `fetch` that never
+      // answered — begin and the progress read. Both of them now handle a response that arrived and
+      // was not JSON themselves, so reaching here means the request did not arrive.
+      stall(item);
     }
   }
 
@@ -341,7 +577,20 @@ export function createUploadStore(readConfig: () => UploadConfig) {
       return false;
     }
 
-    const begun = (await response.json()) as { id: string; chunkSize: number };
+    // A 2xx that is not JSON is the sign-in page, the same way it is at the chunk endpoint: fetch
+    // follows redirects, so a session that expired between two files arrives here as 200 and a login
+    // form. Read as a session it would leave the transfer waiting on an id that does not exist — and
+    // it is a refusal that was given rather than a request that never came back, so it fails here
+    // instead of stalling and being resumed for ever on every app switch.
+    let begun: { id: string; chunkSize: number };
+    try {
+      begun = (await response.json()) as { id: string; chunkSize: number };
+    } catch {
+      item.status = 'failed';
+      item.error = text().signedOut;
+      return false;
+    }
+
     item.sessionId = begun.id;
     item.chunkSize = begun.chunkSize;
     return true;
@@ -360,11 +609,15 @@ export function createUploadStore(readConfig: () => UploadConfig) {
       return false;
     }
 
-    const progress = (await response.json()) as {
-      bytesConfirmed: number;
-      status: string;
-      failureReason: string | null;
-    };
+    // The sign-in page again. See begin().
+    let progress: SessionProgress;
+    try {
+      progress = (await response.json()) as SessionProgress;
+    } catch {
+      item.status = 'failed';
+      item.error = text().signedOut;
+      return false;
+    }
 
     if (progress.status === 'Failed') {
       item.status = 'failed';
@@ -410,8 +663,11 @@ export function createUploadStore(readConfig: () => UploadConfig) {
 
         item.inFlight = 0;
         if (attempt >= MaxChunkAttempts) {
-          item.status = 'failed';
-          item.error = text().networkError;
+          // Three attempts and no answer to any of them. This used to say «failed», which on a phone
+          // meant that switching apps for a minute turned an upload into an error the customer had
+          // to notice and press a button about. It is the environment, not a refusal, so it is
+          // stopped in the state that comes back on its own.
+          stall(item);
           return false;
         }
         await wait(attempt * 1000);
@@ -421,9 +677,9 @@ export function createUploadStore(readConfig: () => UploadConfig) {
       if (answer.status >= 200 && answer.status < 300) {
         // A 2xx that is not JSON is the sign-in page: XHR follows redirects, so a session that
         // expired mid-transfer arrives as 200 and a login form.
-        let progress: { bytesConfirmed: number; status: string; failureReason: string | null };
+        let progress: SessionProgress;
         try {
-          progress = JSON.parse(answer.body);
+          progress = JSON.parse(answer.body) as SessionProgress;
         } catch {
           item.status = 'failed';
           item.error = text().signedOut;
@@ -493,11 +749,14 @@ export function createUploadStore(readConfig: () => UploadConfig) {
           emptyFile: 'این فایل خالی است و چیزی برای فرستادن ندارد.',
           networkError: 'ارتباط با سرور قطع شد.',
           signedOut: 'نشست شما تمام شده. دوباره وارد شوید و آپلود را از سر بگیرید.',
+          interrupted: 'ارتباط قطع شد. وقتی به برنامه برگردید، از همین‌جا خودش ادامه می‌دهد.',
         }
       : {
           emptyFile: 'This file is empty and has nothing to send.',
           networkError: 'The connection to the server was lost.',
           signedOut: 'Your session has ended. Sign in again and restart the upload.',
+          interrupted:
+            'The connection stopped. This carries on from here by itself when you come back.',
         };
   }
 
@@ -516,6 +775,9 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     retry,
     clearFinished,
     setConcurrency,
+    // Exported so the behaviour is reachable without a browser to switch apps in. Nothing in the
+    // panel calls it: the events above are what run it in a page.
+    resumeStalled,
     pauseSelected: () => forEachSelected(pause),
     resumeSelected: () => forEachSelected(resume),
     cancelSelected: () => forEachSelected(cancel),

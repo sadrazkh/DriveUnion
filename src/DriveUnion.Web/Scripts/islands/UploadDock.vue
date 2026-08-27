@@ -62,6 +62,10 @@ function text() {
         dock: 'Uploads',
         uploading: 'Uploading',
         paused: 'Paused',
+        // Not «Interrupted». The word has to carry what happens next, because on a phone this is
+        // the state somebody finds their upload in after taking a call, and «interrupted» reads as
+        // «and now it is your problem» when in fact the queue is about to pick it up itself.
+        interrupted: 'Waiting to continue',
         failed: 'Failed',
         finished: 'Finished',
         queued: 'Queued',
@@ -80,6 +84,7 @@ function text() {
         dock: 'آپلودها',
         uploading: 'در حال آپلود',
         paused: 'متوقف',
+        interrupted: 'منتظر ادامه',
         failed: 'ناموفق',
         finished: 'تمام شد',
         queued: 'در صف',
@@ -108,6 +113,12 @@ function summary(): { label: string; count: number } {
   const t = text();
 
   if (busy.value) return { label: t.uploading, count: inFlightItems.value.length };
+
+  // Before «paused», because it is the one nobody asked for. A dock that says «Paused 2» while two
+  // other files are stopped waiting for the network is a corner that answers the question somebody
+  // did not have.
+  const interrupted = items.value.filter((i) => i.status === 'interrupted').length;
+  if (interrupted > 0) return { label: t.interrupted, count: interrupted };
 
   const paused = items.value.filter((i) => i.status === 'paused').length;
   if (paused > 0) return { label: t.paused, count: paused };
@@ -203,8 +214,13 @@ const anyFinished = computed(() =>
               @click="pause(item.id)"
             >{{ text().pause }}</button>
 
+            <!--
+              Offered for an interrupted file too, and it is not the way it normally continues —
+              the queue does that by itself when the app comes back. It is here for the person
+              watching this corner right now who would rather press something than wait.
+            -->
             <button
-              v-else-if="item.status === 'paused'"
+              v-else-if="item.status === 'paused' || item.status === 'interrupted'"
               type="button"
               class="btn btn--sm"
               @click="resume(item.id)"
@@ -226,7 +242,15 @@ const anyFinished = computed(() =>
           </span>
         </div>
 
-        <p v-if="item.error" class="upload-dock-error">{{ item.error }}</p>
+        <!--
+          Red says «something went wrong and it is over». An interrupted file is neither, so it
+          takes the warning colour instead: the sentence beside it is telling somebody it will
+          continue on its own, and a red one is read as a contradiction of that.
+        -->
+        <p
+          v-if="item.error"
+          :class="item.status === 'interrupted' ? 'upload-dock-note' : 'upload-dock-error'"
+        >{{ item.error }}</p>
       </li>
     </ul>
 
@@ -355,10 +379,18 @@ const anyFinished = computed(() =>
   font-size: 11px;
 }
 
-.upload-dock-error {
+.upload-dock-error,
+.upload-dock-note {
   margin: 0;
   font-size: 11.5px;
   line-height: 1.6;
+}
+
+.upload-dock-error {
   color: var(--danger);
+}
+
+.upload-dock-note {
+  color: var(--warn);
 }
 </style>

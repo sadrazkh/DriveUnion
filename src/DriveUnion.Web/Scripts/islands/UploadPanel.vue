@@ -183,6 +183,9 @@ function text() {
         queued: 'Queued',
         uploading: 'Uploading',
         paused: 'Paused',
+        // The state a phone puts a transfer in, worded as what happens next rather than as what
+        // went wrong — the queue picks this one up by itself. See uploads/store.ts.
+        interrupted: 'Waiting to continue',
         done: 'Done',
         failed: 'Failed',
         cancelled: 'Cancelled',
@@ -242,6 +245,7 @@ function text() {
         queued: 'در صف',
         uploading: 'در حال آپلود',
         paused: 'متوقف',
+        interrupted: 'منتظر ادامه',
         done: 'انجام شد',
         failed: 'ناموفق',
         cancelled: 'لغو شد',
@@ -778,8 +782,14 @@ function toggleAll() {
               class="btn btn--sm"
               @click="pause(item.id)"
             >{{ text().pause }}</button>
+            <!--
+              An interrupted file resumes on its own when the app comes back; this is for somebody
+              who is looking at the screen now and would rather not wait for the network to be
+              noticed. «Try again» is deliberately not what it says: nothing is being retried from
+              the start, the transfer continues from what the server confirmed.
+            -->
             <button
-              v-else-if="item.status === 'paused'"
+              v-else-if="item.status === 'paused' || item.status === 'interrupted'"
               type="button"
               class="btn btn--sm"
               @click="resume(item.id)"
@@ -792,7 +802,8 @@ function toggleAll() {
             >{{ text().retry }}</button>
 
             <button
-              v-if="item.status === 'uploading' || item.status === 'queued' || item.status === 'paused'"
+              v-if="item.status === 'uploading' || item.status === 'queued'
+                || item.status === 'paused' || item.status === 'interrupted'"
               type="button"
               class="btn btn--sm btn--danger"
               @click="cancel(item.id)"
@@ -806,7 +817,15 @@ function toggleAll() {
           </span>
         </div>
 
-        <p v-if="item.error" class="upload-error">{{ item.error }}</p>
+        <!--
+          The warning colour rather than the danger one when the environment stopped it. The
+          sentence there says the transfer continues by itself; drawing it in the colour this screen
+          uses for «this file is not coming back» argues with its own words.
+        -->
+        <p
+          v-if="item.error"
+          :class="item.status === 'interrupted' ? 'upload-warning' : 'upload-error'"
+        >{{ item.error }}</p>
       </li>
     </ul>
 
@@ -1029,7 +1048,11 @@ function toggleAll() {
   color: var(--accent-ink);
 }
 
-.upload-row--paused .upload-state {
+/* Stopped, both of them, and the same colour: what differs is who stopped it, which the word says.
+   The border is deliberately left alone — only a failure gets a red edge, because only a failure is
+   a row somebody has to come back to. */
+.upload-row--paused .upload-state,
+.upload-row--interrupted .upload-state {
   color: var(--warn);
 }
 

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using DriveUnion.Tests.Links;
+using DriveUnion.Tests.Localization;
+using DriveUnion.Web.Localization;
 using FluentAssertions;
 
 namespace DriveUnion.Tests.Presentation;
@@ -30,6 +32,7 @@ public class UploadDockTests
     private const string Layout = "src/DriveUnion.Web/Views/Shared/_Layout.cshtml";
     private const string Dock = "src/DriveUnion.Web/Scripts/islands/UploadDock.vue";
     private const string Panel = "src/DriveUnion.Web/Scripts/islands/UploadPanel.vue";
+    private const string Queue = "src/DriveUnion.Web/Scripts/uploads/store.ts";
 
     private const string MountPoint = @"data-island=""upload-dock""";
 
@@ -300,6 +303,99 @@ public class UploadDockTests
         TemplateOf(source).Should().Contain(
             "text().tabWarning",
             "a sentence nothing renders is a sentence nobody is told");
+    }
+
+    // ------------------------------------------------------------------ what a phone does to it
+
+    /// <summary>
+    /// The screen says what leaving the app costs, in both languages, and says the other half too.
+    ///
+    /// iOS suspends a web app the moment it is backgrounded and WebKit has no Background Fetch, so
+    /// a transfer genuinely stops when somebody switches apps or the screen locks. That cannot be
+    /// fixed and it will be reported as a fault by everybody it happens to — unless the screen said
+    /// so first, and said the part that is not bad news: it carries on by itself on the way back.
+    ///
+    /// Rendered rather than read out of the source, because this string is the one part of the
+    /// upload screen that comes from the catalogue and the whole question is whether both cultures
+    /// reach it. Decoded first: Razor writes everything outside Basic Latin as
+    /// <c>&amp;#x641;…</c>, so a raw comparison passes on a page that renders nothing of the sort.
+    /// </summary>
+    [Fact]
+    public async Task The_upload_screen_says_that_leaving_the_app_stops_a_transfer()
+    {
+        using var harness = new PanelPageHarness();
+        var tenant = harness.SeedTenant("Acme", "Q3-Report-Final.pdf", "kx91mzq4");
+
+        using var client = harness.NewClient(tenant.Id);
+
+        var persian = WebUtility.HtmlDecode(
+            await client.GetStringAsync(new Uri("/Files/Upload", UriKind.Relative)));
+
+        var english = WebUtility.HtmlDecode(
+            await client.GetStringAsync(new Uri("/Files/Upload?lang=en", UriKind.Relative)));
+
+        using (CultureScope.Persian())
+        {
+            persian.Should().Contain(UiText.Transfers.LeavingTheAppPauses);
+        }
+
+        using (CultureScope.English())
+        {
+            english.Should().Contain(UiText.Transfers.LeavingTheAppPauses);
+        }
+    }
+
+    /// <summary>
+    /// Both views can name the state a phone leaves a transfer in.
+    ///
+    /// The queue has two words for «stopped» — one for what a person did and one for what the
+    /// environment did — because only one of them may be picked up again automatically. A view that
+    /// has never heard of the second draws <c>undefined</c> in the row where the state goes, and it
+    /// draws it on exactly the device the state exists for.
+    ///
+    /// The compiler catches this too, and is not what runs here: <c>npm run build</c> is esbuild,
+    /// which strips the types rather than checking them.
+    /// </summary>
+    [Theory]
+    [InlineData(Dock)]
+    [InlineData(Panel)]
+    public void An_upload_view_can_name_the_state_a_phone_leaves_a_transfer_in(string island)
+    {
+        var source = Read(island);
+
+        Regex.Matches(source, "interrupted:", RegexOptions.None, Timeout)
+            .Count.Should().Be(2, "the word exists in the Persian dictionary and in the English one");
+
+        TemplateOf(source).Should().Contain(
+            "'interrupted'",
+            "a state that is drawn and cannot be acted on is a row somebody watches and cannot use");
+    }
+
+    /// <summary>
+    /// The queue is what notices the app coming back, and neither view is.
+    ///
+    /// Same reason the queue holds the items rather than the screen holding them: a listener a view
+    /// adds belongs to that view's lifetime. The upload screen is inside <c>main.app-content</c> and
+    /// is unmounted by the next navigation, so a <c>visibilitychange</c> handler added there stops
+    /// answering the moment somebody walks to another page — which is precisely when a transfer that
+    /// outlived the page needs picking back up. It would also be a second handler per navigation for
+    /// as long as the tab is open.
+    /// </summary>
+    [Fact]
+    public void The_queue_and_not_a_view_is_what_notices_the_app_coming_back()
+    {
+        Read(Queue).Should().Contain(
+            "visibilitychange",
+            "the queue resumes what the phone stopped, and something has to tell it the app is back");
+
+        foreach (var island in new[] { Dock, Panel })
+        {
+            Read(island).Should().NotContain(
+                "visibilitychange",
+                "{0} is a view: a listener it added would live and die with the view rather than "
+                + "with the transfer",
+                island);
+        }
     }
 
     // ------------------------------------------------------------------ direction

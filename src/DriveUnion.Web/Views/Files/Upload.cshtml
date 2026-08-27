@@ -8,6 +8,21 @@
     <div class="stack" style="gap: 4px;">
         <h1 class="page-title">@UiText.Files.UploadTitle</h1>
         <p class="page-sub">@UiText.Files.UploadSubtitle</p>
+
+        @*
+            Said here, above everything, because on a phone it is the first thing that will happen
+            and the first thing that will be reported as a fault.
+
+            It is rendered by Razor rather than by the island for the reason UiText.Transfers gives:
+            the island's words are a pair of dictionaries inside the .vue, reachable from the
+            catalogue only through the mount point, and the dock's mount point is not this screen's
+            to write. A sentence about the product belongs to the screen anyway — it is not the
+            label of a control.
+        *@
+        <p class="muted" role="note"
+           style="font-size: 12px; line-height: 1.8; margin: 4px 0 0; max-width: 68ch;">
+            @UiText.Transfers.LeavingTheAppPauses
+        </p>
     </div>
 
     @if (!string.IsNullOrEmpty(Model.Notice))
