@@ -14,7 +14,33 @@ public static partial class UiText
     {
         public static string Play => Pick("پخش", "Play");
 
+        /// <summary>The control on the file's own card, which opens the page rather than playing here.</summary>
+        public static string Watch => Pick("تماشا", "Watch");
+
         public static string SecretLabel => Pick("رمز این فایل", "This file's passphrase");
+
+        /// <summary>
+        /// The heading on the unlock card, which is the whole page until the passphrase is right.
+        /// </summary>
+        public static string LockedTitle => Pick("این فایل قفل است", "This file is locked");
+
+        /// <summary>
+        /// Said under it, and it is the sentence that stops the page reading as a paywall.
+        ///
+        /// <para>Somebody arriving here has pressed «تماشا» on a file and met a password box. Without
+        /// a reason that is indistinguishable from being asked to log in again, so it says where the
+        /// unlocking happens and what that buys — which is also the product's central claim, at the
+        /// one moment it is doing something visible.</para>
+        /// </summary>
+        public static string LockedHint => Pick(
+            "رمزش را بزنید تا همین‌جا در مرورگر خودتان باز شود و پخش شود. نسخهٔ بازشده جایی ذخیره نمی‌شود.",
+            "Enter the passphrase and it is opened here, in your own browser, as it plays. No "
+            + "readable copy is stored anywhere.");
+
+        /// <summary>What a reader with no bundle is told, instead of a control that cannot work.</summary>
+        public static string NeedsScript => Pick(
+            "برای پخش در این صفحه به جاوااسکریپت نیاز است. می‌توانید فایل را دانلود کنید.",
+            "Playing here needs JavaScript. You can download the file instead.");
 
         public static string UnlockAndPlay => Pick("باز کن و پخش کن", "Unlock and play");
 

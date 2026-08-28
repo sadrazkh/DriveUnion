@@ -1,0 +1,12 @@
+@using DriveUnion.Web.Models
+@model WatchViewModel
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+@*
+    The owner's own player. It wears the panel's shell so the sidebar and the sign-out control are
+    where they always are — this is still the panel, not a different product — and the content column
+    is the player and nothing else.
+*@
+<partial name="_Player" model="Model" />

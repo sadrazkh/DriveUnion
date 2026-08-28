@@ -615,6 +615,61 @@ public sealed class FilesController(
     }
 
     /// <summary>
+    /// A screen whose only job is playing one file.
+    ///
+    /// <para>The player used to be a box inside the detail panel, which on a phone put a 320px
+    /// element under a summary row, a link list and — for a locked file — a passphrase field, in a
+    /// column narrow enough that they landed on top of each other. Watching is what somebody opened
+    /// the file for; it gets a screen.</para>
+    ///
+    /// <para>It also gives the locked case somewhere to happen: unlocking is three states — ask,
+    /// wait, play — and they were previously crammed under a summary row.</para>
+    ///
+    /// <para>Nothing is fetched by opening this. The player asks first, because
+    /// <see cref="Content"/> is metered and capped exactly as a share link is.</para>
+    /// </summary>
+    [HttpGet("{id:guid}/watch")]
+    public async Task<IActionResult> Watch(Guid id, CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        SetShell();
+
+        var file = await catalog.GetAsync(tenantId, id, cancellationToken);
+        if (file is null) return NotFound();
+
+        // What the file would be if it were not locked — the same judgement Previews makes, asked
+        // of the recorded type rather than of the ciphertext.
+        var kind = Previews.OnceUnlocked(file.MimeType) switch
+        {
+            PreviewKind.Video => "video",
+            PreviewKind.Audio => "audio",
+            _ => "",
+        };
+
+        // Not a media file. A page that drew an empty player would be a worse answer than the one
+        // the detail panel already gives, which is a placeholder naming the kind.
+        if (kind.Length == 0) return RedirectToAction(nameof(Index), new { selected = id });
+
+        var header = await encryption.ForFileAsync(tenantId, id, cancellationToken);
+
+        return View(new WatchViewModel(
+            file.Name,
+            DisplayFormats.Bytes(header?.PlaintextLength ?? file.SizeBytes),
+            DisplayFormats.FileKind(file.Name, file.MimeType),
+            kind,
+
+            // The recorded type, and never the display string beside it. Passing KindText here is
+            // what made every locked film fail to decode: the worker answered with a Content-Type
+            // of «MP4», which is not a media type, and the element reported a corrupt file.
+            file.MimeType ?? string.Empty,
+            Url.Action(nameof(Content), new { id })!,
+            header is null ? null : JsonSerializer.Serialize(header, PanelJson),
+            Url.Action(nameof(Index), new { selected = id })!,
+            UiText.Files.BackToFiles));
+    }
+
+    /// <summary>
     /// The owner's own bytes, for a player on this screen.
     ///
     /// <para><b>This is the first cookie-authenticated byte route in the product</b>, and it was

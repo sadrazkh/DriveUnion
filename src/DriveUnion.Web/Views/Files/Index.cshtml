@@ -474,59 +474,22 @@
                     @if (Model.Selected.MediaKind is "video" or "audio")
                     {
                         @*
-                            Watching it here rather than downloading it.
+                            A link to a page, and not a player wedged into this column.
 
-                            Nothing is fetched until the button is pressed: a detail panel that
-                            started loading a film every time somebody clicked a row would spend the
-                            workspace's traffic on curiosity. And it does spend it — /files/{id}/content
-                            is metered and capped exactly as a share link is, because watching a film
-                            costs what watching a film costs whichever door it came through.
+                            It used to be the player. On a phone that put a 320px element under a
+                            summary row, a link list and — for a locked file — a passphrase field, in
+                            a column narrow enough that the controls landed on top of each other.
+                            Watching is what somebody opened the file for; it gets a screen.
 
-                            Both halves are server-rendered hidden and the script reveals whichever
-                            applies. A locked file cannot be played without one — the passphrase is
-                            unwrapped in the browser and the service worker does the decrypting — and
-                            an unlocked one is a control that would do nothing without a bundle,
-                            which reads as a broken file rather than a missing feature.
+                            Nothing is fetched by pressing this. The page it opens asks before it
+                            spends anything, because /files/{id}/content is metered and capped
+                            exactly as a share link is.
                         *@
-                        <div class="detail-preview"
-                             data-island="file-player"
-                             data-player-url="@Url.Action("Content", "Files", new { id = Model.Selected.Id })"
-                             data-player-mime="@Model.Selected.KindText"
-                             data-player-header="@Model.Selected.EncryptionJson"
-                             data-player-working="@UiText.Player.Unlocking"
-                             data-player-wrong-key="@UiText.Player.WrongKey"
-                             data-player-no-worker="@UiText.Player.NoWorker">
-
-                            @if (Model.Selected.MediaKind == "video")
-                            {
-                                <video data-player-media class="detail-player" controls playsinline
-                                       preload="metadata" hidden></video>
-                            }
-                            else
-                            {
-                                <audio data-player-media class="detail-player" controls
-                                       preload="metadata" hidden></audio>
-                            }
-
-                            @if (Model.Selected.IsEncrypted)
-                            {
-                                <form data-player-form hidden class="stack" style="gap: 8px; padding: 14px;">
-                                    <label class="field-label" for="play-secret-@Model.Selected.Id">
-                                        @UiText.Player.SecretLabel
-                                    </label>
-                                    <input id="play-secret-@Model.Selected.Id" data-player-secret
-                                           type="password" class="control" autocomplete="off" />
-                                    <button type="submit" class="btn">@UiText.Player.UnlockAndPlay</button>
-                                    <p class="muted" data-player-said role="status"
-                                       style="font-size: 11.5px; line-height: 1.8; margin: 0;"></p>
-                                </form>
-                            }
-                            else
-                            {
-                                <button type="button" data-player-start class="btn btn--block" hidden
-                                        style="margin: 14px;">@UiText.Player.Play</button>
-                            }
-                        </div>
+                        <a class="ph detail-preview detail-watch"
+                           href="@Url.Action("Watch", "Files", new { id = Model.Selected.Id })">
+                            <span class="watch-play-glyph" aria-hidden="true">▶</span>
+                            <span>@UiText.Player.Watch</span>
+                        </a>
                     }
                     else
                     {

@@ -42,6 +42,72 @@ public sealed class PublicDownloadController(
     private static readonly JsonSerializerOptions PublicJson =
         new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// A screen whose only job is playing this link's file.
+    ///
+    /// <para>The player used to be a box on the card, which is a narrow column already holding a
+    /// title, four facts, a note and a download button — on a phone the controls landed on the text.
+    /// Watching is what the link was sent for; it gets a screen.</para>
+    ///
+    /// <para>It resolves the slug again rather than trusting the page it was reached from. Every
+    /// refusal a link can have is a refusal here too: revoked between the card and this press,
+    /// expired, spent. And they collapse into the same card the landing page uses, for the same
+    /// reason — the difference between them is an oracle for walking the slug space.</para>
+    ///
+    /// <para>Locked files come here as well, which the card's own unlock control does not do. Both
+    /// are one player: the passphrase is typed on the page, the key is unwrapped in the browser, and
+    /// the service worker decrypts a segment at a time. Nothing is fetched by opening this.</para>
+    /// </summary>
+    [HttpGet("/d/{slug}/watch")]
+    [EnableRateLimiting(DriveUnionRateLimits.PublicPage)]
+    public async Task<IActionResult> Watch(
+        string slug,
+        [FromQuery(Name = "lang")] string? lang,
+        CancellationToken cancellationToken)
+    {
+        var language = ResolveLanguage(lang);
+
+        if (!SlugGenerator.IsWellFormed(slug)) return Unavailable(language);
+
+        var resolution = await links.ResolveAsync(slug, cancellationToken);
+        if (!resolution.IsAvailable || resolution.File is null) return Unavailable(language);
+
+        var file = resolution.File;
+
+        // What it would be if the lock came off, which for an unlocked file is simply what it is.
+        var kind = Previews.OnceUnlocked(file.MimeType) switch
+        {
+            PreviewKind.Video => "video",
+            PreviewKind.Audio => "audio",
+            _ => string.Empty,
+        };
+
+        // Not something a browser can play. Back to the card, which has the download button and the
+        // facts — a player page for a PDF would be an empty stage and a puzzled reader.
+        if (kind.Length == 0) return Redirect(PublicLinkFormatter.Path(slug));
+
+        ViewBag.Lang = PublicText.LangCode(language);
+
+        // Never stored: the link can be revoked while a copy of this page sits in a cache, and the
+        // page carries the header that says which passphrase opens the file.
+        Response.Headers.CacheControl = "no-store";
+
+        return View("~/Views/Public/Watch.cshtml", new WatchViewModel(
+            file.FileName,
+            DisplayFormats.Bytes(file.Encryption?.PlaintextLength ?? file.SizeBytes),
+            DisplayFormats.FileKind(file.FileName, file.MimeType),
+            kind,
+            file.MimeType ?? string.Empty,
+
+            // The ordinary download address. Pressing play spends a download exactly as pressing
+            // Download would, because watching the film is taking the file; the seeks afterwards
+            // carry a Range and spend nothing, which is the line DownloadCounting already draws.
+            $"{PublicLinkFormatter.Path(slug)}/file",
+            file.Encryption is { } header ? JsonSerializer.Serialize(header, PublicJson) : null,
+            PublicLinkFormatter.Path(slug),
+            PublicText.Pick(language, "بازگشت", "Back")));
+    }
+
     [HttpGet("/d/{slug}")]
     [EnableRateLimiting(DriveUnionRateLimits.PublicPage)]
     public async Task<IActionResult> Landing(
@@ -125,7 +191,9 @@ public sealed class PublicDownloadController(
                     PreviewKind.Audio => "audio",
                     _ => string.Empty,
                 }
-                : string.Empty);
+                : string.Empty,
+
+            $"{PublicLinkFormatter.Path(file.Slug)}/watch");
 
         // The count on the card moves and the link can be revoked while a copy sits in a cache.
         Response.Headers.CacheControl = "no-store";

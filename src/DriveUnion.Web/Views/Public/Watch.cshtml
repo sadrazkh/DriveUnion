@@ -1,0 +1,18 @@
+@using DriveUnion.Web.Models
+@model WatchViewModel
+@{
+    Layout = "_PublicLayout";
+    ViewData["Title"] = Model.Title;
+
+    // The public layout builds the document's lang and dir from this, exactly as the download card
+    // does. It is a server decision so the page reads with JavaScript off and caches per language.
+    ViewData["Lang"] = ViewBag.Lang as string ?? "fa";
+}
+
+@*
+    The same player the owner sees, for somebody holding a link.
+
+    Deliberately no «report this link» slug in the footer: that lives on the card this page is
+    reached from, and a player is not where somebody is deciding whether a file is abusive.
+*@
+<partial name="_Player" model="Model" />

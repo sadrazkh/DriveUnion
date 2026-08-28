@@ -2523,6 +2523,248 @@ summary.btn::-webkit-details-marker {
   }
 }
 
+/* ---------------------------------------------------------------- the watch page */
+
+/*
+ * A screen whose only job is playing one file.
+ *
+ * The player used to be a box inside the file detail panel and inside the public download card, and
+ * on a phone both became a stack of controls with a video wedged in: a 320px-tall element in a
+ * narrow column under a summary row, a link list and a passphrase field. This is that content given
+ * a page of its own — which is also what gives the locked case room, since unlocking is three states
+ * and not a control.
+ */
+.watch {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/*
+ * The stage: a fixed 16/9 box the media element fills.
+ *
+ * Fixed on purpose. A media element with no source has no intrinsic size, so a bare <video> collapses
+ * to nothing before play is pressed and the page jumps by the height of a film the moment it starts
+ * — which on a phone throws the controls under the thumb reaching for them. The box is the same size
+ * before and after.
+ *
+ * `color-scheme: dark` rather than a hard-coded colour: it makes the browser's own control bar dark
+ * against the backdrop in both themes, which is the one part of a player nothing here can style.
+ */
+.watch-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  inline-size: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0b0f0e;
+  color-scheme: dark;
+}
+
+/*
+ * Audio needs no stage, and giving it one draws a large black rectangle around a 40px bar. It keeps
+ * the card's own surface and only as much height as the controls take.
+ */
+.watch-stage--audio {
+  aspect-ratio: auto;
+  min-block-size: 120px;
+  padding: 20px;
+  background: var(--surface2);
+  color-scheme: light;
+}
+
+[data-theme="dark"] .watch-stage--audio {
+  color-scheme: dark;
+}
+
+.watch-media {
+  inline-size: 100%;
+  block-size: 100%;
+  display: block;
+}
+
+/*
+ * `hidden` has to be said again here, and this is not belt and braces.
+ *
+ * The attribute is `display: none` from the browser's own stylesheet, which is the weakest source
+ * there is — any `display` in an author rule beats it. So `.watch-media { display: block }` above
+ * silently un-hides the element, and the page draws a video element and the play button that is
+ * supposed to replace it side by side, which is exactly what it did.
+ */
+.watch-media[hidden],
+.watch-play[hidden],
+.watch-gate[hidden] {
+  display: none;
+}
+
+audio.watch-media {
+  block-size: 44px;
+}
+
+/*
+ * The play button, centred on the stage.
+ *
+ * Large deliberately — it is the only control on the screen and it is pressed with a thumb. 64px is
+ * well past the 44px floor the rest of the panel keeps, because here there is nothing to crowd.
+ */
+.watch-play {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 28px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.watch-play-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 64px;
+  block-size: 64px;
+  border-radius: 50%;
+  background: var(--accent);
+  font-size: 22px;
+
+  /* The glyph is a triangle and sits visually left of centre in its own circle. */
+  padding-inline-start: 4px;
+}
+
+.watch-play:hover .watch-play-glyph,
+.watch-play:focus-visible .watch-play-glyph {
+  background: var(--accent-ink);
+}
+
+/*
+ * The unlock card, which is the whole page until the passphrase is right.
+ *
+ * Bounded rather than full-width: a password field stretched across a desktop stage is a field
+ * nobody can tell is a field, and 320px is about as wide as one should ever be.
+ */
+.watch-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  inline-size: min(320px, 100%);
+  padding: 24px;
+  text-align: center;
+  color: #fff;
+}
+
+.watch-gate-icon {
+  font-size: 26px;
+}
+
+.watch-gate-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.watch-gate-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.9;
+  opacity: 0.78;
+}
+
+/* The field sits on a dark stage, so it cannot inherit the panel's own surface. */
+.watch-gate-field {
+  inline-size: 100%;
+  background: rgb(255 255 255 / 12%);
+  border-color: rgb(255 255 255 / 22%);
+  color: #fff;
+}
+
+.watch-gate-field::placeholder {
+  color: rgb(255 255 255 / 55%);
+}
+
+.watch-gate-said {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  min-block-size: 1.8em;
+}
+
+.watch-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.watch-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.5;
+
+  /* A file name is whatever its owner called it, and some of them have no break opportunity. */
+  overflow-wrap: anywhere;
+}
+
+.watch-facts {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/*
+ * On a phone the stage goes edge to edge.
+ *
+ * The content column's padding is what makes a video look like a postage stamp in a frame, and a
+ * player is the one thing on this product that should use the whole width it can get. The margin
+ * pulls it back out through that padding; the meta below keeps it.
+ */
+@media (max-width: 640px) {
+  .watch-stage {
+    border-radius: 0;
+
+    /*
+     * Full bleed, without this rule having to know what its container's padding is.
+     *
+     * The panel's content column pads 16px and the public wrap pads 22px, so a negative margin of
+     * a fixed figure is right on one screen and leaves a strip of card down each side of the other
+     * — which it did. `50% - 50vw` is the distance from this box's edge to the viewport's whatever
+     * the padding turns out to be, so both are exact and a third layout would be too.
+     */
+    inline-size: 100vw;
+    margin-inline: calc(50% - 50vw);
+  }
+}
+
+/*
+ * The tile that opens the player, standing where a preview would be.
+ *
+ * On the detail panel and on the public card. It keeps the placeholder's box so neither screen
+ * changes shape, and it is an anchor rather than a button because it goes to a page — which means
+ * it works with no bundle, opens in a new tab on a middle click, and can be shared.
+ */
+.detail-watch,
+.public-preview-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
 /* ---------------------------------------------------------------- colour utilities */
 
 /*
@@ -2549,38 +2791,4 @@ summary.btn::-webkit-details-marker {
   color: var(--danger);
 }
 
-/*
- * The player in the file detail panel.
- *
- * It replaces the placeholder that used to stand where a preview would be, so it keeps that box's
- * shape: full width, and no taller than the panel can spare. `background` rather than a border,
- * because a video letterboxes itself and the bars should be the card's colour rather than the page's.
- */
-.detail-player {
-  inline-size: 100%;
-  max-block-size: 320px;
-  display: block;
-  background: var(--surface2);
-}
 
-audio.detail-player {
-  block-size: 40px;
-  max-block-size: none;
-  padding: 12px;
-}
-
-/*
- * The play button standing where a preview would be, on the public card.
- *
- * Centred in the same box the placeholder uses, so the card does not change shape when the button
- * is replaced by the element it starts. The label under it stays: a file that has not been played
- * yet should still say what it is.
- */
-.public-player {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  inline-size: 100%;
-}

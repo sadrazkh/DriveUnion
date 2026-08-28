@@ -1,0 +1,90 @@
+@model DriveUnion.Web.Models.WatchViewModel
+@*
+    The player, and the two ways into it.
+
+    One partial for both the panel's watch page and the public one. What differs between them is
+    where the bytes come from and where «back» goes, and those arrive on the model — a second copy of
+    this markup would be a second place for the unlock flow to drift.
+
+    The stage is a fixed aspect box rather than a bare <video>. A media element with no source has no
+    intrinsic size, so before play is pressed it collapses to nothing and the page jumps by the height
+    of a film the moment it starts — which on a phone throws the controls under the reader's thumb
+    just as they reach for them.
+*@
+<div class="watch"
+     data-island="file-player"
+     data-player-url="@Model.ContentUrl"
+     data-player-mime="@Model.MimeType"
+     data-player-header="@(Model.EncryptionJson ?? string.Empty)"
+     data-player-working="@UiText.Player.Unlocking"
+     data-player-wrong-key="@UiText.Player.WrongKey"
+     data-player-no-worker="@UiText.Player.NoWorker">
+
+    <div class="watch-stage @(Model.IsVideo ? null : "watch-stage--audio")">
+        @if (Model.IsVideo)
+        {
+            <video data-player-media class="watch-media" controls playsinline preload="metadata" hidden></video>
+        }
+        else
+        {
+            <audio data-player-media class="watch-media" controls preload="metadata" hidden></audio>
+        }
+
+        @if (Model.IsLocked)
+        {
+            @*
+                The unlock card, centred on the stage. It is the page's whole content until the
+                passphrase is right, which is the point of this being a page: the same three states —
+                ask, wait, play — were previously a row under a file summary.
+
+                Hidden and revealed by the script, because there is no unlocking without one and a
+                form that cannot do anything is worse than no form.
+            *@
+            <form data-player-form class="watch-gate" hidden>
+                <span class="watch-gate-icon" aria-hidden="true">🔒</span>
+
+                <p class="watch-gate-title">@UiText.Player.LockedTitle</p>
+                <p class="watch-gate-hint">@UiText.Player.LockedHint</p>
+
+                <label class="visually-hidden" for="watch-secret">@UiText.Player.SecretLabel</label>
+                <input id="watch-secret"
+                       data-player-secret
+                       type="password"
+                       class="control watch-gate-field"
+                       autocomplete="off"
+                       placeholder="@UiText.Player.SecretLabel" />
+
+                <button type="submit" class="btn btn--primary btn--block">@UiText.Player.UnlockAndPlay</button>
+
+                <p class="watch-gate-said" data-player-said role="status"></p>
+            </form>
+        }
+        else
+        {
+            @*
+                A play button and not an autoloading element. Opening a page must not start spending
+                the workspace's traffic on a film nobody has asked for yet — and on a phone that is
+                somebody's data as well as somebody's allowance.
+            *@
+            <button type="button" data-player-start class="watch-play" hidden>
+                <span class="watch-play-glyph" aria-hidden="true">▶</span>
+                <span>@UiText.Player.Play</span>
+            </button>
+        }
+
+        <noscript>
+            <p class="watch-gate-hint">@UiText.Player.NeedsScript</p>
+        </noscript>
+    </div>
+
+    <div class="watch-meta">
+        <h1 class="watch-title" dir="auto">@Model.Title</h1>
+        <p class="watch-facts">
+            <span class="mono" dir="ltr">@Model.SizeText</span>
+            <span aria-hidden="true">·</span>
+            <span class="mono" dir="ltr">@Model.KindText</span>
+        </p>
+
+        <a class="btn btn--sm" href="@Model.BackUrl">@Model.BackText</a>
+    </div>
+</div>

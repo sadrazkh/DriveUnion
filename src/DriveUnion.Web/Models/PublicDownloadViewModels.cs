@@ -151,7 +151,16 @@ public sealed record PublicDownloadViewModel(
     /// play spends a download exactly as pressing Download does. Seeking afterwards does not —
     /// <c>DownloadCounting</c> already draws that line, and it draws it in the right place.</para>
     /// </summary>
-    string BigMedia = "");
+    string BigMedia = "",
+
+    /// <summary>
+    /// The player's own address, for a file too big to preview.
+    ///
+    /// <para>A page and not a box on this card. The card is a narrow column with a title, four
+    /// facts, a note and a download button in it, and a film wedged above them is what this was —
+    /// on a phone the controls landed on the text.</para>
+    /// </summary>
+    string WatchUrl = "");
 
 /// <summary>
 /// The refusal card. It carries no slug, no reason and no file: revoked, expired, capped and

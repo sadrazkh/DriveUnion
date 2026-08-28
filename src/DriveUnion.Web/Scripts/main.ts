@@ -191,18 +191,15 @@ const islands: Record<string, Island> = {
     },
   },
 
-  'public-player': {
-    // The same player, on the public download card — which is its own layout with no swapped
-    // region in it, so it is mounted once and never taken down. A second registration rather than
-    // a second region on one: an island's region is a fact about where it is drawn, and this is
-    // drawn somewhere else.
-    region: 'shell',
-    mount: (el) => mountFilePlayer(el).stop,
-  },
-
   'file-player': {
-    // Inside the detail panel, which a navigation replaces — and it must be: its teardown is what
-    // stops a stream and lets go of the content key when the reader moves on.
+    // One registration for both watch pages, since there is one player now: the panel's and the
+    // public one are the same partial. There used to be two, because the player was drawn inside
+    // two different screens; it is its own screen now and both of them link to it.
+    //
+    // 'content' because the panel's copy is inside the region a navigation replaces, and its
+    // teardown is what stops a stream and lets go of the content key when the reader moves on. The
+    // public layout has no swapped region at all, so its copy is mounted on load and taken down
+    // with the page — which is the same lifetime by a different route.
     region: 'content',
     mount: (el) => mountFilePlayer(el).stop,
   },
