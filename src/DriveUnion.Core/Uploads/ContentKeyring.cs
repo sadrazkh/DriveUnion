@@ -22,22 +22,22 @@ namespace DriveUnion.Core.Uploads;
 /// <see cref="Storage.SealedBy.Server"/>, which is where that distinction is written down for the
 /// customer rather than for a reader of this file.</para>
 /// </summary>
-public sealed class FetchKeyring
+public sealed class ContentKeyring
 {
     private readonly ConcurrentDictionary<Guid, byte[]> _keys = new();
 
     /// <summary>How many are being held. For a health check, and for a test that asserts a release.</summary>
     public int Count => _keys.Count;
 
-    public void Hold(Guid fetchId, byte[] contentKey)
+    public void Hold(Guid jobId, byte[] contentKey)
     {
         ArgumentNullException.ThrowIfNull(contentKey);
 
-        _keys[fetchId] = contentKey;
+        _keys[jobId] = contentKey;
     }
 
     /// <summary>The key for this fetch, or null when the process no longer has it.</summary>
-    public byte[]? Get(Guid fetchId) => _keys.GetValueOrDefault(fetchId);
+    public byte[]? Get(Guid jobId) => _keys.GetValueOrDefault(jobId);
 
     /// <summary>
     /// Forgets it, and clears the bytes before letting go.
@@ -46,8 +46,8 @@ public sealed class FetchKeyring
     /// is still worth doing: it shortens the window in which a heap dump of a long-running process
     /// contains a key for a file that finished uploading an hour ago.</para>
     /// </summary>
-    public void Release(Guid fetchId)
+    public void Release(Guid jobId)
     {
-        if (_keys.TryRemove(fetchId, out var key)) Array.Clear(key);
+        if (_keys.TryRemove(jobId, out var key)) Array.Clear(key);
     }
 }

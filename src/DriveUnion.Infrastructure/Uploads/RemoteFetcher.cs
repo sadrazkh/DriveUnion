@@ -33,7 +33,7 @@ public sealed class RemoteFetcher(
     DriveUnionDbContext db,
     IUploadCoordinator uploads,
     IHttpClientFactory http,
-    FetchKeyring keyring,
+    ContentKeyring keyring,
     TimeProvider clock,
     IPushEvents push,
     ILogger<RemoteFetcher> logger) : IRemoteFetcher

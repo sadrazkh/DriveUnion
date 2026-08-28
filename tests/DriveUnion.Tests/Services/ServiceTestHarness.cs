@@ -97,7 +97,7 @@ public sealed class ServiceTestHarness : IAsyncDisposable
     /// <para>Per harness and never static, for the reason FolderCache gives: a key left over from
     /// another test is a key for a fetch this one never made.</para>
     /// </summary>
-    public FetchKeyring Keyring { get; } = new();
+    public ContentKeyring Keyring { get; } = new();
 
     /// <summary>
     /// What the domain has said is worth a notification, without a worker standing over it.

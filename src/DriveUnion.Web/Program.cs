@@ -193,6 +193,13 @@ builder.Services.AddDriveUnionTrashSweeper();
 builder.Services.AddDriveUnionDeletions();
 builder.Services.AddDriveUnionDeletionWorker();
 
+// Locking a file that was uploaded in the clear: read it out of Drive, seal it, put it back, and
+// only then delete the readable copy. Two lines for the same reason as the pair above, and the
+// quiet failure is worse here — without the worker the button works, the row appears, the file is
+// never locked, and the room reserved for its second copy is never given back.
+builder.Services.AddDriveUnionFileLocks();
+builder.Services.AddDriveUnionFileLockWorker();
+
 // The trash screen's own reader, plus the capacity card the layout draws for a tenant. After
 // AddDriveUnionTrash, whose ITrash it reads, and AddDriveUnionPlans, whose figures it puts beside it.
 builder.Services.AddDriveUnionTrashPanel();

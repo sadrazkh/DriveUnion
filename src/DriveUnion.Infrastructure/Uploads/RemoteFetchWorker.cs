@@ -88,8 +88,8 @@ public static class RemoteFetchServiceCollectionExtensions
     {
         // Singleton: the key for an encrypted fetch is put here by a web request and read by a
         // worker minutes later, so it has to outlive both scopes — and live nowhere else. See
-        // FetchKeyring for what a restart costs and why that is the right price.
-        services.AddSingleton<FetchKeyring>();
+        // ContentKeyring for what a restart costs and why that is the right price.
+        services.AddSingleton<ContentKeyring>();
 
         services.AddScoped<IRemoteFetches, RemoteFetches>();
         services.AddScoped<IRemoteFetcher, RemoteFetcher>();

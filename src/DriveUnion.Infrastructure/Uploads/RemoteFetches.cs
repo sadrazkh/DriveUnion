@@ -16,7 +16,7 @@ namespace DriveUnion.Infrastructure.Uploads;
 /// </summary>
 public sealed class RemoteFetches(
     DriveUnionDbContext db,
-    FetchKeyring keyring,
+    ContentKeyring keyring,
     TimeProvider clock) : IRemoteFetches
 {
     public async Task<RemoteFetchStartResult> StartAsync(
@@ -68,7 +68,7 @@ public sealed class RemoteFetches(
             // Sealed here, in the request the customer typed their secret into, and not in the
             // worker — so the secret does not have to outlive this method and is not written down
             // for a job that starts minutes later. What is written down is the wrapped key; what is
-            // held in memory is the raw one. See FetchKeyring for what that costs on a restart.
+            // held in memory is the raw one. See ContentKeyring for what that costs on a restart.
             var salt = RandomNumberGenerator.GetBytes(Du1.SaltBytes);
             var wrapping = Du1.DeriveWrappingKey(secret, salt, Du1.KdfIterations);
 

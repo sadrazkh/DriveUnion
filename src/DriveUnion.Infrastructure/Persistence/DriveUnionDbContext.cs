@@ -93,6 +93,15 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
 
     /// <summary>Files the customer asked the server to go and get. See <see cref="RemoteFetch"/>.</summary>
     public DbSet<RemoteFetch> RemoteFetches => Set<RemoteFetch>();
+
+    /// <summary>
+    /// Files already here that the customer has asked to have locked. See <see cref="FileLock"/>.
+    ///
+    /// <para>A row outlives the swap on purpose: it holds the Drive id of the readable copy until
+    /// that copy has actually been deleted, which is the only thing that can find it if a process
+    /// stops in between.</para>
+    /// </summary>
+    public DbSet<FileLock> FileLocks => Set<FileLock>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();
 
     public DbSet<ShareLinkKey> ShareLinkKeys => Set<ShareLinkKey>();
@@ -520,6 +529,33 @@ public sealed class DriveUnionDbContext(DbContextOptions<DriveUnionDbContext> op
             // to that tenant by a real FK is silently detached in the middle of its own job — every
             // write after the reserve is a no-op, the file lands, and the row still says «running».
             // Which is exactly what a foreign key here did before it was taken out again.
+        });
+
+        builder.Entity<FileLock>(e =>
+        {
+            e.Property(l => l.FailureReason).HasMaxLength(FileLock.MaxFailureReasonLength);
+            e.Property(l => l.SourceDriveFileId).HasMaxLength(256);
+            e.Property(l => l.SealedDriveFileId).HasMaxLength(256);
+            e.Property(l => l.KdfSalt).HasMaxLength(FileEncryption.MaxFieldLength);
+            e.Property(l => l.WrappedKey).HasMaxLength(FileEncryption.MaxFieldLength);
+            e.Property(l => l.NoncePrefix).HasMaxLength(FileEncryption.MaxFieldLength);
+
+            // The worker's question — what is owed — and the screen's, which is this workspace's
+            // locks. Status first: after a while every row is Completed and is skipped on it alone.
+            e.HasIndex(l => l.Status);
+            e.HasIndex(l => new { l.TenantId, l.CreatedAt });
+
+            // «Is this file already being locked», asked before every new request.
+            e.HasIndex(l => l.StoredFileId);
+
+            // No foreign key to Tenant, for the reason written out on RemoteFetch above: the storage
+            // meter detaches the tenant it reserved against, and detaching a principal takes its
+            // tracked dependents with it. This row is written on both sides of a reservation, which
+            // is exactly when that would bite — and a lock row that stops being written mid-job is
+            // one that never records which Drive file still holds the readable copy.
+            //
+            // And none to StoredFiles either. The row has to outlive the file it is about: a lock
+            // that finished is the only record that a readable copy once existed and was deleted.
         });
 
         builder.Entity<DeletionJob>(e =>

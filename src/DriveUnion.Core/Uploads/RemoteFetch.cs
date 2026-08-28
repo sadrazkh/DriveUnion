@@ -73,7 +73,7 @@ public sealed class RemoteFetch
     /// yet: the plaintext length is whatever the source turns out to send, and the scheme and
     /// segment size are constants the finished header takes from <see cref="Storage.Du1"/>. What is
     /// here is what was decided at the moment the customer typed their secret — and what is
-    /// deliberately not here is anything that opens the file. See <see cref="FetchKeyring"/>.</para>
+    /// deliberately not here is anything that opens the file. See <see cref="ContentKeyring"/>.</para>
     /// </summary>
     public string? KdfSalt { get; set; }
 

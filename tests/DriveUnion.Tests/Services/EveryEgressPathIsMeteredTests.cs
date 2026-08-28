@@ -48,6 +48,20 @@ public class EveryEgressPathIsMeteredTests
         // bucket is a different table and a different feature.
         ["src/DriveUnion.Infrastructure/Services/AccountMigrator.cs"] =
             "the operator's own housekeeping between two pool accounts, chargeable to no workspace",
+
+        // Locking a file that is already stored. It reads the readable copy out of Drive and writes
+        // a sealed one back, so it is real egress and the operator really pays Google for it — but
+        // nothing is served. The bytes go from the pool account to this process and back to the same
+        // pool account, and no reader anywhere receives one.
+        //
+        // Charging it to the customer would be charging them for the privilege of taking a copy the
+        // operator can read *away* from the operator, at the rate the customer's own traffic
+        // allowance is sold: "bytes served out of this workspace". Nothing was served out. The
+        // allowance would also make the feature unusable on exactly the files it is most wanted for,
+        // since locking a 10 GB film would spend 10 GB of a month nobody watched anything in.
+        ["src/DriveUnion.Infrastructure/Uploads/FileLocker.cs"] =
+            "an internal re-write within one pool account; real cost to the operator, nothing served "
+                + "to anybody, and chargeable to no allowance that is sold as bytes delivered",
     };
 
     [Fact]
