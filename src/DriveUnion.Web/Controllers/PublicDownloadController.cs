@@ -112,7 +112,20 @@ public sealed class PublicDownloadController(
                     // Streaming earns its complexity on the files that are too big to wait for.
                     _ => PreviewKind.None,
                 },
-            file.MimeType ?? string.Empty);
+            file.MimeType ?? string.Empty,
+
+            // A film too big to preview, which is most films. Only when there is no preview already
+            // — under the ceiling one is drawn and a second control beside it would be two ways to
+            // do one thing — and never for an encrypted file, which has its own player on the unlock
+            // card and no bytes anybody can read without the key.
+            file.Encryption is null && file.Preview == PreviewKind.None
+                ? Previews.OnceUnlocked(file.MimeType) switch
+                {
+                    PreviewKind.Video => "video",
+                    PreviewKind.Audio => "audio",
+                    _ => string.Empty,
+                }
+                : string.Empty);
 
         // The count on the card moves and the link can be revoked while a copy sits in a cache.
         Response.Headers.CacheControl = "no-store";

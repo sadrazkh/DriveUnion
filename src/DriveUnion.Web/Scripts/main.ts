@@ -191,6 +191,15 @@ const islands: Record<string, Island> = {
     },
   },
 
+  'public-player': {
+    // The same player, on the public download card — which is its own layout with no swapped
+    // region in it, so it is mounted once and never taken down. A second registration rather than
+    // a second region on one: an island's region is a fact about where it is drawn, and this is
+    // drawn somewhere else.
+    region: 'shell',
+    mount: (el) => mountFilePlayer(el).stop,
+  },
+
   'file-player': {
     // Inside the detail panel, which a navigation replaces — and it must be: its teardown is what
     // stops a stream and lets go of the content key when the reader moves on.

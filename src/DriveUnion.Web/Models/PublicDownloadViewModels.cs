@@ -135,7 +135,23 @@ public sealed record PublicDownloadViewModel(
     /// being handed to a media element, so a wrong type is a file that will not play rather than
     /// anything that can act.</para>
     /// </summary>
-    string MimeType = "");
+    string MimeType = "",
+
+    /// <summary>
+    /// «video», «audio», or empty — for an <b>unlocked</b> file too big to preview.
+    ///
+    /// <para><see cref="Preview"/> is <c>None</c> for anything past <c>MostBytesToShowWhole</c>, and
+    /// that ceiling is right: a preview spends no download, so without it a link capped at five
+    /// could be drained by loading the page. What it also did was make a film — the thing this
+    /// product is for — the one kind of file you could not watch without downloading it first.</para>
+    ///
+    /// <para>So a big film gets a play button instead of an automatic preview, and the button plays
+    /// from the ordinary download address rather than the preview one. That keeps the ceiling's
+    /// argument intact by agreeing with it: watching the film <i>is</i> taking the file, so pressing
+    /// play spends a download exactly as pressing Download does. Seeking afterwards does not —
+    /// <c>DownloadCounting</c> already draws that line, and it draws it in the right place.</para>
+    /// </summary>
+    string BigMedia = "");
 
 /// <summary>
 /// The refusal card. It carries no slug, no reason and no file: revoked, expired, capped and

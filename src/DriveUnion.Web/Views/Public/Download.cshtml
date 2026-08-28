@@ -57,7 +57,49 @@
                 break;
 
             default:
-                <span class="ph-label" dir="ltr">@Model.KindText</span>
+                if (Model.BigMedia is "video" or "audio")
+                {
+                    @*
+                        A film too big to preview.
+
+                        The preview ceiling exists because a preview spends no download, so without
+                        it a link capped at five could be emptied by loading the page five times.
+                        This agrees with that rather than working around it: the player reads from
+                        the ordinary download address, so pressing play spends a download exactly as
+                        pressing Download would — because watching the film is taking the file.
+                        Seeking afterwards is free, which is the line DownloadCounting already draws.
+
+                        Nothing is fetched until it is pressed, and the button is server-rendered
+                        hidden: without a bundle the placeholder and the download button below are
+                        what this page has always been.
+                    *@
+                    <div class="public-player"
+                         data-island="public-player"
+                         data-player-url="@Model.DownloadUrl"
+                         data-player-mime="@Model.MimeType">
+
+                        @if (Model.BigMedia == "video")
+                        {
+                            <video data-player-media class="preview-media" controls playsinline
+                                   preload="metadata" hidden></video>
+                        }
+                        else
+                        {
+                            <audio data-player-media class="preview-media" controls
+                                   preload="metadata" hidden></audio>
+                        }
+
+                        <button type="button" data-player-start class="btn btn--primary" hidden>
+                            @PublicText.Pick(lang, "پخش", "Play")
+                        </button>
+
+                        <span class="ph-label" dir="ltr">@Model.KindText</span>
+                    </div>
+                }
+                else
+                {
+                    <span class="ph-label" dir="ltr">@Model.KindText</span>
+                }
                 break;
         }
     </div>
