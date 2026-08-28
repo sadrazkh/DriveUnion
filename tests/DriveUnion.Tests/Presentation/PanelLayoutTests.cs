@@ -264,6 +264,41 @@ public class PanelLayoutTests
         Rule(css, ".dtable").Value("container-type").Should().Be("inline-size");
     }
 
+    /// <summary>
+    /// The watch stage clips what overflows it, so its height may not be fixed by a ratio.
+    ///
+    /// <para><b>This is the bug that made a locked film unplayable.</b> The stage was
+    /// <c>aspect-ratio: 16 / 9</c> with <c>overflow: hidden</c>, and the unlock card inside it is
+    /// 346px tall — taller than the stage is at every phone width, because 16/9 of 375px is 211px.
+    /// A flex box centring an item too big for it overflows at <i>both</i> ends, so 67px was cut off
+    /// the top and 67px off the bottom, and the bottom 67px is where the Unlock button is. The film
+    /// did not fail to play; there was no way to ask for it.</para>
+    ///
+    /// <para>A ratio is still what the box wants — a media element with no source has no height, and
+    /// without one the page jumps by the height of a film the moment play is pressed. It has to be a
+    /// floor rather than a height, which is what the <c>::before</c> spacer sharing a grid cell with
+    /// the content does: the row is the taller of the two.</para>
+    ///
+    /// <para>Asserted against the stage and not against the card because the card's height is the
+    /// sum of a dozen things and every one of them is allowed to change. What may not change is the
+    /// box being unable to grow to hold it.</para>
+    /// </summary>
+    [Fact]
+    public void The_watch_stage_does_not_fix_its_height_while_clipping_its_overflow()
+    {
+        foreach (var stage in Rules(AppCss()).Where(r => r.Selector is ".watch-stage"))
+        {
+            if (stage.Value("overflow") is not "hidden" and not "clip") continue;
+
+            stage.Declares("aspect-ratio").Should().BeFalse(
+                "the unlock card is taller than 16/9 at every phone width, and a clipped box that "
+                + "cannot grow eats the Unlock button");
+
+            stage.Declares("block-size").Should().BeFalse("same reason: a fixed height cannot grow");
+            stage.Declares("max-block-size").Should().BeFalse("a ceiling clips as surely as a height");
+        }
+    }
+
     [Fact]
     public void Nothing_above_a_sticky_box_becomes_a_scroll_container()
     {

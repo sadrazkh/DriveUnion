@@ -6,10 +6,14 @@
     where the bytes come from and where «back» goes, and those arrive on the model — a second copy of
     this markup would be a second place for the unlock flow to drift.
 
-    The stage is a fixed aspect box rather than a bare <video>. A media element with no source has no
+    The stage is a 16/9 box rather than a bare <video>. A media element with no source has no
     intrinsic size, so before play is pressed it collapses to nothing and the page jumps by the height
     of a film the moment it starts — which on a phone throws the controls under the reader's thumb
     just as they reach for them.
+
+    That ratio is a floor and not a height, and the difference is the whole of why locked films could
+    not be played: the unlock card below is taller than 16/9 is at any phone width, and a stage that
+    could not grow clipped the Unlock button off the bottom of itself. See `.watch-stage` in app.css.
 *@
 <div class="watch"
      data-island="file-player"

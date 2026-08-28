@@ -1646,6 +1646,17 @@ a:hover {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
+
+  /*
+    The same clip `.app-shell` takes, and now for the same reason: the watch page's stage bleeds to
+    `100vw` on a phone, and `vw` counts the scrollbar. On a desktop window narrower than the 640px
+    breakpoint that is a stage some 8px wider than the page can show, and the whole document slid
+    sideways — measured at 406px, scrollWidth 406 against clientWidth 398.
+
+    `clip` and not `hidden`, for the reason written on the shell: `hidden` would make this box a
+    scroll container and re-anchor anything sticky inside it.
+  */
+  overflow-x: clip;
 }
 
 .public-wrap {
@@ -2541,22 +2552,32 @@ summary.btn::-webkit-details-marker {
 }
 
 /*
- * The stage: a fixed 16/9 box the media element fills.
+ * The stage: a 16/9 box the media element fills — where 16/9 is a floor and not a height.
  *
- * Fixed on purpose. A media element with no source has no intrinsic size, so a bare <video> collapses
- * to nothing before play is pressed and the page jumps by the height of a film the moment it starts
- * — which on a phone throws the controls under the thumb reaching for them. The box is the same size
- * before and after.
+ * A ratio is wanted here. A media element with no source has no intrinsic size, so a bare <video>
+ * collapses to nothing before play is pressed and the page jumps by the height of a film the moment
+ * it starts — which on a phone throws the controls under the thumb reaching for them. The box should
+ * be the same size before and after.
+ *
+ * It was written as `aspect-ratio: 16 / 9` on this rule, and that made locked films unplayable. The
+ * unlock card is 346px tall and 16/9 of a 375px phone is 211px, so the card was 135px too big for
+ * the box holding it; a centred flex item that does not fit overflows at both ends, and `overflow:
+ * hidden` cut 67px off the top and 67px off the bottom. The bottom 67px is the Unlock button. There
+ * was nothing wrong with the playing — there was no way left on the screen to ask for it.
+ *
+ * So the ratio moves to a spacer that shares one grid cell with the content, and the row becomes
+ * whichever of the two is taller. A film gets exactly 16/9; the card gets exactly as much as it
+ * needs. Neither has to know about the other, which is what a media query here could not have
+ * managed — the card's height is the sum of a heading, two paragraphs, a field, a button and a line
+ * for the error, in two languages.
  *
  * `color-scheme: dark` rather than a hard-coded colour: it makes the browser's own control bar dark
  * against the backdrop in both themes, which is the one part of a player nothing here can style.
  */
 .watch-stage {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
   inline-size: 100%;
   border-radius: 14px;
   overflow: hidden;
@@ -2565,25 +2586,51 @@ summary.btn::-webkit-details-marker {
 }
 
 /*
+ * The floor. An empty box exactly 16/9 of the stage's width, in the same cell as everything else, so
+ * it sets the row height without ever capping it.
+ */
+.watch-stage::before {
+  content: "";
+  grid-area: 1 / 1;
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+/* Every real child stacks in that same cell rather than in a row of its own. */
+.watch-stage > * {
+  grid-area: 1 / 1;
+  min-inline-size: 0;
+}
+
+/*
  * Audio needs no stage, and giving it one draws a large black rectangle around a 40px bar. It keeps
  * the card's own surface and only as much height as the controls take.
  */
 .watch-stage--audio {
-  aspect-ratio: auto;
   min-block-size: 120px;
   padding: 20px;
   background: var(--surface2);
   color-scheme: light;
 }
 
+/* No floor for audio: 16/9 is the shape of a picture and there is no picture. */
+.watch-stage--audio::before {
+  content: none;
+}
+
 [data-theme="dark"] .watch-stage--audio {
   color-scheme: dark;
 }
 
+/*
+ * Stretched to the cell rather than sized to it. `block-size: 100%` would be a percentage of a row
+ * whose height is the spacer's, resolved while that row is still being sized; `stretch` is the same
+ * answer asked in the direction the grid can answer.
+ */
 .watch-media {
-  inline-size: 100%;
-  block-size: 100%;
   display: block;
+  place-self: stretch;
+  inline-size: 100%;
 }
 
 /*
