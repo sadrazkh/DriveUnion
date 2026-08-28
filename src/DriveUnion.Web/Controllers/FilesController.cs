@@ -32,6 +32,7 @@ public sealed class FilesController(
     IShareLinkService shareLinks,
     IFileEncryption encryption,
     IRemoteFetches fetches,
+    IFileLocks locks,
     IAntiforgery antiforgery,
     IOptions<DriveUnionWebOptions> options) : Controller
 {
@@ -587,6 +588,72 @@ public sealed class FilesController(
     }
 
     /// <summary>
+    /// Locks a file that is already stored, in place.
+    ///
+    /// <para><b>The passphrase does not come here, and that is the difference between this and the
+    /// link-upload path.</b> That one takes what the customer typed and derives on the server, which
+    /// it can defend — it is fetching the file itself, so it is holding the plaintext anyway. The
+    /// defence does not extend to the passphrase: a customer uses one secret for everything, so a
+    /// server that has seen it once could open every file they ever locked <i>in their browser</i>.
+    /// This route takes a header the browser built and the content key for this one file, which is a
+    /// key to a file the server is about to read regardless and to nothing else.</para>
+    ///
+    /// <para>JSON only, and by design: there is no no-script version of deriving a key. Without a
+    /// bundle the button is not drawn, which is the honest answer — a form that posted a passphrase
+    /// would be the weaker protocol wearing this one's clothes.</para>
+    /// </summary>
+    /// <param name="key">
+    /// Base64, the raw content key. It is used for this job and held in memory for its duration —
+    /// never written to a row, never logged. See <c>ContentKeyring</c>.
+    /// </param>
+    [HttpPost("{id:guid}/lock")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Lock(
+        Guid id,
+        [FromForm] EncryptionHeaderForm header,
+        [FromForm] string key,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        byte[] contentKey;
+        try
+        {
+            contentKey = Convert.FromBase64String(key ?? string.Empty);
+        }
+        catch (FormatException)
+        {
+            return Json(new { started = false, error = UiText.Locking.RefusalMalformed });
+        }
+
+        // 32 bytes, because the format is AES-256 and nothing else will do. Checked here rather than
+        // discovered by the sealing loop, where it would be a failed job instead of a refused button.
+        if (contentKey.Length != 32)
+        {
+            return Json(new { started = false, error = UiText.Locking.RefusalMalformed });
+        }
+
+        var result = await locks.StartAsync(
+            tenantId, User.GetUserId(), id, header.ToHeader(), contentKey, cancellationToken);
+
+        return Json(new
+        {
+            started = result.Refusal is FileLockRefusal.None,
+            error = result.Refusal switch
+            {
+                FileLockRefusal.None => null,
+                FileLockRefusal.UnknownFile => UiText.Locking.RefusalUnknownFile,
+                FileLockRefusal.AlreadyLocked => UiText.Locking.RefusalAlreadyLocked,
+                FileLockRefusal.AlreadyLocking => UiText.Locking.RefusalAlreadyLocking,
+                FileLockRefusal.NoRoom => UiText.Locking.RefusalNoRoom,
+                _ => UiText.Locking.RefusalMalformed,
+            },
+        });
+    }
+
+    /// <summary>
     /// Whether the caller is the upload island rather than a browser posting a form.
     ///
     /// <para>One pair of routes for both, because they do exactly the same thing and a second pair
@@ -754,6 +821,10 @@ public sealed class FilesController(
             DisplayFormats.PanelDateTime(file.CreatedAt),
             [.. file.Links.Select(link => ToLink(link, baseUrl, now))],
             header is not null,
+
+            // The plaintext length, which for an unlocked file is what is stored. The lock card
+            // seals into segments and has to know how many before it has read a byte.
+            header?.PlaintextLength ?? file.SizeBytes,
             sealedBy switch
             {
                 SealedBy.Client => UiText.Files.SealedByClient,

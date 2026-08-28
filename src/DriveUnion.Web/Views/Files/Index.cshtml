@@ -457,6 +457,61 @@
                             <span class="push-end">@Model.Selected.CreatedText</span>
                         </div>
 
+                        @if (!Model.Selected.IsEncrypted)
+                        {
+                            @*
+                                Locking a file that is already here.
+
+                                The whole card is server-rendered hidden and lockFile.ts reveals it.
+                                That is not progressive enhancement being tidy — there is no
+                                no-script version of this and there must not be one. Deriving the key
+                                in the browser is the entire reason this route is safer than the
+                                link-upload path it resembles: a form that posted the passphrase
+                                would send the server the one secret that also opens every file the
+                                customer ever locked in their own browser.
+
+                                So without a bundle the card is simply absent, and the old remedy —
+                                download it, delete it, upload it again with the box ticked — is
+                                still there and still works.
+                            *@
+                            <div class="subcard" style="margin-bottom: 14px;"
+                                 data-island="lock-file"
+                                 data-lock-url="@Url.Action("Lock", "Files", new { id = Model.Selected.Id })"
+                                 data-lock-token="@Model.Antiforgery.Token"
+                                 data-lock-length="@Model.Selected.SizeBytes"
+                                 data-lock-working="@UiText.Locking.Working"
+                                 data-lock-queued="@UiText.Locking.Queued"
+                                 data-lock-failed="@UiText.Locking.Failed">
+                                <form data-lock-form hidden class="stack" style="gap: 8px;">
+                                    <div class="field-label">🔓 @UiText.Locking.Title</div>
+
+                                    <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0;">
+                                        @UiText.Locking.Explain
+                                    </p>
+
+                                    <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0;">
+                                        @UiText.Locking.LinksWillStop @UiText.Locking.NeedsRoom
+                                    </p>
+
+                                    <label class="field-label" for="lock-secret-@Model.Selected.Id">
+                                        @UiText.Locking.SecretLabel
+                                    </label>
+                                    <input id="lock-secret-@Model.Selected.Id"
+                                           data-lock-secret
+                                           type="password"
+                                           class="control"
+                                           autocomplete="new-password" />
+
+                                    <button type="submit" data-lock-submit class="btn">
+                                        @UiText.Locking.Start
+                                    </button>
+
+                                    <p class="muted" data-lock-said role="status"
+                                       style="font-size: 11.5px; line-height: 1.8; margin: 0;"></p>
+                                </form>
+                            </div>
+                        }
+
                         @if (Model.Selected.IsEncrypted)
                         {
                             @* Said here rather than only drawn as a padlock, because this is where

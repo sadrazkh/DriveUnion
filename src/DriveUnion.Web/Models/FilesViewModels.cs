@@ -113,6 +113,15 @@ public sealed record FileDetailViewModel(
     bool IsEncrypted = false,
 
     /// <summary>
+    /// The length in bytes, beside <see cref="SizeText"/> rather than instead of it.
+    ///
+    /// <para>The text is for reading and this is for arithmetic: locking a file seals it into
+    /// segments, and the browser has to know how many there will be before it has seen a byte. A
+    /// number parsed back out of «۱۸٫۴ مگابایت» would be a different number.</para>
+    /// </summary>
+    long SizeBytes = 0,
+
+    /// <summary>
     /// Which of the two kinds of encryption this file got, as a sentence rather than a word.
     ///
     /// <para>Null when it is not encrypted at all. The two are the same format and very different

@@ -6,6 +6,7 @@ import UploadDock from './islands/UploadDock.vue';
 import UploadPanel from './islands/UploadPanel.vue';
 import { createUploadStore, type UploadConfig, type UploadStore } from './uploads/store';
 import { mountCopyLink } from './copyLink';
+import { mountLockFile } from './lockFile';
 import { mountFileGrid } from './fileGrid';
 import { mountGoogleConnect } from './googleConnect';
 import { mountNavToggle } from './nav';
@@ -185,6 +186,17 @@ const islands: Record<string, Island> = {
       // Nothing to take back, for the reason copy-link gives: every listener it adds is on a
       // descendant of `el`, which leaves the document with the rest of the region and is collected
       // with it. The empty function is the answer rather than the omission of one.
+      return () => {};
+    },
+  },
+
+  'lock-file': {
+    // Drawn inside the file detail panel, which a navigation replaces.
+    region: 'content',
+    mount: (el) => {
+      mountLockFile(el);
+
+      // Nothing to take back, for the reason written on copy-link below.
       return () => {};
     },
   },
