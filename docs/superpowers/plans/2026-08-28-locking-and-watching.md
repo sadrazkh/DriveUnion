@@ -50,8 +50,10 @@ not extend to the passphrase: people use one secret for everything, so a server 
 once could open every file that customer ever locked in their own browser. E1 derives in the browser
 and posts the header plus the content key for this one file.
 
-> **Owed:** P13b should be brought up to this protocol. It is the weaker of the two and there is now
-> a working example of the stronger one in the same codebase.
+> **Owed, and since paid — `f854344`.** P13b was brought up to this protocol: a link fetch now posts
+> custody derived in the browser instead of the passphrase, and the customer can still supply the key
+> themselves. `FetchCustodyTests` holds the line by asserting the server-side path has no
+> `DeriveWrappingKey` and no `WrapKey` left in it.
 
 ## E2 — a player in the panel — **done, `e4b1c89`**
 
