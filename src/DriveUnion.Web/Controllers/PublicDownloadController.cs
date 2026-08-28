@@ -94,7 +94,25 @@ public sealed class PublicDownloadController(
             file.Note,
             file.Preview,
             $"{PublicLinkFormatter.Path(file.Slug)}/preview",
-            file.Slug);
+            file.Slug,
+
+            // Only for a locked file, and only for something a browser can play. An unlocked video
+            // is already drawn by the preview above; asking this question about it too would put a
+            // second player on the same card.
+            file.Encryption is null
+                ? PreviewKind.None
+                : Previews.OnceUnlocked(file.MimeType) switch
+                {
+                    PreviewKind.Video => PreviewKind.Video,
+                    PreviewKind.Audio => PreviewKind.Audio,
+
+                    // Images and PDFs are deliberately not offered. Both are read whole, so
+                    // decrypting one into the page — which the unlock card already does — is the
+                    // whole of what a player would add, and it would add a second way to do it.
+                    // Streaming earns its complexity on the files that are too big to wait for.
+                    _ => PreviewKind.None,
+                },
+            file.MimeType ?? string.Empty);
 
         // The count on the card moves and the link can be revoked while a copy sits in a cache.
         Response.Headers.CacheControl = "no-store";

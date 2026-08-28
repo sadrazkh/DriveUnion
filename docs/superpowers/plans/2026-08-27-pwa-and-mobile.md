@@ -107,6 +107,11 @@ Size: small. Depends on nothing.
   the *same registration*; two workers cannot hold one scope. M5 owns the file and the install and
   fetch plumbing, and P7b adds a handler to it. Getting this wrong means one of the two silently
   unregisters the other.
+
+  > **P7b has since landed on this seam**, and the shape turned out one step better than described:
+  > it adds no handler at all. `sw-media.js` exposes `self.du1Media` and the single `fetch` listener
+  > in `sw.js` asks it, so there is still exactly one handler and one place the routing order is
+  > decided — which is what the rule was protecting rather than the letter of it.
 - Cache: fonts, CSS, the hashed bundle, and an offline page. Nothing authenticated, nothing under
   `/d/`, nothing from the API.
 - A version/skip-waiting story, or a stale worker serves last week's CSS against this week's HTML.

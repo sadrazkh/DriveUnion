@@ -107,6 +107,25 @@ try {
   // notifications that never arrive — which is a great deal better than an app that never loads.
 }
 
+/*
+ * The same arrangement again, for playing an encrypted file without downloading it first.
+ *
+ * sw-media.js is the one exception to rule 2 above, and it is an exception in shape rather than in
+ * substance: it adds no `fetch` listener either. It exposes `self.du1Media`, and the single fetch
+ * listener below — still the only one — asks it whether an address is its business. So there is one
+ * handler, one respondWith, and one place the routing order is decided, which is what the rule was
+ * protecting.
+ *
+ * Wrapped for the same reason: a media file that will not play is a worse day than an app that will
+ * not load, and only one of those is on offer here.
+ */
+try {
+  importScripts('/sw-media.js');
+} catch {
+  // Deliberately silent, as above. `self.du1Media` is simply absent, and the route below is not
+  // taken — a locked video falls back to the download-and-decrypt path it has always had.
+}
+
 self.addEventListener('install', (event) => {
   // The offline page is fetched rather than assembled here: it is Razor, its words come from UiText
   // and its language from the culture cookie, which this request carries because a Request built
@@ -161,6 +180,20 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin !== self.location.origin) return;
   if (NeverOurs.some((prefix) => url.pathname.startsWith(prefix))) return;
+
+  // Decrypted media, before anything else that could answer.
+  //
+  // These addresses exist only inside this worker — no route on the server serves /du1/, and a
+  // request for one that reaches the network is a 404. That is why it is checked here rather than
+  // left to fall through: there is nothing behind it to fall through to.
+  //
+  // Nothing about it is ever cached, and the response says so itself. It is a customer's file with
+  // the lock taken off, which is the one thing in this product that must exist in memory and
+  // nowhere else — the same rule that keeps the panel's own pages out of the cache below.
+  if (self.du1Media && self.du1Media.claims(url)) {
+    event.respondWith(self.du1Media.answer(event, url));
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(navigation(request));

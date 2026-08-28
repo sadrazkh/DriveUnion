@@ -76,6 +76,23 @@ public static class Previews
     }
 
     /// <summary>
+    /// What this file would be if the lock came off — ignoring both encryption and size.
+    ///
+    /// <para><see cref="For"/> answers <see cref="PreviewKind.None"/> for anything encrypted, and is
+    /// right to: the server holds ciphertext and every element it could draw would fail. This one
+    /// answers the different question the player asks, which is whether it is worth offering to
+    /// decrypt this in the browser and play it there. The bytes the element would read are plaintext
+    /// by the time they reach it, so neither of <see cref="For"/>'s two refusals applies.</para>
+    ///
+    /// <para>Size is deliberately not consulted. <see cref="MostBytesToShowWhole"/> exists because a
+    /// server preview sends the whole file to somebody who only glanced at a page; a reader who has
+    /// typed a passphrase has asked for this file by name, and the streaming path reads it a segment
+    /// at a time rather than whole. A two-hour film is the case this is for, not the case to
+    /// refuse.</para>
+    /// </summary>
+    public static PreviewKind OnceUnlocked(string? mimeType) => OfType(mimeType);
+
+    /// <summary>
     /// Whether this exact type may be sent with an inline disposition, ignoring size.
     ///
     /// <para>Size is the caller's to check, and the route does check it. This one answers the

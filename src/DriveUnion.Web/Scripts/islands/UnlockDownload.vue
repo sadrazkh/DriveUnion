@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { unseal, type Secret } from '../crypto/envelope';
 import { decryptInto, type DecryptFailure } from '../crypto/stream';
+import { closeStream, openStream } from '../crypto/play';
 import type { Bytes, EncryptionHeader } from '../crypto/format';
 
 /**
@@ -21,10 +22,22 @@ const props = defineProps<{
   header: EncryptionHeader;
   downloadUrl: string;
   fileName: string;
+
+  /**
+   * 'video', 'audio', or empty for a file no browser can play.
+   *
+   * <p>Decided by the view and not here: whether a type is safe to hand to a media element is the
+   * same judgement `Previews` makes for unlocked files, and it is made in one place.</p>
+   */
+  media: string;
+
+  /** The recorded type, for the element the browser builds. Empty when there is nothing to play. */
+  mimeType: string;
+
   lang: 'fa' | 'en';
 }>();
 
-type Phase = 'asking' | 'unlocking' | 'working' | 'done';
+type Phase = 'asking' | 'unlocking' | 'working' | 'done' | 'playing';
 
 const secret = ref('');
 const phase = ref<Phase>('asking');
@@ -69,6 +82,9 @@ function text() {
         cancelled: 'جایی برای ذخیره انتخاب نشد.',
         done: 'فایل باز شد و ذخیره شد.',
         again: 'یک‌بار دیگر',
+        play: 'پخش همین‌جا',
+        saveCopy: 'ذخیره‌ی یک نسخه',
+        streaming: 'همین‌جا و در مرورگر خودتان رمزگشایی می‌شود. هیچ نسخه‌ی بازی جایی ذخیره نمی‌شود.',
         memory:
           'مرورگر شما نمی‌تواند فایل را همان‌طور که می‌رسد روی دیسک بنویسد، پس تمام آن باید در حافظه جمع شود. برای فایلی به این بزرگی ممکن است تب از کار بیفتد؛ با کروم یا اج نتیجه بهتر است.',
       }
@@ -88,6 +104,9 @@ function text() {
         cancelled: 'No place to save was chosen.',
         done: 'Opened and saved.',
         again: 'Try another',
+        play: 'Play it here',
+        saveCopy: 'Save a copy',
+        streaming: 'Decrypted here, in your own browser, as it plays. No readable copy is stored anywhere.',
         memory:
           'Your browser cannot write the file to disk as it arrives, so all of it has to be held in memory. For a file this size the tab may not survive it; Chrome or Edge will do better.',
       };
@@ -121,6 +140,17 @@ async function unlock() {
     return;
   }
 
+  // A file the browser can play is played rather than saved, and this is the whole of P7b from the
+  // reader's side. The alternative — what happened until now — is a two-hour wait on a progress bar
+  // before the first frame, and no way to skip to the middle because there is no middle until the
+  // end has arrived.
+  //
+  // Nothing is said when this does not work. Without a Service Worker there is no way to answer a
+  // media element's range requests, and the honest fallback is exactly what this card did before:
+  // decrypt the file and save it. A sentence explaining a capability the reader never knew about
+  // would be an apology for nothing.
+  if (props.media !== '' && (await startPlaying(key))) return;
+
   written.value = 0;
   phase.value = 'working';
 
@@ -128,6 +158,73 @@ async function unlock() {
     await run(key);
   } catch {
     phase.value = 'asking';
+    error.value = error.value || text().failed;
+  }
+}
+
+/**
+ * The key, kept only while a player is on the screen.
+ *
+ * <p>It is here so «save a copy» does not ask for the passphrase a second time, and it is dropped
+ * the moment the player goes away — see <c>stop()</c>. A <c>CryptoKey</c> from <c>unseal</c> is
+ * non-extractable, so what is held is the ability to decrypt rather than anything readable.</p>
+ */
+const opened = ref<CryptoKey | null>(null);
+const streamId = ref('');
+const streamUrl = ref('');
+
+async function startPlaying(key: CryptoKey): Promise<boolean> {
+  const id = crypto.randomUUID();
+
+  const url = await openStream(id, {
+    header: props.header,
+    key,
+
+    // The ordinary public address. The worker reads ciphertext from it a segment at a time, so the
+    // owner's traffic is spent on what is actually watched rather than on the whole film.
+    source: props.downloadUrl,
+    type: props.mimeType,
+  });
+
+  if (!url) return false;
+
+  opened.value = key;
+  streamId.value = id;
+  streamUrl.value = url;
+  phase.value = 'playing';
+
+  return true;
+}
+
+/**
+ * Takes the player down and forgets everything behind it.
+ *
+ * <p>The rule this feature is built on is that a decrypted file exists for as long as somebody is
+ * watching it and no longer, so leaving the stream registered after the player has gone would be
+ * the one piece of that promise this code is responsible for, quietly broken.</p>
+ */
+function stop() {
+  if (streamId.value) closeStream(streamId.value);
+
+  streamId.value = '';
+  streamUrl.value = '';
+  opened.value = null;
+}
+
+onBeforeUnmount(stop);
+
+/** «Save a copy», from the player, without asking for the passphrase again. */
+async function saveCopy() {
+  const key = opened.value;
+  if (!key) return;
+
+  written.value = 0;
+  phase.value = 'working';
+
+  try {
+    await run(key);
+  } catch {
+    phase.value = 'playing';
     error.value = error.value || text().failed;
   }
 }
@@ -278,9 +375,34 @@ interface FilePicker {
       <span class="mono" dir="ltr">{{ Math.round(percent) }}%</span>
     </div>
 
+    <!--
+      The player. Its src is a URL that exists only inside this browser's Service Worker: every
+      range the element asks for is answered with plaintext decrypted a segment at a time, so
+      seeking works and nothing is ever written to disk.
+    -->
+    <div v-else-if="phase === 'playing'" class="unlock-player">
+      <video
+        v-if="media === 'video'"
+        class="unlock-media"
+        :src="streamUrl"
+        controls
+        playsinline
+        preload="metadata"
+      ></video>
+      <audio v-else class="unlock-media" :src="streamUrl" controls preload="metadata"></audio>
+
+      <p class="unlock-explain">{{ text().streaming }}</p>
+
+      <div class="unlock-actions">
+        <button type="button" class="btn" @click="saveCopy()">{{ text().saveCopy }}</button>
+      </div>
+    </div>
+
     <div v-else class="unlock-progress">
       <p class="unlock-done">{{ text().done }}</p>
-      <button type="button" class="btn" @click="phase = 'asking'">{{ text().again }}</button>
+      <button type="button" class="btn" @click="phase = streamUrl ? 'playing' : 'asking'">
+        {{ streamUrl ? text().play : text().again }}
+      </button>
     </div>
   </div>
 </template>
@@ -331,5 +453,36 @@ interface FilePicker {
   font-size: 13px;
   font-weight: 600;
   color: var(--accent-ink);
+}
+
+.unlock-player {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/*
+ * The element fills the card and keeps whatever shape the file has.
+ *
+ * A fixed height would letterbox a portrait video — which is most video shot on the phones this
+ * feature exists for — and `height: auto` on an <audio> collapses it to nothing, so the two are
+ * given the same rule and the audio player is told to keep the height its controls need.
+ */
+.unlock-media {
+  inline-size: 100%;
+  max-block-size: 60vh;
+  border-radius: 10px;
+  background: var(--surface2);
+}
+
+audio.unlock-media {
+  block-size: 40px;
+  max-block-size: none;
+}
+
+.unlock-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>

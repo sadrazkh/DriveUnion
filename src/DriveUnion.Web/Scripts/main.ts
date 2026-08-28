@@ -133,6 +133,12 @@ const islands: Record<string, Island> = {
         header: JSON.parse(el.dataset.header ?? '{}'),
         downloadUrl: el.dataset.downloadUrl ?? '',
         fileName: el.dataset.fileName ?? 'download',
+
+        // Empty for anything that cannot be played, which is the ordinary case. The view decides
+        // this, not the bundle: whether a type is safe to hand to a media element is the same
+        // judgement Previews makes for unlocked files, and it is made in one place.
+        media: el.dataset.media === 'video' || el.dataset.media === 'audio' ? el.dataset.media : '',
+        mimeType: el.dataset.mimeType ?? '',
         lang: el.dataset.lang === 'en' ? 'en' : 'fa',
       });
 

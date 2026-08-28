@@ -111,7 +111,31 @@ public sealed record PublicDownloadViewModel(
     /// <para>Carried rather than parsed back out of <c>DownloadUrl</c>: two spellings of one fact
     /// that a change to either would silently separate.</para>
     /// </summary>
-    string Slug = "");
+    string Slug = "",
+
+    /// <summary>
+    /// What a locked file would be if the lock came off, and <c>None</c> for one that is not locked.
+    ///
+    /// <para>Separate from <see cref="Preview"/>, which is <c>None</c> for everything encrypted and
+    /// is right to be: the server holds ciphertext. This one is what decides whether the unlock card
+    /// offers to <i>play</i> the file after the passphrase rather than only to save it — a question
+    /// only the browser can act on, because only the browser has the key.</para>
+    ///
+    /// <para>Always <c>None</c> when <see cref="EncryptionJson"/> is null. An unlocked file that can
+    /// be drawn is drawn by <see cref="Preview"/> already, and offering a second player for it would
+    /// be two of them on one card.</para>
+    /// </summary>
+    PreviewKind UnlockedMedia = PreviewKind.None,
+
+    /// <summary>
+    /// The recorded type, for the element the browser will build. Empty when there is nothing to play.
+    ///
+    /// <para>It is the type the uploader's browser claimed, which is an intent rather than a fact —
+    /// but by the time it is used the bytes have been decrypted in this reader's own tab and are
+    /// being handed to a media element, so a wrong type is a file that will not play rather than
+    /// anything that can act.</para>
+    /// </summary>
+    string MimeType = "");
 
 /// <summary>
 /// The refusal card. It carries no slug, no reason and no file: revoked, expired, capped and

@@ -167,6 +167,82 @@ public class ServiceWorkerTests
     }
 
     /// <summary>
+    /// The media seam does not take over fetch either, and answers through the one handler there is.
+    ///
+    /// <para>It is the one file that has a reason to want a <c>fetch</c> listener — it exists to
+    /// answer requests — and that is exactly why it must not have one. Two listeners race and the
+    /// winner depends on registration order, so a <c>/du1/</c> request would be answered by the
+    /// caching rules on some page loads and by the decryptor on others. Instead it exposes
+    /// <c>self.du1Media</c> and <c>sw.js</c> asks it, which keeps one handler and one place the
+    /// routing order is decided.</para>
+    /// </summary>
+    [Fact]
+    public void The_media_seam_does_not_take_over_fetch()
+    {
+        var media = WithoutComments(MediaSeam());
+
+        media.Should().NotContain(
+            "addEventListener('fetch'",
+            "sw.js owns fetch; a listener here decides the routing order by registration order");
+
+        media.Should().Contain(
+            "self.du1Media",
+            "the worker reaches the decryptor through this rather than through a second listener");
+
+        WithoutComments(Worker()).Should().Contain(
+            "du1Media",
+            "sw.js has to actually ask, or the media route is a file nothing reads");
+    }
+
+    /// <summary>
+    /// <b>Decrypted bytes are never stored, by anything.</b>
+    ///
+    /// <para>This is the same rule the cache allowlist keeps, at the one place it would be easiest
+    /// to break: the media seam holds a customer's file with the lock taken off. A <c>caches.open</c>
+    /// or an IndexedDB here would be a phone accumulating plaintext for a product sold on the server
+    /// holding no readable copy — and it would be invisible, because everything would still work.</para>
+    /// </summary>
+    [Fact]
+    public void The_media_seam_writes_decrypted_bytes_nowhere()
+    {
+        var media = WithoutComments(MediaSeam());
+
+        foreach (var store in new[] { "caches", "indexedDB", "localStorage", "sessionStorage" })
+        {
+            media.Should().NotContain(
+                store,
+                $"a decrypted file must not reach {store} — it exists in memory and nowhere else");
+        }
+
+        // And the response says so itself, for every path out of it.
+        media.Should().Contain(
+            "'no-store'",
+            "the element and any intermediary are told not to keep it either");
+    }
+
+    /// <summary>
+    /// Its addresses are the worker's own and reach no route on the server.
+    ///
+    /// <para><c>/du1/</c> exists only inside the worker. If the prefix ever collided with a real
+    /// route, a request the worker did not claim would fall through and be answered by the server
+    /// with something that is not what the element asked for.</para>
+    /// </summary>
+    [Fact]
+    public void Nothing_on_the_server_answers_for_the_media_prefix()
+    {
+        var routes = new DirectoryInfo(Path.Combine(RepositoryRoot().FullName, "src/DriveUnion.Web/Controllers"))
+            .EnumerateFiles("*.cs", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f.FullName));
+
+        foreach (var source in routes)
+        {
+            source.Should().NotContain(
+                "\"/du1",
+                "that prefix belongs to the service worker and must reach no controller");
+        }
+    }
+
+    /// <summary>
     /// Both files are classic scripts.
     ///
     /// <para>A module service worker is Chromium-only — iOS has none, and iOS is the platform this
@@ -177,6 +253,7 @@ public class ServiceWorkerTests
     [Theory]
     [InlineData("src/DriveUnion.Web/wwwroot/sw.js")]
     [InlineData("src/DriveUnion.Web/wwwroot/sw-push.js")]
+    [InlineData("src/DriveUnion.Web/wwwroot/sw-media.js")]
     public void The_worker_is_a_classic_script(string path)
     {
         var source = WithoutComments(Read(path));
@@ -452,6 +529,8 @@ public class ServiceWorkerTests
     private static string Worker() => Read("src/DriveUnion.Web/wwwroot/sw.js");
 
     private static string PushSeam() => Read("src/DriveUnion.Web/wwwroot/sw-push.js");
+
+    private static string MediaSeam() => Read("src/DriveUnion.Web/wwwroot/sw-media.js");
 
     private static IEnumerable<string> ScriptSources() =>
         new DirectoryInfo(Path.Combine(RepositoryRoot().FullName, "src/DriveUnion.Web/Scripts"))

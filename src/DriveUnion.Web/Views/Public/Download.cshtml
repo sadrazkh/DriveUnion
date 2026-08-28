@@ -123,11 +123,20 @@
                 of offering the link anyway. There is nothing this server can do for them: it does
                 not have the key and could not use it if it did.
             *@
+            @*
+                data-media is empty for everything the browser cannot play, which is most things.
+                When it is not, the island offers to play the file here after the passphrase instead
+                of only saving it — the bytes are decrypted a segment at a time by the Service
+                Worker, so a two-hour film starts in seconds and can be seeked, rather than being
+                downloaded whole first. See Scripts/crypto/play.ts.
+            *@
             <div class="public-cta"
                  data-island="unlock-download"
                  data-header="@header"
                  data-download-url="@Model.DownloadUrl"
                  data-file-name="@Model.FileName"
+                 data-media="@(Model.UnlockedMedia == PreviewKind.None ? "" : Model.UnlockedMedia.ToString().ToLowerInvariant())"
+                 data-mime-type="@Model.MimeType"
                  data-lang="@PublicText.LangCode(lang)">
                 <span class="public-assurance">
                     @PublicText.Pick(
