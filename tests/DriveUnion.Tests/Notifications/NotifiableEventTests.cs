@@ -44,7 +44,7 @@ public class NotifiableEventTests
 
         var owner = Guid.NewGuid();
 
-        await harness.Fetches().StartAsync(tenant.Id, owner, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, owner, Url, null, null, default);
 
         var source = new StubSource(new byte[2048], "report.pdf", "application/pdf");
 
@@ -68,7 +68,7 @@ public class NotifiableEventTests
         var tenant = harness.SeedTenant("acme");
         harness.SeedAccount();
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
         await harness.Fetcher(new StubSource(new byte[2048], "x.bin", "application/octet-stream"))
             .RunOnceAsync(5, default);
 
@@ -91,7 +91,7 @@ public class NotifiableEventTests
         var tenant = harness.SeedTenant("acme");
         harness.SeedAccount();
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
 
         var source = new StubSource([], "x", "text/plain") { Status = HttpStatusCode.NotFound };
 

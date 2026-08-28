@@ -40,6 +40,45 @@ public sealed record EncryptionHeader(
 }
 
 /// <summary>
+/// What a link-fetch decides about its lock before it knows what it is fetching.
+///
+/// <para>Four fields and not seven, because the other three are not knowable yet: the plaintext
+/// length is whatever the source turns out to send, and the scheme and segment size are constants
+/// the finished header takes from <see cref="Storage.Du1"/>. The server fills those in when the
+/// fetch completes and it knows the length.</para>
+///
+/// <para><b>These are produced in the browser, and that is the point of them existing.</b> The
+/// server used to take the customer's passphrase and derive from it here — defensible, since it is
+/// about to hold the plaintext anyway, but it does not stay defensible: people use one secret for
+/// everything, so a server that has seen it once could open every file that customer ever locked in
+/// their own browser. Now the browser derives, and what arrives is a wrapping of a key to this one
+/// file. The customer still chooses the secret; the server just never learns it.</para>
+/// </summary>
+public sealed record FetchCustody(
+    string NoncePrefix,
+    string KdfSalt,
+    int KdfIterations,
+    string WrappedKey)
+{
+    /// <summary>
+    /// Whether this is shaped like custody at all.
+    ///
+    /// <para>Not a check that it is correct — the server cannot know that and could not act on it if
+    /// it did. It is a check that the columns will hold it and the iteration count is not nonsense,
+    /// so a malformed request is refused at the door rather than stored and discovered by whoever
+    /// tries to open the file.</para>
+    /// </summary>
+    public bool IsWellFormed =>
+        KdfIterations is >= 100_000 and <= 10_000_000
+        && Fits(NoncePrefix)
+        && Fits(KdfSalt)
+        && Fits(WrappedKey);
+
+    private static bool Fits(string? value) =>
+        value is { Length: > 0 } and { Length: <= Storage.FileEncryption.MaxFieldLength };
+}
+
+/// <summary>
 /// One file's content key, wrapped again under a secret made for one link.
 ///
 /// <para>Three fields and not seven: the scheme, the segment size, the nonce prefix and the plaintext

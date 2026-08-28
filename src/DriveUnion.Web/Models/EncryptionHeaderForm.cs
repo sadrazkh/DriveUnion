@@ -48,3 +48,37 @@ public sealed class EncryptionHeaderForm
         KdfIterations,
         WrappedKey);
 }
+
+/// <summary>
+/// A link-fetch's custody as it arrives from a form post.
+///
+/// <para>Four fields rather than a whole header, because a fetch does not know what it is fetching:
+/// the plaintext length is whatever the source turns out to send, and the scheme and segment size
+/// are constants the finished header takes from <c>Du1</c>. See <see cref="FetchCustody"/>.</para>
+///
+/// <para>A separate type from that record for the reason <see cref="EncryptionHeaderForm"/> is
+/// separate from <c>EncryptionHeader</c>: a model binder writing straight into a contract makes
+/// every field of the contract something a caller can shape.</para>
+/// </summary>
+public sealed class FetchCustodyForm
+{
+    public string NoncePrefix { get; set; } = "";
+
+    public string KdfSalt { get; set; } = "";
+
+    public int KdfIterations { get; set; }
+
+    public string WrappedKey { get; set; } = "";
+
+    /// <summary>
+    /// Null when nothing was sent, which is «store it as it comes» rather than a malformed request.
+    ///
+    /// <para>A form post binds an absent object to one with empty strings rather than to null, so
+    /// «did the caller ask for a lock at all» has to be asked here. Getting it wrong in the other
+    /// direction would refuse every unencrypted fetch.</para>
+    /// </summary>
+    public FetchCustody? ToCustody() =>
+        WrappedKey.Length == 0 && KdfSalt.Length == 0 && NoncePrefix.Length == 0
+            ? null
+            : new FetchCustody(NoncePrefix, KdfSalt, KdfIterations, WrappedKey);
+}

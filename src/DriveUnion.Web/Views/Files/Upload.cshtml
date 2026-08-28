@@ -91,15 +91,22 @@
                        autocomplete="off"
                        placeholder="https://…" />
 
-                <label class="field-label" for="fetch-secret-plain">@UiText.Files.FetchSecretLabel</label>
+                @*
+                    There is no passphrase box here any more, and its absence is the feature.
+
+                    The server used to take what was typed and derive from it. That was defensible —
+                    it is about to download the plaintext anyway — right up until you notice that
+                    people use one secret for everything, so a server that had seen it once could
+                    open every file that customer had locked in their own browser. The deriving
+                    happens in the browser now, and a form cannot derive.
+
+                    So without script a link can still be fetched, and it arrives readable. Offering
+                    the box and quietly using the weaker protocol behind it would have been worse
+                    than not offering it: the customer would believe they had locked something.
+                *@
                 <p class="muted" style="font-size: 11.5px; line-height: 1.8; margin: 0; max-width: 62ch;">
-                    @UiText.Files.FetchLockWarning
+                    @UiText.Fetching.NoLockWithoutScript
                 </p>
-                <input id="fetch-secret-plain"
-                       name="secret"
-                       type="password"
-                       class="control"
-                       autocomplete="new-password" />
 
                 <button type="submit" class="btn btn--primary">@UiText.Files.FetchStart</button>
             </form>

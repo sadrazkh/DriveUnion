@@ -486,15 +486,23 @@ public sealed class FilesController(
     /// </summary>
     [HttpPost("fetch")]
     [ValidateAntiForgeryToken]
-    /// <param name="secret">
-    /// What to lock the arriving file with, or blank to store it as it comes.
+    /// <param name="custody">
+    /// How to lock the arriving file, or absent to store it as it comes.
     ///
-    /// <para>Used in this request and not written down: the service derives from it, wraps a content
-    /// key, and keeps only the wrapped form. It never reaches the queue row or a log line.</para>
+    /// <para><b>The passphrase is not a parameter of this action any more.</b> It used to be, and
+    /// the service derived from it — which the server could defend, since it is about to hold the
+    /// plaintext anyway, and which stopped being defensible the moment you notice that people use
+    /// one secret for everything. The browser derives now; what arrives is a wrapping and a key to
+    /// this one file.</para>
+    ///
+    /// <para>That means locking a fetch needs a bundle. Without one the form still fetches, and
+    /// stores the file as it comes — see the noscript block on the upload screen, which says so.</para>
     /// </param>
+    /// <param name="key">Base64, the raw content key. Held in memory for the job and written nowhere.</param>
     public async Task<IActionResult> Fetch(
         string? url,
-        string? secret,
+        [FromForm] FetchCustodyForm? custody,
+        [FromForm] string? key,
         CancellationToken cancellationToken)
     {
         if (User.GetTenantId() is not { } tenantId) return Forbid();
@@ -503,7 +511,8 @@ public sealed class FilesController(
             tenantId,
             User.GetUserId(),
             url ?? string.Empty,
-            secret?.Trim() is { Length: > 0 } typed ? typed : null,
+            custody?.ToCustody(),
+            ContentKeyFrom(key),
             cancellationToken);
 
         if (WantsJson())
@@ -753,6 +762,29 @@ public sealed class FilesController(
                 _ => UiText.Locking.RefusalMalformed,
             },
         });
+    }
+
+    /// <summary>
+    /// The raw content key from a form field, or null for anything that is not one.
+    ///
+    /// <para>Refused rather than truncated or padded: thirty-two bytes is what AES-256 takes, and a
+    /// key of the wrong length would seal a file that nothing can open — discovered by whoever tries
+    /// to, months later.</para>
+    /// </summary>
+    private static byte[]? ContentKeyFrom(string? value)
+    {
+        if (value is not { Length: > 0 }) return null;
+
+        try
+        {
+            var key = Convert.FromBase64String(value);
+
+            return key.Length == 32 ? key : null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

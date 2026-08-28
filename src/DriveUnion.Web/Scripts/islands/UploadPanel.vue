@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { newRecoveryKey, type Secret } from '../crypto/envelope';
+import { newRecoveryKey, seal, type Secret } from '../crypto/envelope';
+import { toBase64, type Bytes } from '../crypto/format';
 import {
   ConcurrencyChoices,
   bytes,
@@ -310,6 +311,45 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
  * <p>The same endpoint the no-script form posts to, answering JSON because this asked for JSON —
  * one pair of routes for both, so the refusals cannot be worded differently in two places.</p>
  */
+/**
+ * What a link-fetch posts, and the whole of the protocol change.
+ *
+ * <p>The passphrase used to be in here. The server took it, derived a wrapping key and wrapped a
+ * fresh content key — defensible on its own terms, because the server is about to download the
+ * plaintext anyway, and not defensible once you notice that people use one secret for everything: a
+ * server that has seen it once can open every file that customer locked <i>in their own browser</i>.
+ * </p>
+ *
+ * <p>So the deriving happens here now. What goes over the wire is a wrapping and the content key
+ * for this one file — a key to a file the server is about to hold regardless. The customer still
+ * chooses the secret and still chooses whether it is a passphrase or a recovery key; the server just
+ * never learns which, or what.</p>
+ *
+ * <p>The length is sent as zero and the server ignores it: a fetch does not know what it is fetching
+ * until it has fetched it, and the finished header takes the real length from the bytes that
+ * arrived. Only the four custody fields mean anything here.</p>
+ */
+async function linkBody(): Promise<URLSearchParams> {
+  const body = new URLSearchParams({ url: url.value.trim() });
+
+  const chosen = secret();
+  if (!chosen) return body;
+
+  const { header, key } = await seal(chosen, 0);
+
+  // Exportable only so this line can read it — see `sealWith`, which marks it so for exactly this
+  // reason. The raw key is what the server encrypts with; the passphrase stays in this tab.
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+
+  body.set('custody.NoncePrefix', header.noncePrefix);
+  body.set('custody.KdfSalt', header.kdfSalt);
+  body.set('custody.KdfIterations', String(header.kdfIterations));
+  body.set('custody.WrappedKey', header.wrappedKey);
+  body.set('key', toBase64(raw as Bytes));
+
+  return body;
+}
+
 async function sendLink() {
   if (!ready.value || url.value.trim().length === 0) return;
 
@@ -323,17 +363,7 @@ async function sendLink() {
         'Content-Type': 'application/x-www-form-urlencoded',
         Accept: 'application/json',
       }),
-      body: new URLSearchParams({
-        url: url.value.trim(),
-
-        // The secret from the same lockbox the file tab uses. On this side the server does the
-        // encrypting, which the box says out loud while this tab is the one showing.
-        secret: locking.value && custody.value === 'passphrase'
-          ? passphrase.value
-          : locking.value
-            ? recoveryKey.value
-            : '',
-      }),
+      body: await linkBody(),
     });
 
     const answer = (await response.json()) as { started: boolean; error: string | null };

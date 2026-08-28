@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using System.Net.Http.Headers;
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Storage;
@@ -53,7 +54,7 @@ public class RemoteFetchTests
         await using var harness = ServiceTestHarness.Create();
         var tenant = harness.SeedTenant("acme");
 
-        var result = await harness.Fetches().StartAsync(tenant.Id, null, "file:///etc/passwd", null, default);
+        var result = await harness.Fetches().StartAsync(tenant.Id, null, "file:///etc/passwd", null, null, default);
 
         result.Started.Should().BeFalse();
         result.Refusal.Should().Be(RemoteSourceRefusal.UnsupportedScheme);
@@ -71,7 +72,7 @@ public class RemoteFetchTests
         var content = Body(300_000);
         var source = new StubSource(content, "report.pdf", "application/pdf");
 
-        (await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default)).Started.Should().BeTrue();
+        (await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default)).Started.Should().BeTrue();
 
         (await harness.Fetcher(source).RunOnceAsync(5, default)).Should().Be(1);
 
@@ -102,7 +103,7 @@ public class RemoteFetchTests
             StateLength = false,
         };
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
         await harness.Fetcher(source).RunOnceAsync(5, default);
 
         // Storage needs a total before it will open a resumable session, so a source that will not
@@ -129,7 +130,7 @@ public class RemoteFetchTests
             ClaimedLength = 300_000,
         };
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
         await harness.Fetcher(source).RunOnceAsync(5, default);
 
         (await harness.Db.StoredFiles.CountAsync()).Should().Be(0);
@@ -148,7 +149,7 @@ public class RemoteFetchTests
 
         var source = new StubSource([], "x", "text/plain") { Status = HttpStatusCode.NotFound };
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
 
         // Three passes, three attempts. A source that is down for a minute is worth another go; one
         // that is gone will answer the same on the fourth try as on the first.
@@ -171,13 +172,13 @@ public class RemoteFetchTests
 
         for (var i = 0; i < RemoteFetch.MostInFlightPerTenant; i++)
         {
-            (await harness.Fetches().StartAsync(tenant.Id, null, $"{Url}?n={i}", null, default))
+            (await harness.Fetches().StartAsync(tenant.Id, null, $"{Url}?n={i}", null, null, default))
                 .Started.Should().BeTrue();
         }
 
         // Without a cap this is a free bandwidth proxy: paste a thousand links and the operator pays
         // for a thousand transfers nobody chose to make.
-        var refused = await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        var refused = await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
 
         refused.Started.Should().BeFalse();
         refused.Detail.Should().Be("queue_full");
@@ -190,7 +191,7 @@ public class RemoteFetchTests
         var mine = harness.SeedTenant("acme");
         var theirs = harness.SeedTenant("globex");
 
-        var started = await harness.Fetches().StartAsync(theirs.Id, null, Url, null, default);
+        var started = await harness.Fetches().StartAsync(theirs.Id, null, Url, null, null, default);
 
         (await harness.Fetches().ListAsync(mine.Id, default)).Should().BeEmpty();
 
@@ -236,7 +237,8 @@ public class RemoteFetchTests
         var content = Body(9 * 1024 * 1024);
         var source = new StubSource(content, "contract.pdf", "application/pdf");
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, "the customer's passphrase", default);
+        var sealing = Locked("the customer's passphrase");
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, sealing.Custody, sealing.Key, default);
         (await harness.Fetcher(source).RunOnceAsync(5, default)).Should().Be(1);
 
         var file = await harness.Db.StoredFiles.AsNoTracking().SingleAsync();
@@ -290,7 +292,8 @@ public class RemoteFetchTests
         var tenant = harness.SeedTenant("acme");
         harness.SeedAccount();
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, "a passphrase", default);
+        var sealing = Locked();
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, sealing.Custody, sealing.Key, default);
         await harness.Fetcher(new StubSource(Body(2048), "x.bin", "application/octet-stream"))
             .RunOnceAsync(5, default);
 
@@ -310,7 +313,7 @@ public class RemoteFetchTests
 
         var content = Body(4096);
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
         await harness.Fetcher(new StubSource(content, "x.bin", "application/octet-stream"))
             .RunOnceAsync(5, default);
 
@@ -326,7 +329,8 @@ public class RemoteFetchTests
         await using var harness = ServiceTestHarness.Create();
         var tenant = harness.SeedTenant("acme");
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, "a passphrase", default);
+        var sealing = Locked();
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, sealing.Custody, sealing.Key, default);
 
         var row = await harness.Db.RemoteFetches.AsNoTracking().SingleAsync();
 
@@ -347,7 +351,8 @@ public class RemoteFetchTests
         var tenant = harness.SeedTenant("acme");
         harness.SeedAccount();
 
-        var started = await harness.Fetches().StartAsync(tenant.Id, null, Url, "a passphrase", default);
+        var sealing = Locked();
+        var started = await harness.Fetches().StartAsync(tenant.Id, null, Url, sealing.Custody, sealing.Key, default);
 
         // What a restart looks like from here: the row survives, the key does not.
         harness.Keyring.Release(started.FetchId!.Value);
@@ -369,7 +374,8 @@ public class RemoteFetchTests
         await using var harness = ServiceTestHarness.Create();
         var tenant = harness.SeedTenant("acme");
 
-        var started = await harness.Fetches().StartAsync(tenant.Id, null, Url, "a passphrase", default);
+        var sealing = Locked();
+        var started = await harness.Fetches().StartAsync(tenant.Id, null, Url, sealing.Custody, sealing.Key, default);
         harness.Keyring.Count.Should().Be(1);
 
         await harness.Fetches().CancelAsync(tenant.Id, started.FetchId!.Value, default);
@@ -395,7 +401,7 @@ public class RemoteFetchTests
             "connection failed",
             new RemoteAddressRefusedException("169.254.169.254 is refused."));
 
-        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, default);
+        await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
         await harness.Fetcher(new ThrowingSource(wrapped)).RunOnceAsync(5, default);
 
         var fetch = await harness.Db.RemoteFetches.AsNoTracking().SingleAsync();
@@ -413,6 +419,38 @@ public class RemoteFetchTests
     {
         // A file with no name is worse than a file with a dull one.
         RemoteFetcher.NameFor("https://x.test/", null).Should().StartWith("fetched-");
+    }
+    /// <summary>
+    /// What the browser does before it posts a locked fetch: derive from the passphrase, wrap a
+    /// fresh content key, and hand over the wrapping and the key.
+    ///
+    /// <para>It lives in the test now because it lives in the browser now. The server used to do
+    /// this from the customer's passphrase, and the reason it no longer does is that a server which
+    /// has seen that passphrase once can open every file the customer locked in their own browser.
+    /// Nothing on the server derives anything any more, which is why this returns both halves and
+    /// why they must come from one call — custody wrapped around a different key than the one sent
+    /// is a file that seals cleanly and opens for nobody.</para>
+    ///
+    /// <para>A hundred thousand rounds rather than the product's six hundred thousand, which is the
+    /// floor <c>FetchCustody.IsWellFormed</c> accepts. The count is carried and never used on this
+    /// side — the whole point is that the server does not derive — so a realistic one would buy a
+    /// second per test and prove nothing.</para>
+    /// </summary>
+    private static (FetchCustody Custody, byte[] Key) Locked(string passphrase = "a passphrase")
+    {
+        const int iterations = 100_000;
+
+        var salt = RandomNumberGenerator.GetBytes(Du1.SaltBytes);
+        var wrapping = Du1.DeriveWrappingKey(passphrase, salt, iterations);
+        var key = RandomNumberGenerator.GetBytes(Du1.KeyBytes);
+
+        var custody = new FetchCustody(
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(Du1.NoncePrefixBytes)),
+            Convert.ToBase64String(salt),
+            iterations,
+            Convert.ToBase64String(Du1.WrapKey(key, wrapping)));
+
+        return (custody, key);
     }
 }
 
@@ -471,4 +509,5 @@ internal sealed class ThrowingSource(Exception failure) : HttpMessageHandler
         HttpRequestMessage request,
         CancellationToken cancellationToken) =>
         Task.FromException<HttpResponseMessage>(failure);
+
 }

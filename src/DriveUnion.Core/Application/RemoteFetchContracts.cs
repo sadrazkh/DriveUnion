@@ -39,22 +39,36 @@ public interface IRemoteFetches
     /// address it resolves to is <b>not</b> checked here, and deliberately: that check belongs at
     /// connect time, or a name can answer differently between the two moments.</para>
     /// </summary>
-    /// <param name="secret">
-    /// What the finished file should be locked with, or null to store it as it comes.
+    /// <param name="custody">
+    /// How the finished file should be locked, or null to store it as it comes.
     ///
-    /// <para>Used here and then gone: a content key is generated, wrapped under a key derived from
-    /// this, and only the wrapped form is written down. The raw key is held in memory for the life
-    /// of the job and the secret itself does not outlive this call.</para>
+    /// <para><b>The customer's passphrase does not appear in this signature, and that is the whole
+    /// change.</b> It used to: this method took what they typed, derived a wrapping key from it and
+    /// wrapped a fresh content key. That was defensible on its own terms — the server is fetching
+    /// the plaintext, so it holds the file either way — and it did not stay defensible, because
+    /// people use one secret for everything. A server that had seen it once could open every file
+    /// that customer had ever locked <i>in their own browser</i>, which is this product's central
+    /// promise with an exception in it.</para>
     ///
-    /// <para><b>This is not what the browser's encryption promises</b> and must not be presented as
-    /// though it were. The server is fetching the plaintext; it has the file and the secret for the
-    /// length of the transfer. See <c>SealedBy.Server</c>.</para>
+    /// <para>The browser derives now and sends the wrapping. The customer still chooses the secret,
+    /// and still chooses whether it is a passphrase or a recovery key — the server simply never
+    /// learns which, or what.</para>
+    /// </param>
+    /// <param name="contentKey">
+    /// The raw key for this one file, held in memory by <c>ContentKeyring</c> for the life of the
+    /// job and written nowhere. Null exactly when <paramref name="custody"/> is.
+    ///
+    /// <para>It is still something the server holds, and that is unavoidable: it is about to encrypt
+    /// a file it is downloading. What it no longer holds is the thing that opens everything else.
+    /// <b>This is not what the browser's encryption promises</b> and must not be presented as though
+    /// it were — see <c>SealedBy.Server</c>.</para>
     /// </param>
     Task<RemoteFetchStartResult> StartAsync(
         Guid tenantId,
         Guid? ownerUserId,
         string url,
-        string? secret,
+        FetchCustody? custody,
+        byte[]? contentKey,
         CancellationToken cancellationToken);
 
     /// <summary>This workspace's fetches, newest first.</summary>

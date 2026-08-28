@@ -23,9 +23,20 @@ public sealed class RemoteFetches(
         Guid tenantId,
         Guid? ownerUserId,
         string url,
-        string? secret,
+        FetchCustody? custody,
+        byte[]? contentKey,
         CancellationToken cancellationToken)
     {
+        // The two halves of a lock arrive together or not at all. One without the other is a job
+        // that would either seal with a key nothing can unwrap, or store a wrapping for a key that
+        // was never used — both of which produce a file nobody can open, discovered by whoever tries.
+        if ((custody is null) != (contentKey is null)
+            || custody?.IsWellFormed == false
+            || (contentKey is not null && contentKey.Length != Du1.KeyBytes))
+        {
+            return new RemoteFetchStartResult(null, RemoteSourceRefusal.None, Detail: "bad_custody");
+        }
+
         // The URL's own shape, refused now rather than by a job that fails in a minute. What it
         // resolves to is not checked here on purpose — see IRemoteFetches.
         var refusal = RemoteSource.Inspect(url, out var parsed);
@@ -61,26 +72,15 @@ public sealed class RemoteFetches(
             CreatedAt = clock.GetUtcNow(),
         };
 
-        byte[]? contentKey = null;
-
-        if (secret is { Length: > 0 })
+        if (custody is not null)
         {
-            // Sealed here, in the request the customer typed their secret into, and not in the
-            // worker — so the secret does not have to outlive this method and is not written down
-            // for a job that starts minutes later. What is written down is the wrapped key; what is
-            // held in memory is the raw one. See ContentKeyring for what that costs on a restart.
-            var salt = RandomNumberGenerator.GetBytes(Du1.SaltBytes);
-            var wrapping = Du1.DeriveWrappingKey(secret, salt, Du1.KdfIterations);
-
-            contentKey = RandomNumberGenerator.GetBytes(Du1.KeyBytes);
-
-            fetch.KdfSalt = Convert.ToBase64String(salt);
-            fetch.KdfIterations = Du1.KdfIterations;
-            fetch.WrappedKey = Convert.ToBase64String(Du1.WrapKey(contentKey, wrapping));
-            fetch.NoncePrefix = Convert.ToBase64String(
-                RandomNumberGenerator.GetBytes(Du1.NoncePrefixBytes));
-
-            Array.Clear(wrapping);
+            // Written down as it arrived. Nothing here derives anything: the browser did that, and
+            // the passphrase it derived from never left it. What is stored is the wrapping; what is
+            // held in memory is the raw key. See ContentKeyring for what that costs on a restart.
+            fetch.KdfSalt = custody.KdfSalt;
+            fetch.KdfIterations = custody.KdfIterations;
+            fetch.WrappedKey = custody.WrappedKey;
+            fetch.NoncePrefix = custody.NoncePrefix;
         }
 
         db.RemoteFetches.Add(fetch);

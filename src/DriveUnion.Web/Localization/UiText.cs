@@ -491,18 +491,6 @@ public static partial class UiText
 
         public static string FetchStart => Pick("بیاورش", "Fetch it");
 
-        public static string FetchLock => Pick("رمزگذاری بعد از رسیدن", "Encrypt it once it arrives");
-
-        public static string FetchSecretLabel => Pick("رمز", "Passphrase");
-
-        /// <summary>
-        /// The whole of the difference between this and what the upload screen's own lock does, said
-        /// where the choice is made rather than in a page nobody opens.
-        /// </summary>
-        public static string FetchLockWarning => Pick(
-            "این با قفلِ آپلود از مرورگر یکی نیست. چون فایل را سرورِ ما می‌آورد، در همان لحظه محتوایش را دیده — پس این در برابر گوگل و در برابر پایگاه‌داده‌ی دزدیده‌شده محافظت می‌کند، و در برابر خودِ ما نه. برای رمزی که ما هم نتوانیم بازش کنیم، فایل را از همین صفحه با تیکِ «قفل کردن» آپلود کنید.",
-            "This is not the same as locking a file you upload from your browser. Our server is the one fetching it, so it sees the contents while it does — this protects the file from Google and from a stolen database, and not from us. For a lock we cannot open either, upload the file from this page with «Lock these files» ticked.");
-
         /// <summary>Which of the two kinds of encryption a file got. See <c>SealedBy</c>.</summary>
         public static string SealedByClient => Pick(
             "روی دستگاه شما قفل شده — ما نسخه‌ی خوانا‌ی آن را هرگز نداشته‌ایم.",
