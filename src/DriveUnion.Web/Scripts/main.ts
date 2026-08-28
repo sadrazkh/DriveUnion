@@ -6,6 +6,7 @@ import UploadDock from './islands/UploadDock.vue';
 import UploadPanel from './islands/UploadPanel.vue';
 import { createUploadStore, type UploadConfig, type UploadStore } from './uploads/store';
 import { mountCopyLink } from './copyLink';
+import { mountFilePlayer } from './filePlayer';
 import { mountLockFile } from './lockFile';
 import { mountFileGrid } from './fileGrid';
 import { mountGoogleConnect } from './googleConnect';
@@ -188,6 +189,13 @@ const islands: Record<string, Island> = {
       // with it. The empty function is the answer rather than the omission of one.
       return () => {};
     },
+  },
+
+  'file-player': {
+    // Inside the detail panel, which a navigation replaces — and it must be: its teardown is what
+    // stops a stream and lets go of the content key when the reader moves on.
+    region: 'content',
+    mount: (el) => mountFilePlayer(el).stop,
   },
 
   'lock-file': {

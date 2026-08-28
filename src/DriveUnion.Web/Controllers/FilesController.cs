@@ -1,6 +1,8 @@
 using System.Text.Json;
+using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
 using DriveUnion.Core.Uploads;
+using DriveUnion.Core.Sharing;
 using DriveUnion.Core.Storage;
 using DriveUnion.Web.Hosting;
 using DriveUnion.Web.Infrastructure;
@@ -33,6 +35,10 @@ public sealed class FilesController(
     IFileEncryption encryption,
     IRemoteFetches fetches,
     IFileLocks locks,
+    IStoredFileBytes bytes,
+    IDriveClient drive,
+    ITrafficMeter traffic,
+    IEgressAllowance allowance,
     IAntiforgery antiforgery,
     IOptions<DriveUnionWebOptions> options) : Controller
 {
@@ -588,6 +594,90 @@ public sealed class FilesController(
     }
 
     /// <summary>
+    /// The owner's own bytes, for a player on this screen.
+    ///
+    /// <para><b>This is the first cookie-authenticated byte route in the product</b>, and it was
+    /// absent on purpose rather than by omission: a customer reached their own file by making a
+    /// share link, which is metered and capped like every other link. That worked and it made
+    /// watching a film of your own into a link somebody else could also have. What it never was is
+    /// a hole, and adding this route must not open one.</para>
+    ///
+    /// <para>So it meters and it caps, exactly as <c>/api/v1</c> does and for the reason written
+    /// there: an exemption here would not be «your own files are free», it would be «your own files
+    /// are free through the panel», which is the same bypass with a different front door. The
+    /// customer who watches a film has spent the traffic it took to watch it, and that is the same
+    /// arithmetic as if they had sent themselves a link.</para>
+    ///
+    /// <para>Range is passed to Drive untouched, which is what makes seeking work — and what makes a
+    /// seek cost only the part that was watched.</para>
+    /// </summary>
+    [HttpGet("{id:guid}/content")]
+    public async Task<IActionResult> Content(Guid id, CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var file = await bytes.ResolveAsync(tenantId, id, cancellationToken);
+        if (file is null) return NotFound();
+
+        // Ciphertext, served as ciphertext. The player on this screen is the one that knows what to
+        // do with it — the service worker decrypts a segment at a time and hands plaintext to the
+        // media element — so this route's job is to be honest about what it is serving and let the
+        // browser do the rest. Refusing here would make an encrypted film unplayable by its owner.
+        var standing = await allowance.ReadAsync(tenantId, cancellationToken);
+
+        if (standing.IsOverAllowance)
+        {
+            Response.Headers.RetryAfter = EgressWindow.NextResetHeader();
+
+            return Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                title: "over_traffic_allowance",
+                detail: "This workspace has used its monthly traffic allowance. "
+                    + "It resumes at the start of the next calendar month.");
+        }
+
+        var range = Request.Headers.Range.Count > 0 ? Request.Headers.Range.ToString() : null;
+
+        var download = await drive.OpenDownloadAsync(
+            file.GoogleAccountId, file.DriveFileId, range, cancellationToken);
+
+        Response.StatusCode = download.IsPartial
+            ? StatusCodes.Status206PartialContent
+            : StatusCodes.Status200OK;
+
+        Response.Headers.AcceptRanges = "bytes";
+        Response.ContentType = file.MimeType;
+
+        // Never stored. It is the customer's own file and this is their own browser, but a shared
+        // cache between them and it is not theirs — and the encrypted case is plaintext's ciphertext,
+        // which the service worker will decrypt and must not find on disk afterwards.
+        Response.Headers.CacheControl = "no-store";
+
+        if (download.ContentRange is { } contentRange) Response.Headers.ContentRange = contentRange;
+        if (download.ContentLength is { } length) Response.ContentLength = length;
+
+        var sent = 0L;
+
+        try
+        {
+            await using (download)
+            {
+                await EgressCopy.CopyAsync(
+                    download.Content, Response.Body, copied => sent = copied, cancellationToken);
+            }
+
+            return new EmptyResult();
+        }
+        finally
+        {
+            // Not the request's token: when the reader is the one who stopped watching it is already
+            // cancelled, and the bytes they took would go uncounted for the one reason that is not a
+            // failure at all.
+            if (sent > 0) await traffic.RecordAsync(tenantId, sent, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
     /// Locks a file that is already stored, in place.
     ///
     /// <para><b>The passphrase does not come here, and that is the difference between this and the
@@ -825,6 +915,16 @@ public sealed class FilesController(
             // The plaintext length, which for an unlocked file is what is stored. The lock card
             // seals into segments and has to know how many before it has read a byte.
             header?.PlaintextLength ?? file.SizeBytes,
+
+            // What the panel may play. Encryption is not consulted — unlike the public card, which
+            // is talking to a stranger with no key: this is the owner, and the worker decrypts a
+            // segment at a time once they have typed their passphrase.
+            Previews.OnceUnlocked(file.MimeType) switch
+            {
+                PreviewKind.Video => "video",
+                PreviewKind.Audio => "audio",
+                _ => string.Empty,
+            },
             sealedBy switch
             {
                 SealedBy.Client => UiText.Files.SealedByClient,

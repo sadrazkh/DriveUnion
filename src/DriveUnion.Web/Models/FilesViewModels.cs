@@ -122,6 +122,16 @@ public sealed record FileDetailViewModel(
     long SizeBytes = 0,
 
     /// <summary>
+    /// «video», «audio», or empty for a file no browser can play.
+    ///
+    /// <para>Decided by <c>Previews</c> and not by the view, so the question «is this type safe to
+    /// hand to a media element» has one answer in this product rather than one per screen. Unlike
+    /// the public card's version it ignores encryption: the panel can play a locked file, because
+    /// the owner has the passphrase and the service worker does the decrypting.</para>
+    /// </summary>
+    string MediaKind = "",
+
+    /// <summary>
     /// Which of the two kinds of encryption this file got, as a sentence rather than a word.
     ///
     /// <para>Null when it is not encrypted at all. The two are the same format and very different

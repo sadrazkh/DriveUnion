@@ -440,9 +440,69 @@
                 }
                 else
                 {
-                    <div class="ph detail-preview">
-                        <span class="ph-label">@Model.Selected.KindText</span>
-                    </div>
+                    @if (Model.Selected.MediaKind is "video" or "audio")
+                    {
+                        @*
+                            Watching it here rather than downloading it.
+
+                            Nothing is fetched until the button is pressed: a detail panel that
+                            started loading a film every time somebody clicked a row would spend the
+                            workspace's traffic on curiosity. And it does spend it — /files/{id}/content
+                            is metered and capped exactly as a share link is, because watching a film
+                            costs what watching a film costs whichever door it came through.
+
+                            Both halves are server-rendered hidden and the script reveals whichever
+                            applies. A locked file cannot be played without one — the passphrase is
+                            unwrapped in the browser and the service worker does the decrypting — and
+                            an unlocked one is a control that would do nothing without a bundle,
+                            which reads as a broken file rather than a missing feature.
+                        *@
+                        <div class="detail-preview"
+                             data-island="file-player"
+                             data-player-url="@Url.Action("Content", "Files", new { id = Model.Selected.Id })"
+                             data-player-mime="@Model.Selected.KindText"
+                             data-player-header="@Model.Selected.EncryptionJson"
+                             data-player-working="@UiText.Player.Unlocking"
+                             data-player-wrong-key="@UiText.Player.WrongKey"
+                             data-player-no-worker="@UiText.Player.NoWorker">
+
+                            @if (Model.Selected.MediaKind == "video")
+                            {
+                                <video data-player-media class="detail-player" controls playsinline
+                                       preload="metadata" hidden></video>
+                            }
+                            else
+                            {
+                                <audio data-player-media class="detail-player" controls
+                                       preload="metadata" hidden></audio>
+                            }
+
+                            @if (Model.Selected.IsEncrypted)
+                            {
+                                <form data-player-form hidden class="stack" style="gap: 8px; padding: 14px;">
+                                    <label class="field-label" for="play-secret-@Model.Selected.Id">
+                                        @UiText.Player.SecretLabel
+                                    </label>
+                                    <input id="play-secret-@Model.Selected.Id" data-player-secret
+                                           type="password" class="control" autocomplete="off" />
+                                    <button type="submit" class="btn">@UiText.Player.UnlockAndPlay</button>
+                                    <p class="muted" data-player-said role="status"
+                                       style="font-size: 11.5px; line-height: 1.8; margin: 0;"></p>
+                                </form>
+                            }
+                            else
+                            {
+                                <button type="button" data-player-start class="btn btn--block" hidden
+                                        style="margin: 14px;">@UiText.Player.Play</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ph detail-preview">
+                            <span class="ph-label">@Model.Selected.KindText</span>
+                        </div>
+                    }
 
                     <div class="card-body">
                         @* The comp's «اکانت», «مسیر» and «شناسه درایو» rows are deliberately absent:

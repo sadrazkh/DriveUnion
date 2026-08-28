@@ -2548,3 +2548,23 @@ summary.btn::-webkit-details-marker {
 .danger {
   color: var(--danger);
 }
+
+/*
+ * The player in the file detail panel.
+ *
+ * It replaces the placeholder that used to stand where a preview would be, so it keeps that box's
+ * shape: full width, and no taller than the panel can spare. `background` rather than a border,
+ * because a video letterboxes itself and the bars should be the card's colour rather than the page's.
+ */
+.detail-player {
+  inline-size: 100%;
+  max-block-size: 320px;
+  display: block;
+  background: var(--surface2);
+}
+
+audio.detail-player {
+  block-size: 40px;
+  max-block-size: none;
+  padding: 12px;
+}
