@@ -45,6 +45,9 @@ interface Harness {
   /** And every address it asked for them from. */
   sources: string[];
 
+  /** And what it decided to send with each one. */
+  credentials: string[];
+
   /** The private helpers, reached for the agreement tests. */
   internals: Record<string, (...args: never[]) => unknown>;
 }
@@ -64,6 +67,7 @@ function boot(ciphertext: Bytes = new Uint8Array(0) as Bytes): Harness {
   const listeners = new Map<string, ((event: unknown) => void)[]>();
   const ranges: string[] = [];
   const sources: string[] = [];
+  const credentials: string[] = [];
 
   const self: Record<string, unknown> = {
     location: new URL(`${Origin}/sw-media.js`),
@@ -75,10 +79,11 @@ function boot(ciphertext: Bytes = new Uint8Array(0) as Bytes): Harness {
     clients: { get: async () => null },
   };
 
-  const fetch = async (url: string, init?: { headers?: Record<string, string> }) => {
+  const fetch = async (url: string, init?: { headers?: Record<string, string>; credentials?: string }) => {
     const header = init?.headers?.Range ?? '';
     ranges.push(header);
     sources.push(url);
+    credentials.push(init?.credentials ?? 'same-origin');
 
     const match = /^bytes=(\d+)-(\d+)$/.exec(header);
 
@@ -116,6 +121,7 @@ function boot(ciphertext: Bytes = new Uint8Array(0) as Bytes): Harness {
     },
     ranges,
     sources,
+    credentials,
     internals,
   };
 }
@@ -338,6 +344,34 @@ describe('serving a locked file', () => {
     // no other way to know where the ciphertext is, and getting this from anywhere else — a guess
     // built from the stream id, say — would be a second spelling of one fact.
     expect(harness.sources).toEqual([`${Origin}/d/kx91mzq4/file`]);
+  });
+
+  /**
+   * <p><b>The panel's ciphertext is behind sign-in, and this fetch is the only thing that reads
+   * it.</b> The worker was written for the public link, where the slug is the credential and a
+   * cookie would be beside the point, so it sent none — and then E2 added `/files/{id}/content`,
+   * which is cookie-authenticated, and pointed the same worker at it.</p>
+   *
+   * <p>What that did is worse than a refusal. The panel route answers an unauthenticated request
+   * with a 302 to the sign-in page, `fetch` follows redirects by default, and the sign-in page is a
+   * 200 with a body — so `response.ok` was true and the worker fed a page of HTML into AES-GCM as
+   * though it were segment zero. The reader typed the right passphrase, the gate closed, the player
+   * appeared, and not one frame ever arrived.</p>
+   *
+   * <p>`same-origin` and not `include`: this is the browser's own default and it is the whole of
+   * what is wanted, since both routes are on this origin and nothing else may ever be asked for
+   * the ciphertext. The public route is `[AllowAnonymous]` and reads no user, so a cookie reaching
+   * it changes nothing about who is served or who is charged.</p>
+   */
+  it('sends the cookie, because the panel serves its ciphertext behind sign-in', async () => {
+    const harness = await open();
+
+    await (await harness.media.answer(
+      { request: new Request(`${Origin}/du1/x`, { headers: { Range: 'bytes=0-99' } }), clientId: '' },
+      new URL(`${Origin}/du1/x`),
+    )).arrayBuffer();
+
+    expect(harness.credentials).toEqual(['same-origin']);
   });
 
   it('refuses a range past the end rather than serving something else', async () => {

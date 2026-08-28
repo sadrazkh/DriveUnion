@@ -163,11 +163,29 @@ function decryptedBody(stream, from, to) {
       const response = await fetch(stream.source, {
         headers: { Range: `bytes=${cipherFrom}-${cipherTo}` },
 
-        // The public download path is anonymous and the link is the credential. Sending cookies
-        // would make this request the signed-in owner's, which it is not — the reader may be a
-        // stranger holding a link.
-        credentials: 'omit',
+        // The cookie goes, and this line is the whole of why a locked film would not play in the
+        // panel.
+        //
+        // It said `omit`, written when the only source was the public link — where the slug is the
+        // credential and a cookie is beside the point. Then E2 added `/files/{id}/content`, which
+        // is cookie-authenticated, and pointed this same worker at it. Omitting the cookie there
+        // does not fail; it *succeeds at the wrong thing*. The route answers 302 to the sign-in
+        // page, fetch follows redirects, and that page is a 200 with a body — so `response.ok`
+        // below was true and a page of HTML went into AES-GCM as segment zero. Right passphrase,
+        // gate closes, player appears, no frame ever arrives.
+        //
+        // `same-origin` rather than `include`: it is the default, both routes are on this origin,
+        // and nothing off it may ever be asked for the ciphertext. It costs the public path
+        // nothing — that controller is [AllowAnonymous] and reads no user, so a cookie arriving
+        // there changes neither who is served nor whose allowance is spent.
+        credentials: 'same-origin',
       });
+
+      // Redirected, which for this fetch means the sign-in page rather than ciphertext. Checked
+      // explicitly because `ok` is true for it and the failure downstream would otherwise be a
+      // segment that did not verify — the same message a wrong passphrase gives, on a screen where
+      // the passphrase was right.
+      if (response.redirected) throw new Error('the ciphertext is behind a sign-in');
 
       if (!response.ok || !response.body) throw new Error('the ciphertext could not be read');
 
