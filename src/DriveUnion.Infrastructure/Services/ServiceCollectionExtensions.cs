@@ -77,7 +77,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IS3Multipart, S3MultipartStore>();
         services.TryAddScoped<IShareLinkService, ShareLinkService>();
         // Two interfaces, one class: an anonymous visitor writes a row and an operator reads it.
-        // Registered separately so the anonymous surface cannot reach the operator.s — a controller
+        // Registered separately so the anonymous surface cannot reach the operator's — a controller
         // has to ask for IAbuseQueue by name, which is a line a reader will notice.
         services.TryAddScoped<AbuseReports>();
         services.TryAddScoped<IAbuseReports>(sp => sp.GetRequiredService<AbuseReports>());

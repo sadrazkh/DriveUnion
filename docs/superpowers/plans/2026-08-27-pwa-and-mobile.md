@@ -119,7 +119,7 @@ button rather than replacing it — the desktop panel has no share sheet.
 
 Size: small. Depends on M1 (permission-free, but only reachable on a phone).
 
-### M7 — push notifications
+### M7 — push notifications — **done, bd66814**
 - VAPID keys in configuration, never in the repository.
 - A `PushSubscription` entity: endpoint, `p256dh`, `auth`, `TenantId`, `UserId`, created, last seen,
   consecutive failures. **No foreign key to `Tenant`** — `TenantStorageMeter` detaches the tenant
