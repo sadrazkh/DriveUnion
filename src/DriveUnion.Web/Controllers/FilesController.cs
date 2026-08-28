@@ -188,6 +188,11 @@ public sealed class FilesController(
         // minute or two after somebody deletes a folder full of files, and never otherwise.
         var tidying = await deletions.LiveAsync(tenantId, cancellationToken);
 
+        // The same shape, for the same reason, and it matters more: a clean-up the customer cannot
+        // see is a file already in the trash where they put it, and a lock they cannot see is a file
+        // quietly becoming unreadable.
+        var locking = await locks.ListAsync(tenantId, cancellationToken);
+
         return View(new FilesPageViewModel(
             rows,
             detail,
@@ -201,7 +206,14 @@ public sealed class FilesController(
             folderTargets,
             [.. labels.Select(t => new TagViewModel(t.Id, t.Name, t.FileCount))],
             tag,
-            [.. tidying.Select(DeletionProgressViewModel.FromJob)]));
+            [.. tidying.Select(DeletionProgressViewModel.FromJob)],
+
+            // Only what is still happening or has just gone wrong. A workspace that has locked
+            // fifty files over a year does not want fifty rows saying so — the file list already
+            // shows a padlock, which is the durable record. This is the transient one.
+            [.. locking
+                .Where(l => l.Status is not FileLockStatus.Completed)
+                .Select(ToLockRow)]));
     }
 
     /// <summary>
@@ -752,6 +764,32 @@ public sealed class FilesController(
     /// </summary>
     private bool WantsJson() =>
         Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// One lock, as words.
+    ///
+    /// <para>The progress is a byte count against a byte count rather than a percentage, matching
+    /// the fetch rows beside it. A percentage of an encryption is a number that means nothing to
+    /// the person reading it; «۴ MB از ۶۰ MB» is a thing they can compare to their own connection
+    /// and their own patience.</para>
+    /// </summary>
+    private static FileLockRowViewModel ToLockRow(FileLockView job) => new(
+        job.Id,
+        job.FileName,
+        job.Status switch
+        {
+            FileLockStatus.Pending => UiText.Locking.StatusPending,
+            FileLockStatus.Running => UiText.Locking.StatusRunning,
+            FileLockStatus.Failed => UiText.Locking.StatusFailed,
+            _ => UiText.Locking.StatusRunning,
+        },
+        job.Status is FileLockStatus.Pending or FileLockStatus.Running,
+        $"{DisplayFormats.Bytes(job.BytesSealed)} / {DisplayFormats.Bytes(job.PlaintextLength)}",
+
+        // The row's own sentence and never the runner's. What is on the job is written for a log —
+        // «the key was not held any more» is true and is not something to put in front of a
+        // customer, who did nothing wrong and needs to know only that their file is untouched.
+        job.Status is FileLockStatus.Failed ? UiText.Locking.Failed : null);
 
     private static RemoteFetchRowViewModel ToFetchRow(RemoteFetchView fetch)
     {

@@ -188,11 +188,23 @@ public sealed record FilesPageViewModel(
     /// stops «the trash is still filling up half a minute later» being something they have to
     /// notice.</para>
     /// </summary>
-    IReadOnlyList<DeletionProgressViewModel>? Deletions = null)
+    IReadOnlyList<DeletionProgressViewModel>? Deletions = null,
+
+    /// <summary>
+    /// Files being locked, for the same reason the clean-ups above are here.
+    ///
+    /// <para>Stronger, in fact: a delete the customer pressed does what they expect and the row is
+    /// only reassurance, whereas a lock is a file quietly becoming unreadable over the next few
+    /// minutes. A customer who does not see this happening is one who opens the file, finds a
+    /// passphrase prompt, and has to work out why.</para>
+    /// </summary>
+    IReadOnlyList<FileLockRowViewModel>? Locks = null)
 {
     public bool IsSearching => Query is { Length: > 0 };
 
     public IReadOnlyList<DeletionProgressViewModel> Tidying => Deletions ?? [];
+
+    public IReadOnlyList<FileLockRowViewModel> Locking => Locks ?? [];
 
     public IReadOnlyList<TagViewModel> Labels => Tags ?? [];
 
@@ -242,6 +254,21 @@ public sealed record ErrorViewModel(string? RequestId)
 }
 
 /// <summary>One queued or finished «fetch this for me», as the upload screen draws it.</summary>
+/// <summary>
+/// A file being locked, on the screen it was asked for from.
+///
+/// <para>It is not a progress bar in front of something the reader is waiting for — they can close
+/// the page. It is here so that a file which has quietly become unreadable in the next few minutes
+/// is one the customer was told about, rather than one they discover by opening it.</para>
+/// </summary>
+public sealed record FileLockRowViewModel(
+    Guid Id,
+    string Name,
+    string StatusText,
+    bool IsLive,
+    string ProgressText,
+    string? FailureReason);
+
 public sealed record RemoteFetchRowViewModel(
     Guid Id,
     string Url,

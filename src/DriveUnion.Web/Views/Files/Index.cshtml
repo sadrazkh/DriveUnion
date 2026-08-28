@@ -70,6 +70,37 @@
     }
 
     @*
+        Files being locked, and files whose locking went wrong.
+
+        Nearly always nothing. It is on this screen because this is the screen the lock was pressed
+        on, and unlike the clean-ups above it is not only reassurance: a lock is a file quietly
+        becoming unreadable over the next few minutes, and a customer who does not see it happening
+        is one who opens the file later, meets a passphrase prompt, and has to work out why.
+
+        Completed locks are deliberately absent. The padlock in the table is the durable record; this
+        is the transient one, and a year of «locked» rows would bury the one that is still running.
+    *@
+    @foreach (var job in Model.Locking)
+    {
+        <div class="subcard stack" style="gap: 6px;" role="status">
+            <div class="row" style="gap: 10px; flex-wrap: wrap;">
+                <span style="font-size: 12.5px; font-weight: 600;" dir="auto">🔒 @job.Name</span>
+                <span class="badge @(job.IsLive ? null : "badge--warn") push-end">@job.StatusText</span>
+            </div>
+
+            @if (job.IsLive)
+            {
+                <span class="mono muted" dir="ltr" style="font-size: 11px;">@job.ProgressText</span>
+            }
+
+            @if (job.FailureReason is { Length: > 0 } why)
+            {
+                <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 0;" dir="auto">@why</p>
+            }
+        </div>
+    }
+
+    @*
         The toolbar: where you are on one side, what you can do to it on the other.
 
         Drawn only while browsing. A search is the whole workspace — it is not standing anywhere, so
