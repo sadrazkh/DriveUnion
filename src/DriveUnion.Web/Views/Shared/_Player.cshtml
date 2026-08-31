@@ -31,6 +31,7 @@
      data-player-keep-failed="@UiText.Offline.KeepFailed"
      data-player-keep-stopped="@UiText.Offline.KeepStopped"
      data-player-continue="@UiText.Offline.Continue"
+     data-player-handed-over="@UiText.Offline.HandedOver"
      data-player-leaving-stops="@UiText.Offline.LeavingStopsIt"
      data-player-cannot-keep="@UiText.Offline.CannotKeep"
      data-player-no-room="@UiText.Offline.NoRoom"
@@ -122,6 +123,14 @@
 
             <button type="button" data-player-forget class="btn btn--sm" hidden>
                 @UiText.Offline.Forget
+            </button>
+
+            @*
+                Only on a browser that has Background Fetch, which the script decides — Safari has
+                none, so on an iPhone this is absent rather than present and doing nothing.
+            *@
+            <button type="button" data-player-background class="btn btn--sm" hidden>
+                @UiText.Offline.KeepInBackground
             </button>
 
             <button type="button" data-player-stop class="btn btn--sm btn--danger" hidden>

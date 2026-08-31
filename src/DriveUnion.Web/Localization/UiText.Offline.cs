@@ -105,6 +105,30 @@ public static partial class UiText
         /// <summary>Carrying on a save that stopped. The same button, saying what it will do now.</summary>
         public static string Continue => Pick("ادامه", "Continue");
 
+        /// <summary>
+        /// Handing the download to the browser so it survives this page closing.
+        ///
+        /// <para>Drawn only where the browser has Background Fetch, which is Chromium. On an iPhone
+        /// there is no such thing and the control is absent rather than present and inert.</para>
+        /// </summary>
+        public static string KeepInBackground => Pick(
+            "دانلود در پس‌زمینه",
+            "Download in the background");
+
+        /// <summary>
+        /// What happens next, said without overstating it.
+        ///
+        /// <para>The browser finishes the download with the app closed — and for a locked film that
+        /// is only the download. What lands is still encrypted, because the key is derived from a
+        /// passphrase in a page and no page is open. Coming back costs the passphrase again and a
+        /// pass over the disk; it does not cost the download a second time, which is the whole
+        /// win.</para>
+        /// </summary>
+        public static string HandedOver => Pick(
+            "به مرورگر سپرده شد. می‌توانید این صفحه را ببندید؛ برای باز کردنش بعداً دوباره رمز لازم است.",
+            "Handed to the browser. You can close this page; opening it later needs the passphrase "
+            + "again.");
+
         /// <summary>How an unfinished one is labelled in the list, beside how far it got.</summary>
         public static string Unfinished => Pick("ناتمام", "Unfinished");
 

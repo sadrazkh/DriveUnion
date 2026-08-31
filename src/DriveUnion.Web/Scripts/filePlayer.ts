@@ -5,6 +5,7 @@ import { closeStream, openStream } from './crypto/play';
 import { list as savedList, open as openSaved, remove as removeSaved, room, save, supported } from './offline/library';
 import { bytes as formatBytes, duration } from './uploads/store';
 import { createScreenLock } from './screenLock';
+import { canBackground, stagedBytes, startBackground } from './offline/background';
 
 /**
  * Watching a file from the panel, without downloading it.
@@ -31,6 +32,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   const forget = el.querySelector<HTMLButtonElement>('[data-player-forget]');
   const kept = el.querySelector<HTMLElement>('[data-player-kept]');
 
+  const inBackground = el.querySelector<HTMLButtonElement>('[data-player-background]');
   const stop = el.querySelector<HTMLButtonElement>('[data-player-stop]');
   const progress = el.querySelector<HTMLElement>('[data-player-progress]');
   const bar = el.querySelector<HTMLElement>('[data-player-bar]');
@@ -118,6 +120,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     // What it gets instead is the same button, saying Continue and showing how far it got.
     if (entry?.partial) {
       if (keep && supported() && !header) keep.hidden = false;
+      if (inBackground && canBackground() && !header) inBackground.hidden = false;
       if (forget) forget.hidden = false;
 
       keep?.setAttribute('data-resuming', 'true');
@@ -136,6 +139,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
       // locked file only once there is a key. Offering it earlier would be a button whose whole
       // behaviour on first press is to say «unlock it first».
       if (keep && supported() && !header) keep.hidden = false;
+      if (inBackground && canBackground() && !header) inBackground.hidden = false;
       return false;
     }
 
@@ -154,6 +158,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   }
 
   keep?.addEventListener('click', () => void keepOnDevice());
+  inBackground?.addEventListener('click', () => void handToBrowser());
   stop?.addEventListener('click', () => saving?.abort());
   forget?.addEventListener('click', () => void forgetFromDevice());
 
@@ -224,6 +229,31 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
           written: 0,
         },
         async (write, from) => {
+          // A background download already fetched this, so the bytes are on the disk and the only
+          // thing left is the half the worker could not do. No network, no range, no meter: this is
+          // a decrypt pass over a local file, which on a six-gigabyte film is minutes rather than
+          // the tens of minutes the download took.
+          const staged = await stagedBytes(contentUrl);
+
+          if (staged) {
+            if (!header || !contentKey) {
+              const reader = staged.stream().getReader();
+
+              for (;;) {
+                const next = await reader.read();
+                if (next.done) break;
+                await write(next.value as Bytes);
+              }
+
+              return;
+            }
+
+            const done = await decryptInto(staged.stream(), contentKey, header, write);
+
+            if (!done.ok) throw new Error(done.reason);
+            return;
+          }
+
           // Where in the *stored* bytes to start. For an unlocked file that is the plaintext offset
           // itself; for a locked one it is the ciphertext offset of the segment the plaintext offset
           // begins at, which is arithmetic and not a search — see crypto/format.ts.
@@ -412,6 +442,38 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   document.addEventListener('visibilitychange', onWake);
   addEventListener('online', onWake);
 
+  /**
+   * Hands the download to the browser, so it survives this page being closed.
+   *
+   * <p>Offered only where it exists, which is Chromium. On the platform this was most asked for — an
+   * iPhone — there is no such API and the control is not drawn, because a button that silently did
+   * nothing would be worse than its absence.</p>
+   *
+   * <p>It stops the in-page save first. Two downloads of one film into one file is the one way to
+   * corrupt it, and the browser's copy is the one that survives.</p>
+   */
+  async function handToBrowser(): Promise<void> {
+    if (!inBackground) return;
+
+    saving?.abort();
+
+    const handed = await startBackground({
+      key: contentUrl,
+      name: title,
+      type: mime,
+      bytes: sizeBytes,
+      savedAt: Date.now(),
+      watchUrl,
+      written: 0,
+    });
+
+    say(handed
+      ? el.dataset.playerHandedOver ?? ''
+      : el.dataset.playerKeepFailed ?? '');
+
+    if (handed) inBackground.hidden = true;
+  }
+
   /** Back to Save, for when a finished copy means there is nothing left to carry on. */
   function clearResuming(): void {
     keep?.removeAttribute('data-resuming');
@@ -485,6 +547,8 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     //
     // showSavedCopy ran before the passphrase existed and could not offer anything for a locked
     // file, so this is also where a half-finished one gets its Continue.
+    if (inBackground && canBackground()) inBackground.hidden = false;
+
     if (keep && supported()) {
       keep.hidden = false;
 
