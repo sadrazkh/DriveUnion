@@ -6,6 +6,9 @@
     var title = ViewData["Title"] as string;
     var controller = ViewContext.RouteData.Values["controller"] as string ?? "Home";
 
+    // Read for one pair of items and nothing else — see onDeviceLibrary below.
+    var action = ViewContext.RouteData.Values["action"] as string;
+
     // Everything about the Google pool hangs off this one question, asked of the principal rather
     // than carried on ShellContext. The claim is the same fact DriveUnionPolicies.Operator
     // authorises on, so the sidebar shows exactly what /accounts would let this caller in to see. A
@@ -77,8 +80,26 @@
         openReports = await abuseQueue.OpenCountAsync(Context.RequestAborted);
     }
 
+    // The one screen the controller's name cannot identify on its own.
+    //
+    // «فایل‌ها» and «روی دستگاه» are two items over one controller — FilesController's list, and its
+    // /files/offline — so a match on the controller alone marks both rows on both screens. Two lit
+    // rows do not say «you are here»; they say the menu has stopped keeping track, which is the
+    // quiet half of the distrust a dead nav item earns and is the reason every other item in this
+    // file is the only one its controller draws.
+    //
+    // Only this one action moves. Upload, a folder and a file's own page all stay with «فایل‌ها»,
+    // because that is the row a reader presses to get back to where they came from; naming the list
+    // by its action instead would unlight the menu on three screens to fix it on one.
+    var onDeviceLibrary =
+        string.Equals(controller, "Files", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(action, "Offline", StringComparison.OrdinalIgnoreCase);
+
+    // The exclusion is safe to state here rather than at the «فایل‌ها» call site: onDeviceLibrary is
+    // true only on FilesController, so it can only ever take the mark off that one item. The device
+    // list marks itself, below.
     string NavClass(string name) =>
-        string.Equals(controller, name, StringComparison.OrdinalIgnoreCase)
+        string.Equals(controller, name, StringComparison.OrdinalIgnoreCase) && !onDeviceLibrary
             ? "nav-item is-active"
             : "nav-item";
 }
@@ -164,6 +185,26 @@
             {
                 <a class="@NavClass("Files")" href="/Files">
                     <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.Files
+                </a>
+                @* «ذخیره‌شده روی این دستگاه» — what this browser is holding a copy of. It worked
+                   before this line existed and could be reached only by typing the address, which
+                   for a customer is the same as not existing: nobody guesses a URL to find out where
+                   the gigabytes on their phone went, or which film will still play on a flight.
+
+                   Beside «فایل‌ها» because it is the same question about the same things, asked of
+                   the device instead of the workspace — and a primary item rather than a link inside
+                   the file list, for the reason written beside «زباله‌دان» below: somebody wondering
+                   what is filling their phone is looking at the menu, not at a table of what is
+                   filling their account.
+
+                   The label is not the screen's heading. See UiText.Shell.OnThisDevice — the heading
+                   is a sentence and this column is 232px, so it would be the one row that wrapped.
+
+                   Behind hasWorkspace with its neighbours, and for the same reason: the action
+                   answers a caller with no workspace with 403, so drawing it for one would be a menu
+                   item that can only refuse. *@
+                <a class="@(onDeviceLibrary ? "nav-item is-active" : "nav-item")" href="/files/offline">
+                    <span class="nav-dot" aria-hidden="true"></span>@UiText.Shell.OnThisDevice
                 </a>
             }
             @if (!isOperator && hasWorkspace)

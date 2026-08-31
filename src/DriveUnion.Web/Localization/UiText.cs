@@ -84,6 +84,22 @@ public static partial class UiText
 
         public static string Files => Pick("فایل‌ها", "Files");
 
+        /// <summary>
+        /// The sidebar's name for the screen at <c>/files/offline</c>, whose own heading is
+        /// <see cref="Offline.LibraryTitle"/> — «ذخیره‌شده روی این دستگاه».
+        ///
+        /// <para>A second, shorter wording rather than the heading itself, because the two are read
+        /// in different places. The heading is the first thing on an empty screen and has a whole
+        /// line to be exact in; the sidebar is 232px wide and every row in it is one or two words,
+        /// so the sentence would be the only item that wrapped — and one two-line row in a menu of
+        /// short ones reads as a mistake before it reads as a screen.</para>
+        ///
+        /// <para>«روی دستگاه» and not «آفلاین»: the reader is looking for where their gigabytes
+        /// went, and the useful word is the one that says whose disk holds them. It is the same
+        /// choice <see cref="Offline.Keep"/> makes for the button that puts them there.</para>
+        /// </summary>
+        public static string OnThisDevice => Pick("روی دستگاه", "On this device");
+
         public static string TransferQueue => Pick("صف انتقال", "Transfer queue");
 
         public static string ShareLinks => Pick("لینک‌های اشتراک", "Share links");
