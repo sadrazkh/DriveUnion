@@ -243,13 +243,112 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers());
 
-/** Queues one file and lets it get as far as it is going to get. */
+/**
+ * Queues one file and lets it get as far as it is going to get.
+ *
+ * <p>`start()` is part of uploading now. Choosing a file and sending it used to be one act, and this
+ * helper is where that shows: everything below still tests transfers, so everything below still has
+ * to release the queue.</p>
+ */
 async function upload(ms = ThroughEveryAttempt) {
   store.add([holiday()]);
+  store.start();
   await settle(ms);
 
   return store.items.value[0];
 }
+
+// ── choosing files, and then sending them ─────────────────────────────────────────────────────────
+
+describe('the queue before it is released', () => {
+  /**
+   * <b>The whole of the change.</b> Dropping files no longer sends them.
+   *
+   * <p>It used to: `add` ended in `pump`, so the first chunk of the first file was on the wire before
+   * the person who dropped it had finished letting go. That is fine for one file and wrong for the
+   * way anybody actually uses an upload site — pick some, look at what you picked, take one out, add
+   * the folder you forgot, then send. There was no moment in which any of that was possible.</p>
+   */
+  it('does not send anything until it is told to', async () => {
+    store.add([holiday(), holiday()]);
+    await settle(ThroughEveryAttempt);
+
+    expect(store.items.value.map((i) => i.status)).toEqual(['staged', 'staged']);
+    // Nothing at all reaches the server from choosing a file.
+    expect(sessionsOpened).toBe(0);
+    expect(store.busy.value).toBe(false);
+  });
+
+  it('sends them when it is', async () => {
+    store.add([holiday(), holiday()]);
+    store.start();
+    await settle(ThroughEveryAttempt);
+
+    expect(store.items.value.map((i) => i.status)).toEqual(['done', 'done']);
+    expect(sessionsOpened).toBe(2);
+  });
+
+  /**
+   * Adding while the queue is moving, which is the second half of the ask: a batch that is running
+   * must be joinable rather than something to wait out.
+   */
+  it('lets more files be added mid-flight and joins them to the running queue', async () => {
+    store.add([holiday()]);
+    store.start();
+    await settle(ThroughEveryAttempt);
+
+    store.add([holiday()]);
+
+    // Staged, not queued: the running batch is not a door that stands open. The second press is
+    // what puts it in, exactly like the first.
+    expect(store.items.value[1].status).toBe('staged');
+    expect(sessionsOpened).toBe(1);
+
+    store.start();
+    await settle(ThroughEveryAttempt);
+
+    expect(store.items.value[1].status).toBe('done');
+    expect(sessionsOpened).toBe(2);
+  });
+
+  /** Taking one back out before it has been sent, which is the reason to have a staging list. */
+  it('lets a staged file be removed without ever having touched the server', async () => {
+    store.add([holiday(), holiday()]);
+
+    store.remove(store.items.value[0].id);
+    store.start();
+    await settle(ThroughEveryAttempt);
+
+    expect(store.items.value).toHaveLength(1);
+    expect(sessionsOpened).toBe(1);
+  });
+
+  /**
+   * A staged file is not work the browser should interrupt somebody over.
+   *
+   * <p>`beforeunload` is a scarce thing: it is one sentence the browser will show, and spending it
+   * on «you picked some files» is what makes people click through the one that means «you have 8 GB
+   * half-sent». Nothing staged has been sent, nothing has been spent, and what is lost by reloading
+   * is a selection.</p>
+   */
+  it('does not count staged files as work a reload would lose', () => {
+    store.add([holiday()]);
+
+    expect(store.unfinished.value).toBe(false);
+
+    store.start();
+
+    expect(store.unfinished.value).toBe(true);
+  });
+
+  /** A zero-byte file is refused at the door, and staging does not give it a second way in. */
+  it('still refuses an empty file before it is ever staged', () => {
+    store.add([new File([], 'nothing.txt')]);
+    store.start();
+
+    expect(store.items.value[0].status).toBe('failed');
+  });
+});
 
 // ── which events mean «the app is back» ───────────────────────────────────────────────────────────
 
@@ -394,6 +493,7 @@ describe('coming back to the app', () => {
 
     store.setConcurrency(1);
     store.add([holiday(), holiday(), holiday()]);
+    store.start();
     await settle(ThroughEveryAttempt * 3);
 
     expect(store.items.value.every((i) => i.status === 'interrupted')).toBe(true);
@@ -418,6 +518,7 @@ describe('coming back to the app', () => {
     outcomes = ['gone', 'gone', 'gone'];
 
     store.add([holiday()]);
+    store.start();
 
     // The order a phone actually produces: the app is back before the chunk that iOS killed has
     // said so, because it cannot say so until this page is running again.

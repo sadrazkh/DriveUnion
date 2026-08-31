@@ -34,7 +34,7 @@ const props = defineProps<{
   config: () => UploadConfig;
 }>();
 
-const { items, busy, totalPercent, inFlightItems, pause, resume, cancel, retry, clearFinished } =
+const { items, busy, totalPercent, inFlightItems, start, staged, pause, resume, cancel, retry, clearFinished } =
   props.store;
 
 const open = ref(false);
@@ -68,6 +68,7 @@ function text() {
         interrupted: 'Waiting to continue',
         failed: 'Failed',
         finished: 'Finished',
+        staged: 'Ready to send',
         queued: 'Queued',
         done: 'Done',
         cancelled: 'Cancelled',
@@ -79,6 +80,7 @@ function text() {
         cancel: 'Cancel',
         retry: 'Try again',
         clear: 'Clear finished',
+        startUpload: 'Start upload',
       }
     : {
         dock: 'آپلودها',
@@ -87,6 +89,7 @@ function text() {
         interrupted: 'منتظر ادامه',
         failed: 'ناموفق',
         finished: 'تمام شد',
+        staged: 'آمادهٔ ارسال',
         queued: 'در صف',
         done: 'انجام شد',
         cancelled: 'لغو شد',
@@ -98,6 +101,7 @@ function text() {
         cancel: 'لغو',
         retry: 'تلاش دوباره',
         clear: 'پاک کردن تمام‌شده‌ها',
+        startUpload: 'شروع آپلود',
       };
 }
 
@@ -129,8 +133,11 @@ function summary(): { label: string; count: number } {
   return { label: t.finished, count: items.value.filter((i) => i.status === 'done').length };
 }
 
+// Matches what clearFinished actually removes, failures included. The two drifting apart is what
+// left a failed row on screen with a button beside it that claimed to clear it.
 const anyFinished = computed(() =>
-  items.value.some((i) => i.status === 'done' || i.status === 'cancelled'));
+  items.value.some((i) =>
+    i.status === 'done' || i.status === 'cancelled' || i.status === 'failed'));
 </script>
 
 <template>
@@ -255,9 +262,25 @@ const anyFinished = computed(() =>
     </ul>
 
     <!--
-      The way the dock ends. It clears what has finished, which is the store's own idea of finished —
-      a failure stays, and so does the dock, because a corner that tidies away the one row somebody
-      needed to read is worse than a corner that stays.
+      Files chosen somewhere else and not yet sent — dropped on the files screen, say, or picked
+      before a navigation. The dock is the only thing on screen everywhere, so it is where that
+      press has to be reachable from.
+    -->
+    <button
+      v-if="staged.length"
+      type="button"
+      class="btn btn--sm btn--primary btn--block"
+      @click="start()"
+    >
+      {{ text().startUpload }}
+      <!-- dir="ltr": a bare numeral beside Persian reorders without it. -->
+      <span class="mono" dir="ltr">{{ staged.length }}</span>
+    </button>
+
+    <!--
+      The way the dock ends. It clears what has finished — done, cancelled and failed alike — and
+      the dock itself stays, because a corner that tidies itself away the moment the last row goes
+      is a corner that vanishes while somebody is reaching for it.
     -->
     <button
       v-if="open && anyFinished"

@@ -38,6 +38,8 @@ const {
   concurrency,
   selected,
   add,
+  start,
+  staged,
   pause,
   resume,
   cancel,
@@ -188,6 +190,7 @@ function text() {
           'How many files move together, the way a download manager asks. The pieces of one file cannot: storage acknowledges a single run of bytes, so a second sender into one file would have nothing to send.',
         selectAll: 'Select all',
         selectedCount: 'selected',
+        staged: 'Ready to send',
         queued: 'Queued',
         uploading: 'Uploading',
         paused: 'Paused',
@@ -204,6 +207,8 @@ function text() {
         retry: 'Try again',
         clear: 'Clear finished',
         dismiss: 'Dismiss',
+        startUpload: 'Start upload',
+        stagedHint: 'chosen and not sent yet',
         backToFiles: 'Go to files',
         remaining: 'left',
         select: 'Select this file',
@@ -251,6 +256,7 @@ function text() {
           'چند فایل با هم بروند — همان انتخابی که در دانلود منیجر هست. تکه‌های یک فایل با هم نمی‌روند: فضای ذخیره‌سازی فقط یک رشته‌ی پیوسته از بایت‌ها را تأیید می‌کند.',
         selectAll: 'انتخاب همه',
         selectedCount: 'انتخاب‌شده',
+        staged: 'آمادهٔ ارسال',
         queued: 'در صف',
         uploading: 'در حال آپلود',
         paused: 'متوقف',
@@ -265,6 +271,8 @@ function text() {
         retry: 'تلاش دوباره',
         clear: 'پاک کردن تمام‌شده‌ها',
         dismiss: 'پاک کردن',
+        startUpload: 'شروع آپلود',
+        stagedHint: 'انتخاب شده و هنوز فرستاده نشده',
         backToFiles: 'رفتن به فایل‌ها',
         remaining: 'باقی‌مانده',
         select: 'انتخاب این فایل',
@@ -715,6 +723,24 @@ function toggleAll() {
       <p class="upload-note">{{ text().atOnceHint }}</p>
     </div>
 
+    <!--
+      The staging bar. It exists only while something is waiting to be sent, and it is the one
+      primary button on this screen — dropping files no longer starts them, so this is the press
+      that does.
+    -->
+    <div v-if="staged.length" class="upload-stage-bar">
+      <span class="upload-stage-count">
+        <span class="mono" dir="ltr">{{ staged.length }}</span>
+        {{ text().stagedHint }}
+      </span>
+
+      <button
+        type="button"
+        class="btn btn--primary push-end"
+        @click="start()"
+      >{{ text().startUpload }}</button>
+    </div>
+
     <div v-if="items.length" class="upload-bulk">
       <label class="upload-check">
         <input
@@ -1069,6 +1095,30 @@ function toggleAll() {
   border-radius: 10px;
   background: var(--surface2);
   font-size: 12px;
+}
+
+/*
+ * The staging bar: the same box as the bulk row, drawn in the accent so it is not one more grey
+ * strip among the greys.
+ *
+ * It is the only primary action on this screen and it appears only while there is something to
+ * press it about, so making it look like the row above it would be hiding the one control the
+ * screen now depends on.
+ */
+.upload-stage-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface2);
+  font-size: 12px;
+}
+
+.upload-stage-count {
+  font-weight: 600;
 }
 
 .upload-bulk-count {

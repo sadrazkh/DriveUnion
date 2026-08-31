@@ -2812,6 +2812,41 @@ audio.watch-media {
   cursor: pointer;
 }
 
+/*
+ * The sheet that appears while files are being dragged over the panel.
+ *
+ * A whole-window target rather than a rectangle to aim at: the drag is already happening and the
+ * reader is holding something, so the useful answer to «where do I let go» is «anywhere». It is only
+ * ever visible mid-drag — see Scripts/dropAnywhere.ts, which counts dragenter against dragleave
+ * because nested elements fire both as the pointer crosses between them.
+ *
+ * `pointer-events: none` matters and is not decoration: a full-window overlay that took the pointer
+ * would be the element the drop landed on, and the drop handler reads its target to decide whether
+ * the upload screen's own dropzone has already claimed it.
+ */
+.drop-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  border: 3px dashed var(--accent);
+  background: rgb(0 0 0 / 55%);
+  font-size: 17px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+
+  /* The scrim is dark in both themes, so this cannot inherit the page's text colour. */
+  color: #fff;
+}
+
+.drop-sheet[hidden] {
+  display: none;
+}
+
 /* ---------------------------------------------------------------- colour utilities */
 
 /*

@@ -6,6 +6,7 @@ import UploadDock from './islands/UploadDock.vue';
 import UploadPanel from './islands/UploadPanel.vue';
 import { createUploadStore, type UploadConfig, type UploadStore } from './uploads/store';
 import { mountCopyLink } from './copyLink';
+import { mountDropAnywhere } from './dropAnywhere';
 import { mountFilePlayer } from './filePlayer';
 import { mountLockFile } from './lockFile';
 import { mountFileGrid } from './fileGrid';
@@ -259,6 +260,19 @@ function unmountIslands(root: ParentNode): void {
 mountIslands(document);
 
 const nav = mountNavToggle();
+
+// Dropping files on any panel screen, not only on the upload one. Guarded on the shell's config
+// element, which is in _Layout and therefore on every panel page and on no public one — the public
+// download card has no queue to put anything in, and a drop there should go on being the browser's
+// business.
+if (document.querySelector('[data-upload-config]') !== null) {
+  mountDropAnywhere(
+    (files) => uploadStore().add(files),
+    readUploadConfig().lang === 'en'
+      ? 'Drop to add to your files'
+      : 'رها کنید تا به فایل‌هایتان اضافه شود',
+  );
+}
 
 // Enhances the accounts screen's OAuth form into a popup, and is a no-op on every other page.
 mountGoogleConnect();

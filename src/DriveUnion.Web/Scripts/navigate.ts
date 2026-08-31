@@ -42,6 +42,38 @@ export interface SwapHooks {
   entered: (region: HTMLElement) => void;
 }
 
+/**
+ * The swap, reachable from code that has no anchor to click.
+ *
+ * <p>Null until <see cref="startNavigation"/> has run, and on any page that has no swappable region
+ * at all. <see cref="visit"/> is the only reader.</p>
+ */
+let swapTo: ((url: URL, mode: Mode) => Promise<void>) | null = null;
+
+/**
+ * Goes somewhere the way a link would, from a place with no link.
+ *
+ * <p><b>It has to be the swap and not <c>location.href</c>.</b> A drop on the files screen stages
+ * <c>File</c> handles in the upload store, which lives above the region a navigation replaces — and
+ * a real page load takes the whole document with it, handles included. The reader would be moved to
+ * the upload screen and find it empty, having watched their files being accepted a moment earlier.
+ * See Scripts/dropAnywhere.ts, which is the reason this exists.</p>
+ *
+ * <p>The hard navigation is kept only for the case where there is no swap to be had. Nothing that
+ * holds unsaved state can reach that branch: it is the public download page, which has no queue.</p>
+ */
+export function visit(href: string): void {
+  const url = sameOrigin(href);
+  if (url === null) return;
+
+  if (swapTo === null) {
+    location.href = url.href;
+    return;
+  }
+
+  void swapTo(url, 'push');
+}
+
 export function startNavigation(hooks: SwapHooks): void {
   // No region to swap: the public download page wears its own chrome-less layout, has no upload
   // queue to protect, and its links are ordinary links. Nothing below is installed there.
@@ -159,6 +191,10 @@ export function startNavigation(hooks: SwapHooks): void {
     window.clearTimeout(scrollWrite);
     scrollWrite = window.setTimeout(rememberScroll, 250);
   }, { passive: true });
+
+  // Published for `visit`, once there is something to publish. Assigned here rather than at the top
+  // of `startNavigation` so a page that gave up above never hands out a swap it cannot perform.
+  swapTo = navigate;
 
   async function navigate(url: URL, mode: Mode): Promise<void> {
     const region = document.querySelector<HTMLElement>(ContentSelector);

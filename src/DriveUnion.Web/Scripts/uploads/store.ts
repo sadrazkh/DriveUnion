@@ -38,6 +38,15 @@ import { cipherSource, plainSource, type ByteSource } from '../crypto/stream';
  * switch, so that one waits for a person and the «Try again» button.</p>
  */
 export type UploadStatus =
+  /**
+   * Chosen, and not yet sent. The pump does not look at these.
+   *
+   * <p>Distinct from <c>queued</c>, which means «waiting its turn» and is work the queue has already
+   * been told to do. Dropping files used to produce <c>queued</c> directly and the first chunk left
+   * the browser before the person had finished letting go — so there was no moment in which you
+   * could look at what you had picked, take one out, or add the folder you forgot.</p>
+   */
+  | 'staged'
   | 'queued'
   | 'uploading'
   | 'paused'
@@ -173,8 +182,14 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     || i.status === 'paused'
     || i.status === 'interrupted'));
 
+  /** What has been chosen and not yet released. The Start button counts these. */
+  const staged = computed(() => items.value.filter((i) => i.status === 'staged'));
+
   const totalPercent = computed(() => {
-    const live = items.value.filter((i) => i.status !== 'cancelled');
+    // Staged files are out, with cancelled ones. They are not part of this run until somebody says
+    // so, and counting their bytes would drag a nearly-finished bar backwards every time another
+    // file was added to the list beneath it.
+    const live = items.value.filter((i) => i.status !== 'cancelled' && i.status !== 'staged');
     if (live.length === 0) return 0;
 
     const total = live.reduce((sum, i) => sum + i.wireSize, 0);
@@ -220,7 +235,7 @@ export function createUploadStore(readConfig: () => UploadConfig) {
         file,
         // A zero-byte file has no chunk to send, so the session would open and never complete.
         // Refused here, where it can be explained, rather than left to look like a stall.
-        status: file.size === 0 ? 'failed' : 'queued',
+        status: file.size === 0 ? 'failed' : 'staged',
         confirmed: 0,
         inFlight: 0,
         error: file.size === 0 ? text().emptyFile : '',
@@ -234,6 +249,25 @@ export function createUploadStore(readConfig: () => UploadConfig) {
         encrypt,
         source: null,
       }) as UploadItem);
+    }
+
+    // No pump. Choosing a file is not sending it — see `start`, and see UploadStatus.staged.
+  }
+
+  /**
+   * Releases everything staged into the queue.
+   *
+   * <p>Idempotent and safe to call while the queue is moving: it flips staged rows to queued and
+   * lets the pump take as many as concurrency allows, so a batch added during an upload joins the
+   * one already running rather than starting a second race for the same connection.</p>
+   *
+   * <p>It does not touch anything else. A paused file stays paused — a person stopped that one, and
+   * «start» meaning «and also undo every pause» is the sort of button somebody presses once and then
+   * stops trusting.</p>
+   */
+  function start() {
+    for (const item of items.value) {
+      if (item.status === 'staged') item.status = 'queued';
     }
 
     pump();
@@ -800,7 +834,9 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     unfinished,
     totalPercent,
     selected,
+    staged,
     add,
+    start,
     pause,
     resume,
     cancel,
