@@ -1,4 +1,5 @@
 import { createApp } from 'vue';
+import OfflineLibrary from './islands/OfflineLibrary.vue';
 import ShareLockedFile from './islands/ShareLockedFile.vue';
 import ThemeLanguageToggle from './islands/ThemeLanguageToggle.vue';
 import UnlockDownload from './islands/UnlockDownload.vue';
@@ -189,6 +190,24 @@ const islands: Record<string, Island> = {
       // descendant of `el`, which leaves the document with the rest of the region and is collected
       // with it. The empty function is the answer rather than the omission of one.
       return () => {};
+    },
+  },
+
+  'offline-library': {
+    // Inside the swapped region: it reads the device's storage on mount, and a copy left mounted
+    // after a navigation would be showing a list of what was there when the reader last visited.
+    region: 'content',
+    mount: (el) => {
+      const app = createApp(OfflineLibrary, {
+        lang: el.dataset.lang === 'en' ? 'en' : 'fa',
+        // Rendered by Razor and handed over, like every other island's strings: UiText is the one
+        // place a sentence exists in both languages, and a second copy in a .vue file is a second
+        // place for one of them to go stale.
+        text: JSON.parse(el.dataset.text ?? '{}'),
+      });
+
+      app.mount(el);
+      return () => app.unmount();
     },
   },
 

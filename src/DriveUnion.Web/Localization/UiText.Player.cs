@@ -32,10 +32,19 @@ public static partial class UiText
         /// unlocking happens and what that buys — which is also the product's central claim, at the
         /// one moment it is doing something visible.</para>
         /// </summary>
+        /// <summary>
+        /// What unlocking does, and where the opened file goes.
+        ///
+        /// <para>It used to end «no readable copy is stored anywhere», which was true of the player
+        /// and stopped being true of the product the moment a film could be kept for offline: what
+        /// that keeps is the decrypted copy. The sentence now says what is true of watching, and
+        /// says nothing about storing — the control that stores has its own warning beside it, which
+        /// is where somebody deciding to press it will be looking.</para>
+        /// </summary>
         public static string LockedHint => Pick(
-            "رمزش را بزنید تا همین‌جا در مرورگر خودتان باز شود و پخش شود. نسخهٔ بازشده جایی ذخیره نمی‌شود.",
-            "Enter the passphrase and it is opened here, in your own browser, as it plays. No "
-            + "readable copy is stored anywhere.");
+            "رمزش را بزنید تا همین‌جا در مرورگر خودتان باز شود و پخش شود. رمز به سرور فرستاده نمی‌شود.",
+            "Enter the passphrase and it is opened here, in your own browser, as it plays. The "
+            + "passphrase is never sent to the server.");
 
         /// <summary>What a reader with no bundle is told, instead of a control that cannot work.</summary>
         public static string NeedsScript => Pick(

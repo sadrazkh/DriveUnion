@@ -572,6 +572,24 @@ public sealed class FilesController(
     }
 
     /// <summary>
+    /// What this browser is keeping on this device, and the press that empties it.
+    ///
+    /// <para>A page with nothing on it, on purpose. Everything it lists is read from the device's own
+    /// storage by an island — this server has no idea what is kept there and must not: it is per
+    /// device and per browser, and a list this action could produce would be a list of somewhere
+    /// else. What the action provides is the shell, the sign-in, and the sentences.</para>
+    /// </summary>
+    [HttpGet("offline")]
+    public IActionResult Offline()
+    {
+        if (User.GetTenantId() is null) return Forbid();
+
+        SetShell();
+
+        return View();
+    }
+
+    /// <summary>
     /// Takes one finished row off the list.
     ///
     /// <para>A separate verb from cancelling, and deliberately not the same button: cancelling stops
@@ -705,7 +723,10 @@ public sealed class FilesController(
             Url.Action(nameof(Content), new { id })!,
             header is null ? null : JsonSerializer.Serialize(header, PanelJson),
             Url.Action(nameof(Index), new { selected = id })!,
-            UiText.Files.BackToFiles));
+            UiText.Files.BackToFiles,
+
+            // The plaintext length, which is what lands on the device if this is kept for offline.
+            header?.PlaintextLength ?? file.SizeBytes));
     }
 
     /// <summary>

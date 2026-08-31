@@ -53,5 +53,87 @@ public static partial class UiText
         /// the truthful answer rather than a spinner.</para>
         /// </summary>
         public static string Retry => Pick("تلاش دوباره", "Try again");
+
+        // ── keeping a film on the device ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The control that keeps a copy.
+        ///
+        /// <para>«On this device» and not «offline»: the reader is choosing where a few gigabytes go,
+        /// and the useful word is the one that says whose disk fills up.</para>
+        /// </summary>
+        public static string Keep => Pick("ذخیره روی این دستگاه", "Save on this device");
+
+        public static string Keeping => Pick("در حال ذخیره…", "Saving…");
+
+        public static string Kept => Pick("روی این دستگاه ذخیره شده", "Saved on this device");
+
+        public static string Forget => Pick("حذف نسخهٔ ذخیره‌شده", "Remove the saved copy");
+
+        /// <summary>
+        /// Why a saved copy plays without asking, said <b>before</b> it is saved rather than after.
+        ///
+        /// <para>This is the whole of what the owner traded away by choosing to keep the decrypted
+        /// copy rather than the encrypted one, and it is not a detail: a film kept for a flight is
+        /// readable by anything on that device that can reach the browser's storage, and the
+        /// passphrase stops being what stands between the two. Somebody about to press the button is
+        /// the only person who can weigh that, so it is beside the button.</para>
+        /// </summary>
+        public static string KeptOpensWithoutTheKey => Pick(
+            "نسخهٔ ذخیره‌شده رمزگشایی‌شده است: تا وقتی روی این دستگاه باشد بدون رمز باز می‌شود.",
+            "The saved copy is decrypted: while it is on this device it opens without the "
+            + "passphrase.");
+
+        /// <summary>
+        /// Refused for room, with both figures.
+        ///
+        /// <para>Two numbers rather than «not enough space», because the reader's next move depends
+        /// entirely on the gap: 200 MB short is something to go and clear, and 5 GB short on a phone
+        /// is not.</para>
+        /// </summary>
+        public static string NoRoom => Pick(
+            "روی این دستگاه جا نیست.",
+            "There is not enough room on this device.");
+
+        /// <summary>Said where the two figures go. See <see cref="NoRoom"/>.</summary>
+        public static string NeedsAndHas => Pick("لازم دارد", "needs");
+
+        public static string FreeHere => Pick("جای آزاد", "free");
+
+        /// <summary>A browser with no storage of this kind — an old one, or a private window.</summary>
+        public static string CannotKeep => Pick(
+            "این مرورگر نمی‌تواند فایلی روی دستگاه نگه دارد.",
+            "This browser cannot keep a file on the device.");
+
+        public static string KeepFailed => Pick(
+            "ذخیره کامل نشد و چیزی روی دستگاه نماند.",
+            "Saving did not finish, and nothing was left on the device.");
+
+        // ── the screen that lists them ────────────────────────────────────────────────────────────
+
+        public static string LibraryTitle => Pick("ذخیره‌شده روی این دستگاه", "Saved on this device");
+
+        /// <summary>
+        /// What this screen is, and the one thing about it somebody will not guess.
+        ///
+        /// <para>That it is per-device and per-browser. A list that looked like part of the account
+        /// would have people wondering why their phone and their laptop disagree.</para>
+        /// </summary>
+        public static string LibraryHint => Pick(
+            "این‌ها روی همین مرورگر و همین دستگاه نگه داشته شده‌اند و بدون اینترنت باز می‌شوند. "
+            + "روی دستگاه دیگرتان دیده نمی‌شوند.",
+            "These are kept in this browser on this device and open with no connection. They do not "
+            + "appear on your other devices.");
+
+        public static string LibraryEmpty => Pick(
+            "هنوز چیزی روی این دستگاه ذخیره نکرده‌اید.",
+            "Nothing has been saved on this device yet.");
+
+        public static string ClearAll => Pick("خالی کردن همه", "Remove everything");
+
+        /// <summary>How much of the device these are taking, which is the reason to open this screen.</summary>
+        public static string UsingHere => Pick("روی این دستگاه", "on this device");
+
+        public static string Watch => Pick("تماشا", "Watch");
     }
 }

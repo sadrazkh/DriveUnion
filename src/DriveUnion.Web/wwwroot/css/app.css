@@ -2813,6 +2813,37 @@ audio.watch-media {
 }
 
 /*
+ * Keeping a copy on the device, under the film's own facts.
+ *
+ * Below the title and above «back», because it is a decision about this film rather than a control
+ * of the player: pressing it does not change what is on the screen, it changes what is on the disk.
+ */
+.watch-keep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.watch-keep-said,
+.watch-keep-warns {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+/* The one thing somebody deciding whether to press it needs, so it takes the whole line. */
+.watch-keep-warns {
+  flex-basis: 100%;
+}
+
+.watch-keep-said[hidden],
+.watch-keep [hidden] {
+  display: none;
+}
+
+/*
  * The sheet that appears while files are being dragged over the panel.
  *
  * A whole-window target rather than a rectangle to aim at: the drag is already happening and the

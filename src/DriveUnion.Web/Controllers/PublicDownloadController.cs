@@ -105,7 +105,10 @@ public sealed class PublicDownloadController(
             $"{PublicLinkFormatter.Path(slug)}/file",
             file.Encryption is { } header ? JsonSerializer.Serialize(header, PublicJson) : null,
             PublicLinkFormatter.Path(slug),
-            PublicText.Pick(language, "بازگشت", "Back")));
+            PublicText.Pick(language, "بازگشت", "Back"),
+
+            // The plaintext length, which is what lands on the device if this is kept for offline.
+            file.Encryption?.PlaintextLength ?? file.SizeBytes));
     }
 
     [HttpGet("/d/{slug}")]

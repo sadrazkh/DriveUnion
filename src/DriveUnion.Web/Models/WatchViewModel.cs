@@ -46,7 +46,18 @@ public sealed record WatchViewModel(
     string ContentUrl,
     string? EncryptionJson,
     string BackUrl,
-    string BackText)
+    string BackText,
+
+    /// <summary>
+    /// The plaintext length, for the one question that has to be answered before a download starts:
+    /// will this fit on the device.
+    ///
+    /// <para>A figure and not the formatted <see cref="SizeText"/> beside it, because the browser
+    /// compares it against <c>navigator.storage.estimate()</c> rather than showing it. For a locked
+    /// file it is the plaintext length rather than what storage holds — what lands on the device is
+    /// the decrypted copy, and it is sixteen bytes per megabyte smaller than the ciphertext.</para>
+    /// </summary>
+    long SizeBytes = 0)
 {
     public bool IsLocked => EncryptionJson is { Length: > 0 };
 

@@ -1,0 +1,43 @@
+@using System.Text.Json
+@{
+    ViewData["Title"] = UiText.Offline.LibraryTitle;
+
+    // The island's strings, built here so UiText stays the one place a sentence exists in both
+    // languages. The same bargain every other island on this site makes: Razor writes JSON into a
+    // data attribute and the component reads it as props.
+    var text = JsonSerializer.Serialize(new
+    {
+        hint = UiText.Offline.LibraryHint,
+        empty = UiText.Offline.LibraryEmpty,
+        clearAll = UiText.Offline.ClearAll,
+        remove = UiText.Offline.Forget,
+        watch = UiText.Offline.Watch,
+        usage = UiText.Offline.UsingHere,
+        cannot = UiText.Offline.CannotKeep,
+    });
+}
+
+<div class="stack" style="gap: 16px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">@UiText.Offline.LibraryTitle</h1>
+    </div>
+
+    @*
+        Everything below is read from this browser's own storage, so there is nothing for the server
+        to render and nothing for a reader without a bundle to be shown. The <noscript> says that
+        rather than leaving an empty card, because an empty card on this screen would read as «you
+        have saved nothing» — which is a different and possibly untrue statement.
+    *@
+    <div class="card">
+        <div data-island="offline-library"
+             data-lang="@(ViewData["Lang"] as string ?? "fa")"
+             data-text="@text">
+        </div>
+
+        <noscript>
+            <p class="muted" style="font-size: 12.5px; line-height: 1.9; margin: 0;">
+                @UiText.Player.NeedsScript
+            </p>
+        </noscript>
+    </div>
+</div>

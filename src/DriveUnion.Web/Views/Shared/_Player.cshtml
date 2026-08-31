@@ -22,7 +22,18 @@
      data-player-header="@(Model.EncryptionJson ?? string.Empty)"
      data-player-working="@UiText.Player.Unlocking"
      data-player-wrong-key="@UiText.Player.WrongKey"
-     data-player-no-worker="@UiText.Player.NoWorker">
+     data-player-no-worker="@UiText.Player.NoWorker"
+     data-player-title="@Model.Title"
+     data-player-watch="@Context.Request.Path"
+     data-player-bytes="@Model.SizeBytes"
+     data-player-keep-text="@UiText.Offline.Keep"
+     data-player-keeping="@UiText.Offline.Keeping"
+     data-player-keep-failed="@UiText.Offline.KeepFailed"
+     data-player-cannot-keep="@UiText.Offline.CannotKeep"
+     data-player-no-room="@UiText.Offline.NoRoom"
+     data-player-needs="@UiText.Offline.NeedsAndHas"
+     data-player-free="@UiText.Offline.FreeHere"
+     data-player-needs-unlock="@UiText.Player.LockedTitle">
 
     <div class="watch-stage @(Model.IsVideo ? null : "watch-stage--audio")">
         @if (Model.IsVideo)
@@ -88,6 +99,37 @@
             <span aria-hidden="true">·</span>
             <span class="mono" dir="ltr">@Model.KindText</span>
         </p>
+
+        @*
+            Keeping a copy on the device, which is the answer to a film that stalls.
+
+            Both controls start hidden and the script reveals whichever one is true: there is a saved
+            copy, or there is not. Server-rendered visible, either would be a control that lies on
+            the way in — the server has no idea what this browser is holding, and cannot: that is the
+            point of it being the device's own storage.
+
+            The warning is beside the button rather than after it. What the saved copy costs is that
+            it opens without the passphrase, and the only person who can weigh that is the one about
+            to press it.
+        *@
+        <div class="watch-keep">
+            <button type="button" data-player-keep class="btn btn--sm" hidden>
+                @UiText.Offline.Keep
+            </button>
+
+            <button type="button" data-player-forget class="btn btn--sm" hidden>
+                @UiText.Offline.Forget
+            </button>
+
+            <p class="watch-keep-said" data-player-kept hidden>
+                @UiText.Offline.Kept
+            </p>
+
+            @if (Model.IsLocked)
+            {
+                <p class="watch-keep-warns">@UiText.Offline.KeptOpensWithoutTheKey</p>
+            }
+        </div>
 
         <a class="btn btn--sm" href="@Model.BackUrl">@Model.BackText</a>
     </div>
