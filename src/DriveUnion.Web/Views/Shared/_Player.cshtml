@@ -29,6 +29,8 @@
      data-player-keep-text="@UiText.Offline.Keep"
      data-player-keeping="@UiText.Offline.Keeping"
      data-player-keep-failed="@UiText.Offline.KeepFailed"
+     data-player-keep-stopped="@UiText.Offline.KeepStopped"
+     data-player-leaving-stops="@UiText.Offline.LeavingStopsIt"
      data-player-cannot-keep="@UiText.Offline.CannotKeep"
      data-player-no-room="@UiText.Offline.NoRoom"
      data-player-needs="@UiText.Offline.NeedsAndHas"
@@ -121,9 +123,33 @@
                 @UiText.Offline.Forget
             </button>
 
+            <button type="button" data-player-stop class="btn btn--sm btn--danger" hidden>
+                @UiText.Offline.StopKeeping
+            </button>
+
             <p class="watch-keep-said" data-player-kept hidden>
                 @UiText.Offline.Kept
             </p>
+
+            @*
+                How far it has got, which a button alone cannot say.
+
+                On a six-gigabyte film this runs for ten minutes or more, and without it the only
+                information the reader has is that nothing appears to be happening — so they press it
+                again, or close the tab. Both figures and the bar, because a percentage on its own
+                does not tell somebody whether the next fifteen minutes are worth waiting through.
+            *@
+            <div class="watch-keep-progress" data-player-progress hidden>
+                <div class="bar" role="progressbar" data-player-bar
+                     aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <span class="bar-fill" data-player-bar-fill style="inline-size: 0%;"></span>
+                </div>
+
+                <p class="watch-keep-figures">
+                    <span class="mono" dir="ltr" data-player-percent>0%</span>
+                    <span class="mono" dir="ltr" data-player-sofar></span>
+                </p>
+            </div>
 
             @if (Model.IsLocked)
             {

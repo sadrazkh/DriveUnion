@@ -2838,6 +2838,32 @@ audio.watch-media {
   flex-basis: 100%;
 }
 
+/*
+ * How far a save has got. The whole line, because it is the only thing on the screen worth reading
+ * while it runs, and the bar is meaningless squeezed beside a button.
+ */
+.watch-keep-progress {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  /* Wide enough to mean something and not so wide it becomes the page. */
+  max-inline-size: 420px;
+}
+
+.watch-keep-figures {
+  display: flex;
+  gap: 12px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.watch-keep-progress[hidden] {
+  display: none;
+}
+
 .watch-keep-said[hidden],
 .watch-keep [hidden] {
   display: none;

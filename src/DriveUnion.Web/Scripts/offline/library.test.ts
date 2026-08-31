@@ -93,6 +93,10 @@ class FakeDirectory {
     return made;
   }
 
+  async *keys() {
+    for (const name of [...this.files.keys()]) yield name;
+  }
+
   async removeEntry(name: string, options?: { recursive?: boolean }) {
     if (options?.recursive && this.directories.delete(name)) return;
     if (!this.files.delete(name)) throw new DOMException('not found');
@@ -141,6 +145,15 @@ const entryFor = (bytes: number): SavedFile => ({
   savedAt: 1_700_000_000_000,
   watchUrl: '/d/film2026/watch',
 });
+
+/** Writes the manifest the way the module does, for the tests that stage a half-finished save. */
+async function writeManifest(dir: FakeDirectory, entries: unknown[]) {
+  const handle = await dir.getFileHandle('index.json', { create: true });
+  const writable = await handle.createWritable();
+
+  await writable.write(JSON.stringify(entries));
+  await writable.close();
+}
 
 /** Fills the writer with `chunks` megabyte-ish blocks. */
 const producing = (chunks: number) => async (write: (c: Bytes) => Promise<void>) => {
@@ -225,6 +238,99 @@ describe('keeping a film', () => {
 
     expect(await open('/d/film2026/file')).toBeNull();
     expect(await list()).toEqual([]);
+  });
+
+  /**
+   * <b>How far it has got.</b> A button that says nothing for the eleven minutes a 6 GB film takes
+   * is a button somebody presses twice and then force-quits.
+   */
+  it('reports what it has written as it writes it', async () => {
+    const seen: number[] = [];
+
+    await save(entryFor(64), producing(4), { onProgress: (n) => seen.push(n) });
+
+    // Cumulative, not per-chunk: what a bar needs is «this much of that much», and a caller that
+    // had to add them up would be a second place the total could be got wrong.
+    expect(seen).toEqual([16, 32, 48, 64]);
+  });
+
+  /** Stopping it is the other half of showing progress: a number with no exit is just a number. */
+  it('can be stopped part-way, and leaves nothing behind', async () => {
+    const controller = new AbortController();
+
+    const produce = async (write: (c: Bytes) => Promise<void>) => {
+      await write(new Uint8Array(16) as Bytes);
+      controller.abort();
+      await write(new Uint8Array(16) as Bytes);
+    };
+
+    await expect(save(entryFor(64), produce, { signal: controller.signal })).rejects.toThrow();
+
+    expect(await open('/d/film2026/file')).toBeNull();
+    expect(await list()).toEqual([]);
+  });
+
+  /**
+   * <b>The record goes down before the bytes.</b>
+   *
+   * <p>Asserted from inside <c>produce</c>, which is the only moment it can be: a tab closed during
+   * a save runs no catch and no finally, so anything written afterwards is not written at all. This
+   * is the half that the test below cannot see, because that one stages the manifest by hand — and
+   * without this one, deleting the marker from <c>save</c> broke nothing.</p>
+   */
+  it('records the save as unfinished before it writes a single byte', async () => {
+    let seenDuring: unknown[] = [];
+
+    await save(entryFor(64), async (write) => {
+      const dir = await root.getDirectoryHandle('offline');
+      const text = await (await (await dir.getFileHandle('index.json')).getFile()).text();
+      seenDuring = JSON.parse(text);
+
+      await write(new Uint8Array(64) as Bytes);
+    });
+
+    expect(seenDuring).toHaveLength(1);
+    expect((seenDuring[0] as SavedFile).partial).toBe(true);
+
+    // And it is not still marked once the bytes are all there, or the next visit would sweep away a
+    // film that finished perfectly well.
+    expect((await list())[0].partial).toBeUndefined();
+  });
+
+  /**
+   * <b>The tab closed mid-save.</b> Nothing runs — no catch, no finally — so the bytes are left on
+   * the disk and the only thing that can find them later is a record written <i>before</i> they were
+   * started. Without one they are gigabytes nobody can see, account for, or remove.
+   */
+  it('clears away a save the browser was closed in the middle of', async () => {
+    // A save that stops the way a closed tab stops it: the writer never throws and nothing after it
+    // runs, so what is left is a partial file and the record written before it began.
+    writeThrowsAfter = 2;
+    await save(entryFor(64), producing(4)).catch(() => {});
+
+    // Put the partial file back, which is the state a killed tab leaves and a thrown write does not.
+    const dir = await root.getDirectoryHandle('offline', { create: true });
+    const handle = await dir.getFileHandle('_2Fd_2Ffilm2026_2Ffile.bin', { create: true });
+    handle.bytes = new Uint8Array(32);
+    await writeManifest(dir, [{ ...entryFor(64), partial: true }]);
+
+    // The next time anything asks, it is gone — from the list and from the disk.
+    expect(await list()).toEqual([]);
+    expect(dir.files.has('_2Fd_2Ffilm2026_2Ffile.bin')).toBe(false);
+  });
+
+  /**
+   * And the opposite orphan: bytes with no record at all, which is what a save interrupted before
+   * its manifest write leaves. Nothing would ever look at them again.
+   */
+  it('sweeps away bytes that no record accounts for', async () => {
+    const dir = await root.getDirectoryHandle('offline', { create: true });
+    const stray = await dir.getFileHandle('_2Fd_2Fstray_2Ffile.bin', { create: true });
+    stray.bytes = new Uint8Array(4096);
+
+    await list();
+
+    expect(dir.files.has('_2Fd_2Fstray_2Ffile.bin')).toBe(false);
   });
 
   it('replaces rather than duplicates when the same film is saved twice', async () => {

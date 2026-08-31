@@ -30,6 +30,13 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   const forget = el.querySelector<HTMLButtonElement>('[data-player-forget]');
   const kept = el.querySelector<HTMLElement>('[data-player-kept]');
 
+  const stop = el.querySelector<HTMLButtonElement>('[data-player-stop]');
+  const progress = el.querySelector<HTMLElement>('[data-player-progress]');
+  const bar = el.querySelector<HTMLElement>('[data-player-bar]');
+  const barFill = el.querySelector<HTMLElement>('[data-player-bar-fill]');
+  const percentOut = el.querySelector<HTMLElement>('[data-player-percent]');
+  const soFarOut = el.querySelector<HTMLElement>('[data-player-sofar]');
+
   const contentUrl = el.dataset.playerUrl ?? '';
   const mime = el.dataset.playerMime ?? '';
   const title = el.dataset.playerTitle ?? 'file';
@@ -43,6 +50,9 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
 
   /** Held after an unlock so a save can reuse it rather than asking for the passphrase twice. */
   let contentKey: CryptoKey | null = null;
+
+  /** Non-null exactly while a save is running, which is what Stop and beforeunload both ask. */
+  let saving: AbortController | null = null;
 
   if (!media || !contentUrl) return { stop: () => {} };
 
@@ -100,6 +110,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   }
 
   keep?.addEventListener('click', () => void keepOnDevice());
+  stop?.addEventListener('click', () => saving?.abort());
   forget?.addEventListener('click', () => void forgetFromDevice());
 
   async function forgetFromDevice(): Promise<void> {
@@ -146,6 +157,14 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     keep.disabled = true;
     keep.textContent = el.dataset.playerKeeping ?? '';
 
+    // The bar, the figures and the way out, all three at once: a number that cannot be stopped is
+    // only half an answer to «how long is this going to take».
+    if (progress) progress.hidden = false;
+    if (stop) stop.hidden = false;
+
+    saving = new AbortController();
+    showProgress(0);
+
     try {
       await save(
         {
@@ -184,14 +203,26 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
 
           if (!result.ok) throw new Error(result.reason);
         },
+        { onProgress: showProgress, signal: saving.signal },
       );
-    } catch {
+    } catch (error) {
+      const stopped = saving?.signal.aborted === true;
+
+      endProgress();
       keep.disabled = false;
       keep.textContent = el.dataset.playerKeepText ?? '';
-      say(el.dataset.playerKeepFailed ?? '');
+
+      // Two different sentences, because they are two different situations: one is the reader's own
+      // decision and needs no apology, and the other is a failure they may want to try again after.
+      say(stopped
+        ? el.dataset.playerKeepStopped ?? ''
+        : el.dataset.playerKeepFailed ?? '');
+
+      void error;
       return;
     }
 
+    endProgress();
     keep.textContent = el.dataset.playerKeepText ?? '';
     keep.disabled = false;
 
@@ -203,6 +234,57 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   function say(message: string): void {
     if (said) said.textContent = message;
   }
+
+  /**
+   * The bar and the two figures.
+   *
+   * <p>Both figures, and this is the point of the whole change: a percentage alone does not tell
+   * somebody whether the next fifteen minutes are worth waiting through, and «412 MB» alone does not
+   * say how much of the film that is. The size is known before a byte is fetched, so both are
+   * available from the first tick.</p>
+   */
+  function showProgress(written: number): void {
+    const percent = sizeBytes > 0 ? Math.min(100, (written / sizeBytes) * 100) : 0;
+
+    if (barFill) barFill.style.inlineSize = `${percent}%`;
+    if (bar) bar.setAttribute('aria-valuenow', String(Math.round(percent)));
+    if (percentOut) percentOut.textContent = `${Math.round(percent)}%`;
+
+    if (soFarOut) {
+      soFarOut.textContent = sizeBytes > 0
+        ? `${formatBytes(written)} / ${formatBytes(sizeBytes)}`
+        : formatBytes(written);
+    }
+  }
+
+  function endProgress(): void {
+    saving = null;
+
+    if (progress) progress.hidden = true;
+    if (stop) stop.hidden = true;
+  }
+
+  /**
+   * The browser's own warning, for the one case this page cannot handle itself.
+   *
+   * <p>A save is this page's work and dies with it. There is no resuming it — the bytes written so
+   * far are swept on the next visit, deliberately, because a film that is 40% there is not a shorter
+   * film. So the honest thing is to make leaving take a decision rather than happen by accident.</p>
+   *
+   * <p>Registered once and asked per event rather than added and removed around each save: a
+   * listener that is added on one path and removed on another is the kind that survives one of
+   * them.</p>
+   */
+  const warnOnLeaving = (event: BeforeUnloadEvent) => {
+    if (!saving || saving.signal.aborted) return;
+
+    event.preventDefault();
+
+    // The deprecated half, and still the one Safari and Firefox act on. See main.ts.
+    event.returnValue = el.dataset.playerLeavingStops ?? '';
+  };
+
+  addEventListener('beforeunload', warnOnLeaving);
 
   start?.addEventListener('click', () => {
     // Nothing is fetched until this is pressed. A detail panel that started loading a film every
@@ -296,6 +378,12 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
       }
 
       contentKey = null;
+
+      // A save is this page's work and does not outlive it. Aborting here rather than leaving it
+      // running against a torn-down element is what makes the partial file get swept: the library
+      // removes what it wrote when the write throws.
+      saving?.abort();
+      removeEventListener('beforeunload', warnOnLeaving);
 
       if (streamId) closeStream(streamId);
     },

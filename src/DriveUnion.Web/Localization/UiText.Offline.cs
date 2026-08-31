@@ -71,6 +71,31 @@ public static partial class UiText
         public static string Forget => Pick("حذف نسخهٔ ذخیره‌شده", "Remove the saved copy");
 
         /// <summary>
+        /// Stopping a save that is running.
+        ///
+        /// <para>A figure with no way out is just a figure. Ten minutes into a six-gigabyte film the
+        /// reader may well have changed their mind, and the alternative to this button is closing
+        /// the tab — which works, but leaves them wondering what it left behind.</para>
+        /// </summary>
+        public static string StopKeeping => Pick("توقف", "Stop");
+
+        /// <summary>
+        /// What the browser asks before a page with a save running is closed.
+        ///
+        /// <para>Most browsers show their own wording and ignore this one; it is here because the
+        /// ones that do not are the ones where it matters. Either way what is being protected is a
+        /// download that has to start again from nothing.</para>
+        /// </summary>
+        public static string LeavingStopsIt => Pick(
+            "ذخیره‌سازی هنوز تمام نشده و با بستن این صفحه از اول شروع می‌شود.",
+            "Saving is not finished, and closing this page starts it again from nothing.");
+
+        /// <summary>Said when a save was stopped, so the screen does not simply blink back.</summary>
+        public static string KeepStopped => Pick(
+            "ذخیره‌سازی متوقف شد و چیزی روی دستگاه نماند.",
+            "Saving was stopped, and nothing was left on the device.");
+
+        /// <summary>
         /// Why a saved copy plays without asking, said <b>before</b> it is saved rather than after.
         ///
         /// <para>This is the whole of what the owner traded away by choosing to keep the decrypted

@@ -21,6 +21,17 @@
 
 import type { Bytes } from '../crypto/format';
 
+/**
+ * `keys()` is in the File System Access specification and in every browser that has OPFS at all; it
+ * is simply absent from the DOM types this project builds against. Declared rather than cast at the
+ * one call site, so the orphan sweep below reads as the ordinary iteration it is.
+ */
+declare global {
+  interface FileSystemDirectoryHandle {
+    keys(): AsyncIterableIterator<string>;
+  }
+}
+
 /** Everything lives under one directory, so «clear» is one call and an orphan is visible. */
 const Directory = 'offline';
 
@@ -49,6 +60,29 @@ export interface SavedFile {
 
   /** Where to watch it, for a list that has to link somewhere. */
   readonly watchUrl: string;
+
+  /**
+   * True between «the bytes have started» and «the bytes are all there».
+   *
+   * <p><b>Written before the first byte, on purpose.</b> A save that is interrupted by the tab
+   * closing runs no catch and no finally — nothing of ours executes at all — so the only thing that
+   * can identify the megabytes left on the disk afterwards is a record made before they were
+   * written. Without one they are storage nobody can see, account for or remove.</p>
+   *
+   * <p><c>list</c> treats an entry still carrying this as an interrupted save: it deletes the file
+   * and the record rather than showing it. A film that is 40% there plays for 40% and stops, which
+   * is a worse thing to offer somebody than nothing.</p>
+   */
+  readonly partial?: boolean;
+}
+
+/** What a caller wants to know and be able to do while a save is running. */
+export interface SaveOptions {
+  /** Total plaintext bytes written so far — cumulative, because that is what a bar needs. */
+  readonly onProgress?: (written: number) => void;
+
+  /** Stops it. What was written is removed; see `save`. */
+  readonly signal?: AbortSignal;
 }
 
 export interface Room {
@@ -157,6 +191,13 @@ export async function list(): Promise<SavedFile[]> {
     const alive: SavedFile[] = [];
 
     for (const entry of recorded) {
+      // An interrupted save. The record was written before the bytes precisely so this pass can
+      // find them; a film that is 40% there plays for 40% and stops, which is worse than nothing.
+      if (entry.partial) {
+        await removeFile(dir, entry.key);
+        continue;
+      }
+
       try {
         await dir.getFileHandle(fileNameFor(entry.key));
         alive.push(entry);
@@ -167,9 +208,31 @@ export async function list(): Promise<SavedFile[]> {
 
     if (alive.length !== recorded.length) await writeIndex(dir, alive);
 
+    // The other orphan: bytes with no record at all, left by a save interrupted before its manifest
+    // write. Nothing would ever look at them again, so nothing would ever free them.
+    const known = new Set([IndexFile, ...alive.map((e) => fileNameFor(e.key))]);
+
+    for await (const name of dir.keys()) {
+      if (!known.has(name)) {
+        try {
+          await dir.removeEntry(name);
+        } catch {
+          // Held open, or already gone. It will be swept on the next pass.
+        }
+      }
+    }
+
     return alive;
   } catch {
     return [];
+  }
+}
+
+async function removeFile(dir: FileSystemDirectoryHandle, key: string): Promise<void> {
+  try {
+    await dir.removeEntry(fileNameFor(key));
+  } catch {
+    // Never written, or already gone.
   }
 }
 
@@ -205,6 +268,7 @@ export async function open(key: string): Promise<File | null> {
 export async function save(
   entry: SavedFile,
   produce: (write: (chunk: Bytes) => Promise<void>) => Promise<void>,
+  options: SaveOptions = {},
 ): Promise<SaveResult> {
   const space = await room();
 
@@ -221,12 +285,29 @@ export async function save(
   }
 
   const dir = await directory();
+
+  // The record goes down before the first byte. This is the only thing that can identify what is on
+  // the disk if the tab is closed mid-write — see SavedFile.partial.
+  await writeIndex(dir, [
+    ...(await readIndex(dir)).filter((e) => e.key !== entry.key),
+    { ...entry, partial: true },
+  ]);
+
   const handle = await dir.getFileHandle(fileNameFor(entry.key), { create: true });
   const writable = await handle.createWritable();
 
+  let written = 0;
+
   try {
     await produce(async (chunk) => {
+      // Checked per chunk rather than only at the top: a stop pressed during a four-gigabyte film
+      // has to take effect within a segment, not at the end of one that is still hours away.
+      if (options.signal?.aborted) throw new DOMException('stopped', 'AbortError');
+
       await writable.write(chunk);
+
+      written += chunk.length;
+      options.onProgress?.(written);
     });
 
     await writable.close();
@@ -242,6 +323,7 @@ export async function save(
     throw error;
   }
 
+  // Rewritten without the flag, which is what «finished» means here.
   const dirAgain = await directory();
   const entries = (await readIndex(dirAgain)).filter((e) => e.key !== entry.key);
 
