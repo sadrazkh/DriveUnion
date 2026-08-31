@@ -162,6 +162,15 @@ const entryFor = (bytes: number): SavedFile => ({
   written: 0,
 });
 
+/** Writes the manifest the way the module does, for the tests that stage a half-finished save. */
+async function writeManifest(dir: FakeDirectory, entries: unknown[]) {
+  const handle = await dir.getFileHandle('index.json', { create: true });
+  const writable = await handle.createWritable();
+
+  await writable.write(JSON.stringify(entries));
+  await writable.close();
+}
+
 /** Fills the writer with `chunks` megabyte-ish blocks. */
 const producing = (chunks: number) => async (write: (c: Bytes) => Promise<void>, _from = 0) => {
   for (let i = 0; i < chunks; i++) await write(new Uint8Array(16).fill(i) as Bytes);
@@ -441,6 +450,32 @@ describe('keeping a film', () => {
     );
 
     expect(seen).toEqual([48, 64]);
+  });
+
+  /**
+   * <b>A download the service worker finished while nothing was watching.</b>
+   *
+   * <p>Background Fetch writes the raw bytes under <c>&lt;name&gt;.raw</c> and records the entry as
+   * staged, because it cannot decrypt: the key is derived in a page from a typed passphrase and the
+   * whole point is that no page was open. This pass has to leave both alone or the feature dies on
+   * the next page load — which is exactly what it did, and only a test says so, because everything
+   * looks fine until the customer comes back to a list with nothing in it.</p>
+   */
+  it('leaves a background download alone instead of sweeping it', async () => {
+    const dir = await root.getDirectoryHandle('offline', { create: true });
+    const raw = await dir.getFileHandle('_2Fd_2Ffilm2026_2Ffile.bin.raw', { create: true });
+    raw.bytes = new Uint8Array(4096);
+
+    await writeManifest(dir, [{ ...entryFor(4096), partial: true, staged: true, written: 0 }]);
+
+    const listed = await list();
+
+    expect(listed).toHaveLength(1);
+    expect(listed[0].staged).toBe(true);
+
+    // And the bytes are still there. They are the download; sweeping them is throwing away the
+    // traffic the whole feature exists to have spent in the background.
+    expect(dir.files.has('_2Fd_2Ffilm2026_2Ffile.bin.raw')).toBe(true);
   });
 
   /**

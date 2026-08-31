@@ -126,6 +126,32 @@ try {
   // taken — a locked video falls back to the download-and-decrypt path it has always had.
 }
 
+/*
+ * And once more, for a save that has to outlive the tab that started it.
+ *
+ * sw-download.js keeps rule 2 exactly: no `fetch` listener. Its events — backgroundfetchsuccess,
+ * backgroundfetchfail, backgroundfetchabort — are delivered to every listener registered for them
+ * rather than raced for by the first to answer, which is what makes them safe to register from an
+ * imported file in the way `push` is and `fetch` is not.
+ *
+ * It has to be imported here, synchronously, rather than registered from anywhere later. These
+ * events wake a worker that has been dead for hours: the browser starts this script, evaluates it,
+ * and dispatches. A listener added afterwards from a promise is a listener that does not exist when
+ * the only event this feature ever gets is delivered, and a download of several gigabytes is thrown
+ * away with nothing anywhere reporting it.
+ *
+ * Wrapped for the third time and for the smallest stake yet. Safari has no BackgroundFetchManager at
+ * all, so on iOS this file registers three listeners nothing will ever fire — that is the intended
+ * degradation and needs no feature test here. What the wrapper protects against is the same syntax
+ * error or 404 as above costing the app shell.
+ */
+try {
+  importScripts('/sw-download.js');
+} catch {
+  // Deliberately silent. `self.du1Download` is absent, no background save is ever completed, and a
+  // save behaves exactly as it did before this file existed: it runs while a page is open.
+}
+
 self.addEventListener('install', (event) => {
   // The offline page is fetched rather than assembled here: it is Razor, its words come from UiText
   // and its language from the culture cookie, which this request carries because a Request built

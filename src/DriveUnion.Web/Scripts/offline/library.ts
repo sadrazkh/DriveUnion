@@ -99,6 +99,22 @@ export interface SavedFile {
    * <p>Cleared by the next <c>save</c>, because pressing Continue is asking for it again.</p>
    */
   readonly stoppedByHand?: boolean;
+
+  /**
+   * True while the bytes on disk are what the server sent, not what a player can open.
+   *
+   * <p>Background Fetch keeps a download running after the tab is gone, and hands the worker the raw
+   * response. For a locked film that is ciphertext, and the worker has no key — the key is derived in
+   * a page from a typed passphrase, and the point of the feature is that no page was open. So the
+   * worker writes to <c>&lt;name&gt;.raw</c> and marks this, and a page finishes the job when
+   * somebody comes back and unlocks it.</p>
+   *
+   * <p><b>Everything that walks this directory has to know about it.</b> The sweep below removes
+   * files no record accounts for, and a staged entry's file is under a different name — so without
+   * this flag it dropped the record <i>and</i> deleted the download, on the next page load, silently.
+   * That is the whole reason the flag is here rather than only in the worker.</p>
+   */
+  readonly staged?: boolean;
 }
 
 /** What a caller wants to know and be able to do while a save is running. */
@@ -193,6 +209,16 @@ function fileNameFor(key: string): string {
   return `${encodeURIComponent(key).replace(/[^A-Za-z0-9._-]/g, '_')}.bin`;
 }
 
+/**
+ * Where an entry's bytes actually are, which is not the same question as what its key is.
+ *
+ * <p>A staged download is under a `.raw` suffix — see SavedFile.staged. Every pass that touches the
+ * directory goes through here, because the one that did not deleted the downloads.</p>
+ */
+function nameOnDisk(entry: SavedFile): string {
+  return entry.staged === true ? `${fileNameFor(entry.key)}.raw` : fileNameFor(entry.key);
+}
+
 async function readIndex(dir: FileSystemDirectoryHandle): Promise<SavedFile[]> {
   try {
     const handle = await dir.getFileHandle(IndexFile);
@@ -236,7 +262,7 @@ export async function list(): Promise<SavedFile[]> {
         // Unfinished ones are kept and listed, so somebody can carry one on or remove it. What is
         // not kept is one whose bytes have gone: an entry with no file is a row that offers to play
         // or resume something that is not there.
-        await dir.getFileHandle(fileNameFor(entry.key));
+        await dir.getFileHandle(nameOnDisk(entry));
         alive.push(entry);
       } catch {
         // Evicted by the browser, or interrupted before a single checkpoint.
@@ -247,7 +273,7 @@ export async function list(): Promise<SavedFile[]> {
 
     // The other orphan: bytes with no record at all, left by a save interrupted before its manifest
     // write. Nothing would ever look at them again, so nothing would ever free them.
-    const known = new Set([IndexFile, ...alive.map((e) => fileNameFor(e.key))]);
+    const known = new Set([IndexFile, ...alive.map(nameOnDisk)]);
 
     for await (const name of dir.keys()) {
       if (!known.has(name)) {
@@ -411,10 +437,15 @@ export async function remove(key: string): Promise<void> {
   try {
     const dir = await directory();
 
-    try {
-      await dir.removeEntry(fileNameFor(key));
-    } catch {
-      // Not there. The manifest is still worth correcting.
+    // Both names, because a staged download is under the `.raw` one and this is called without
+    // knowing which kind it is. Removing the wrong one would leave the bytes for the sweep to find
+    // later, which works and is a lot of storage to hold in the meantime.
+    for (const name of [fileNameFor(key), `${fileNameFor(key)}.raw`]) {
+      try {
+        await dir.removeEntry(name);
+      } catch {
+        // Not there. The manifest is still worth correcting.
+      }
     }
 
     await writeIndex(dir, (await readIndex(dir)).filter((e) => e.key !== key));

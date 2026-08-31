@@ -413,12 +413,14 @@ describe('the version story', () => {
 
     // Two workers cannot hold one scope, so a second concern adds itself to this one through a file
     // it owns rather than by registering a worker of its own. Push was the first; playing an
-    // encrypted file without downloading it is the second. If either import goes, the contract
-    // written at the top of that file has gone with it and nothing else would say so.
+    // encrypted file without downloading it is the second; a save that keeps downloading after the
+    // tab is closed is the third. If any import goes, the contract written at the top of that file
+    // has gone with it and nothing else would say so.
     //
-    // An exact list rather than a `toContain`. A third seam is a decision — every one of them runs
-    // inside the worker that serves the app shell — and it should have to be made here, in a diff,
-    // rather than accumulate.
-    expect(worker.imported).toEqual(['/sw-push.js', '/sw-media.js']);
+    // An exact list rather than a `toContain`. A seam is a decision — every one of them runs inside
+    // the worker that serves the app shell — and it should have to be made here, in a diff, rather
+    // than accumulate. This line is that diff for sw-download.js: it registers three
+    // backgroundfetch* listeners and, per the note in that file, no fetch listener.
+    expect(worker.imported).toEqual(['/sw-push.js', '/sw-media.js', '/sw-download.js']);
   });
 });
