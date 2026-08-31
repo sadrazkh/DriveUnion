@@ -132,8 +132,26 @@
                                 <p class="muted" style="font-size: 11px; line-height: 1.7; margin: 0;"
                                    dir="auto">@why</p>
                             }
+
+                            @*
+                                Only once it has stopped, the same rule the island keeps: a row still
+                                being pulled is work, and taking it off the screen would hide a job
+                                that is still happening rather than end it.
+                            *@
+                            @if (!fetch.IsLive)
+                            {
+                                <form method="post" action="@Url.Action("DismissFetch", "Files", new { id = fetch.Id })">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn btn--sm">@UiText.Files.FetchDismiss</button>
+                                </form>
+                            }
                         </div>
                     }
+
+                    <form method="post" action="@Url.Action("DismissFinishedFetches", "Files")">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn--sm">@UiText.Files.FetchDismissAll</button>
+                    </form>
                 </div>
             }
         </div>

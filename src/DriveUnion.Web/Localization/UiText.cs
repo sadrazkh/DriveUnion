@@ -506,6 +506,16 @@ public static partial class UiText
 
         public static string FetchCancelled => Pick("متوقف شد.", "Stopped.");
 
+        /// <summary>
+        /// Taking a finished row off the list. The list is a work queue, not a log — see
+        /// <c>IRemoteFetches.DismissAsync</c>.
+        /// </summary>
+        public static string FetchDismiss => Pick("پاک کردن", "Dismiss");
+
+        public static string FetchDismissAll => Pick("پاک کردن تمام‌شده‌ها", "Clear finished");
+
+        public static string FetchDismissed => Pick("از فهرست پاک شد.", "Removed from the list.");
+
         public static string FetchNothingYet => Pick(
             "هنوز چیزی از لینک نیاورده‌اید.",
             "Nothing has been fetched from a link yet.");

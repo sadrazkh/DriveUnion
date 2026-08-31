@@ -203,6 +203,82 @@ public class RemoteFetchTests
             .Should().BeTrue();
     }
 
+    /// <summary>
+    /// A finished row can be taken off the list, and a live one cannot.
+    ///
+    /// <para>The upload screen is a work queue and not a log. A fetch that failed two days ago —
+    /// «the source would not say how big the file is», «the key is no longer held» — is a sentence
+    /// somebody has already read, and leaving it there for ever makes the list longer than the work
+    /// in it. There is nothing to keep: the row is the job, and a completed one's file is in the
+    /// catalogue where it belongs.</para>
+    ///
+    /// <para>Queued and Running are refused because dismissing one would hide a job that is still
+    /// happening. Stop it first; that is what Cancel is for, and it is one press either way.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_finished_fetch_can_be_dismissed_and_a_live_one_cannot()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+
+        var live = await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
+
+        // Still queued: this is work, not history.
+        (await harness.Fetches().DismissAsync(tenant.Id, live.FetchId!.Value, default))
+            .Should().BeFalse("a job that has not stopped is not something to tidy away");
+
+        (await harness.Db.RemoteFetches.CountAsync()).Should().Be(1);
+
+        await harness.Fetches().CancelAsync(tenant.Id, live.FetchId!.Value, default);
+
+        (await harness.Fetches().DismissAsync(tenant.Id, live.FetchId!.Value, default))
+            .Should().BeTrue();
+
+        (await harness.Db.RemoteFetches.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Dismissing_everything_finished_leaves_the_work_that_is_still_running()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var tenant = harness.SeedTenant("acme");
+
+        var running = await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
+        var failed = await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
+        var done = await harness.Fetches().StartAsync(tenant.Id, null, Url, null, null, default);
+
+        await harness.Db.RemoteFetches
+            .Where(f => f.Id == failed.FetchId!.Value)
+            .ExecuteUpdateAsync(s => s.SetProperty(f => f.Status, RemoteFetchStatus.Failed), default);
+
+        await harness.Db.RemoteFetches
+            .Where(f => f.Id == done.FetchId!.Value)
+            .ExecuteUpdateAsync(s => s.SetProperty(f => f.Status, RemoteFetchStatus.Completed), default);
+
+        (await harness.Fetches().DismissFinishedAsync(tenant.Id, default)).Should().Be(2);
+
+        var left = await harness.Db.RemoteFetches.AsNoTracking().SingleAsync();
+        left.Id.Should().Be(running.FetchId!.Value, "the one still being pulled stays");
+    }
+
+    [Fact]
+    public async Task One_workspace_cannot_dismiss_anothers_fetch()
+    {
+        await using var harness = ServiceTestHarness.Create();
+        var mine = harness.SeedTenant("acme");
+        var theirs = harness.SeedTenant("globex");
+
+        var started = await harness.Fetches().StartAsync(theirs.Id, null, Url, null, null, default);
+        await harness.Fetches().CancelAsync(theirs.Id, started.FetchId!.Value, default);
+
+        (await harness.Fetches().DismissAsync(mine.Id, started.FetchId!.Value, default))
+            .Should().BeFalse();
+
+        // And a sweep of an empty workspace does not reach across into a full one.
+        (await harness.Fetches().DismissFinishedAsync(mine.Id, default)).Should().Be(0);
+        (await harness.Db.RemoteFetches.CountAsync()).Should().Be(1);
+    }
+
     [Theory]
     [InlineData("report.pdf", null, "report.pdf")]
     [InlineData(null, "https://x.test/a/b/quarterly%20report.pdf", "quarterly report.pdf")]

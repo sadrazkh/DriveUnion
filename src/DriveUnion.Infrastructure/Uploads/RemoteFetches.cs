@@ -144,4 +144,52 @@ public sealed class RemoteFetches(
 
         return true;
     }
+
+    public async Task<bool> DismissAsync(
+        Guid tenantId,
+        Guid fetchId,
+        CancellationToken cancellationToken)
+    {
+        // Both predicates, for the reason CancelAsync gives: another workspace's id is not found.
+        var fetch = await db.RemoteFetches.FirstOrDefaultAsync(
+            f => f.Id == fetchId && f.TenantId == tenantId,
+            cancellationToken);
+
+        if (fetch is null) return false;
+
+        // Live work is not history. See IRemoteFetches.DismissAsync.
+        if (fetch.Status is RemoteFetchStatus.Queued or RemoteFetchStatus.Running) return false;
+
+        db.RemoteFetches.Remove(fetch);
+        await db.SaveChangesAsync(cancellationToken);
+
+        // Belt and braces: a completed or failed fetch has released its key already, and a row that
+        // stopped some other way may not have. Releasing twice is nothing; releasing never is a key
+        // held for a job that no longer exists.
+        keyring.Release(fetchId);
+
+        return true;
+    }
+
+    public async Task<int> DismissFinishedAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        // The ids first, so every key can be released — ExecuteDelete does not load rows and this
+        // pass must not leave the keyring holding secrets for jobs it has just erased.
+        var going = await db.RemoteFetches
+            .Where(f => f.TenantId == tenantId
+                && f.Status != RemoteFetchStatus.Queued
+                && f.Status != RemoteFetchStatus.Running)
+            .Select(f => f.Id)
+            .ToListAsync(cancellationToken);
+
+        if (going.Count == 0) return 0;
+
+        var removed = await db.RemoteFetches
+            .Where(f => going.Contains(f.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        foreach (var id in going) keyring.Release(id);
+
+        return removed;
+    }
 }

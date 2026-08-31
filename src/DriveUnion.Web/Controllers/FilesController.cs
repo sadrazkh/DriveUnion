@@ -572,6 +572,45 @@ public sealed class FilesController(
     }
 
     /// <summary>
+    /// Takes one finished row off the list.
+    ///
+    /// <para>A separate verb from cancelling, and deliberately not the same button: cancelling stops
+    /// work and dismissing removes a record of work that has stopped. Rolling them together would
+    /// mean one press that either halts a running download or erases a failure, depending on a state
+    /// the reader has to have noticed first.</para>
+    /// </summary>
+    [HttpPost("fetch/{id:guid}/dismiss")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DismissFetch(Guid id, CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var dismissed = await fetches.DismissAsync(tenantId, id, cancellationToken);
+
+        if (WantsJson()) return Json(new { dismissed });
+
+        if (dismissed) TempData["Notice"] = UiText.Files.FetchDismissed;
+
+        return RedirectToAction(nameof(Upload));
+    }
+
+    /// <summary>Every finished row at once. What is still being pulled is left where it is.</summary>
+    [HttpPost("fetches/dismiss")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DismissFinishedFetches(CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var removed = await fetches.DismissFinishedAsync(tenantId, cancellationToken);
+
+        if (WantsJson()) return Json(new { removed });
+
+        if (removed > 0) TempData["Notice"] = UiText.Files.FetchDismissed;
+
+        return RedirectToAction(nameof(Upload));
+    }
+
+    /// <summary>
     /// This workspace's link fetches, for the upload screen to poll.
     ///
     /// <para>The island draws these in the same list as the browser's own uploads, so it needs the

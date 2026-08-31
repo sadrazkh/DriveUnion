@@ -160,8 +160,15 @@ const choices = [...ConcurrencyChoices];
 
 const anyDone = computed(() => items.value.some((i) => i.status === 'done'));
 
+// Whatever `clearFinished` would take, so the button is enabled exactly when pressing it does
+// something. `failed` is in both, and it not being in either is what left a failure pinned to the
+// list with no way to remove it.
 const anyFinished = computed(() =>
-  items.value.some((i) => i.status === 'done' || i.status === 'cancelled'));
+  items.value.some((i) =>
+    i.status === 'done' || i.status === 'cancelled' || i.status === 'failed'));
+
+/** The same question of the server's rows, which the same button also clears. */
+const anyFinishedFetch = computed(() => fetches.value.some((f) => !f.live));
 
 const allSelected = computed(() =>
   items.value.length > 0 && items.value.every((i) => i.selected));
@@ -196,6 +203,7 @@ function text() {
         remove: 'Remove',
         retry: 'Try again',
         clear: 'Clear finished',
+        dismiss: 'Dismiss',
         backToFiles: 'Go to files',
         remaining: 'left',
         select: 'Select this file',
@@ -256,6 +264,7 @@ function text() {
         remove: 'حذف',
         retry: 'تلاش دوباره',
         clear: 'پاک کردن تمام‌شده‌ها',
+        dismiss: 'پاک کردن',
         backToFiles: 'رفتن به فایل‌ها',
         remaining: 'باقی‌مانده',
         select: 'انتخاب این فایل',
@@ -392,6 +401,48 @@ async function stopFetch(id: string) {
   } catch {
     // The row will say what it says at the next poll. A cancellation that did not reach the server
     // is a fetch that carries on, and inventing a stopped row here would be the screen lying.
+  }
+}
+
+/**
+ * Takes a finished fetch off the list.
+ *
+ * <p>Server-side, unlike the browser's own uploads, because a fetch is a row in a database and this
+ * page is a view of it. Removing it here alone would put it back at the next poll, three seconds
+ * later, which reads as the button not working.</p>
+ */
+async function dismissFetch(id: string) {
+  try {
+    await fetch(`/files/fetch/${id}/dismiss`, {
+      method: 'POST',
+      headers: headers({ Accept: 'application/json' }),
+    });
+
+    await poll();
+  } catch {
+    // Same bargain as stopFetch: the next poll is the truth, and this one did not change it.
+  }
+}
+
+/**
+ * Both lists at once — the browser's finished uploads and the server's finished fetches.
+ *
+ * <p>One button, because they are drawn as one list and «clear» meaning «clear half of this» is the
+ * sort of thing somebody presses three times before looking closely.</p>
+ */
+async function clearEverythingFinished() {
+  clearFinished();
+
+  try {
+    await fetch('/files/fetches/dismiss', {
+      method: 'POST',
+      headers: headers({ Accept: 'application/json' }),
+    });
+
+    await poll();
+  } catch {
+    // The uploads have gone from the list either way; the fetch rows come back at the next poll if
+    // the server never heard. Better than clearing them locally and having them reappear.
   }
 }
 
@@ -702,8 +753,8 @@ function toggleAll() {
         <button
           type="button"
           class="btn btn--sm"
-          :disabled="!anyFinished"
-          @click="clearFinished()"
+          :disabled="!anyFinished && !anyFinishedFetch"
+          @click="clearEverythingFinished()"
         >{{ text().clear }}</button>
       </span>
     </div>
@@ -754,6 +805,18 @@ function toggleAll() {
               class="btn btn--sm btn--danger"
               @click="stopFetch(fetch.id)"
             >{{ text().cancel }}</button>
+
+            <!--
+              Only once it has stopped. A row that is still being pulled offers Cancel and nothing
+              else, so there is never a moment where two buttons could plausibly be the one that
+              makes this go away.
+            -->
+            <button
+              v-else
+              type="button"
+              class="btn btn--sm"
+              @click="dismissFetch(fetch.id)"
+            >{{ text().dismiss }}</button>
           </span>
         </div>
 

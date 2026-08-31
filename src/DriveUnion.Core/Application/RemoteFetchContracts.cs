@@ -76,6 +76,22 @@ public interface IRemoteFetches
 
     /// <summary>Stops one. What has already been written stays written.</summary>
     Task<bool> CancelAsync(Guid tenantId, Guid fetchId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Takes a finished row off the list, and false for one that has not finished.
+    ///
+    /// <para>The upload screen is a work queue rather than a log, and a failure somebody has already
+    /// read is not work. There is nothing lost by removing the row: it <i>is</i> the job, and a
+    /// completed one's file is in the catalogue where anything that matters about it lives.</para>
+    ///
+    /// <para>Queued and running are refused rather than stopped-and-removed. Hiding a job that is
+    /// still happening is worse than leaving it on screen, and the customer who wants it gone can
+    /// press Cancel — which is the same one press, and says what it did.</para>
+    /// </summary>
+    Task<bool> DismissAsync(Guid tenantId, Guid fetchId, CancellationToken cancellationToken);
+
+    /// <summary>Every finished row at once, returning how many went. Live work is left alone.</summary>
+    Task<int> DismissFinishedAsync(Guid tenantId, CancellationToken cancellationToken);
 }
 
 /// <summary>

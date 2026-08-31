@@ -316,9 +316,21 @@ export function createUploadStore(readConfig: () => UploadConfig) {
     pump();
   }
 
+  /**
+   * Everything that has stopped for good, off the list.
+   *
+   * <p><c>failed</c> is in here and was the omission this fixes. A failure is a sentence the reader
+   * has already read — «the source would not say how big the file is» — and leaving it pinned to the
+   * queue made the list grow monotonically until a reload. There was no way at all to get rid of one
+   * short of signing out, which is what the customer noticed.</p>
+   *
+   * <p>Nothing live is touched. <c>queued</c>, <c>uploading</c>, <c>paused</c> and <c>interrupted</c>
+   * are all work that is either happening or waiting to be picked back up, and clearing a paused
+   * file would silently throw away a transfer somebody meant to come back to.</p>
+   */
   function clearFinished() {
     items.value = items.value.filter(
-      (i) => i.status !== 'done' && i.status !== 'cancelled');
+      (i) => i.status !== 'done' && i.status !== 'cancelled' && i.status !== 'failed');
   }
 
   const forEachSelected = (act: (id: number) => void) => {
