@@ -1,8 +1,8 @@
 import { unseal } from './crypto/envelope';
 import { decryptInto } from './crypto/stream';
-import type { Bytes, EncryptionHeader } from './crypto/format';
+import { segmentSpan, type Bytes, type EncryptionHeader } from './crypto/format';
 import { closeStream, openStream } from './crypto/play';
-import { open as openSaved, remove as removeSaved, room, save, supported } from './offline/library';
+import { list as savedList, open as openSaved, remove as removeSaved, room, save, supported } from './offline/library';
 import { bytes as formatBytes } from './uploads/store';
 
 /**
@@ -87,7 +87,26 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   void showSavedCopy();
 
   async function showSavedCopy(): Promise<boolean> {
-    const file = await openSaved(contentUrl);
+    const entry = (await savedList()).find((e) => e.key === contentUrl);
+
+    // Unfinished. It is emphatically not played: half a film in a player is a film that stops in
+    // the middle having said nothing was wrong, which is the failure this whole feature is against.
+    // What it gets instead is the same button, saying Continue and showing how far it got.
+    if (entry?.partial) {
+      if (keep && supported() && !header) keep.hidden = false;
+      if (forget) forget.hidden = false;
+
+      keep?.setAttribute('data-resuming', 'true');
+      if (keep) keep.textContent = el.dataset.playerContinue ?? '';
+
+      showProgress(entry.written);
+      if (progress) progress.hidden = false;
+
+      return false;
+    }
+
+    const file = entry ? await openSaved(contentUrl) : null;
+
     if (!file) {
       // Nothing kept, so offer to keep it — but only where there is somewhere to put it, and for a
       // locked file only once there is a key. Offering it earlier would be a button whose whole
@@ -99,6 +118,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     if (form) form.hidden = true;
     if (start) start.hidden = true;
     if (keep) keep.hidden = true;
+    if (progress) progress.hidden = true;
     if (forget) forget.hidden = false;
     if (kept) kept.hidden = false;
 
@@ -175,12 +195,31 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
           // Stamped by the caller: the library holds no clock, so a test of it needs no fake one.
           savedAt: Date.now(),
           watchUrl,
+          written: 0,
         },
-        async (write) => {
-          const response = await fetch(contentUrl, { credentials: 'same-origin' });
+        async (write, from) => {
+          // Where in the *stored* bytes to start. For an unlocked file that is the plaintext offset
+          // itself; for a locked one it is the ciphertext offset of the segment the plaintext offset
+          // begins at, which is arithmetic and not a search — see crypto/format.ts.
+          const segment = header ? Math.floor(from / header.segmentSize) : 0;
+          const at = header
+            ? segmentSpan(segment, header.plaintextLength, header.segmentSize).start
+            : from;
+
+          const response = await fetch(contentUrl, {
+            credentials: 'same-origin',
+            // Absent rather than `bytes=0-` when starting from the beginning: a plain GET is a
+            // request every server answers the same way, and a range is not.
+            headers: at > 0 ? { Range: `bytes=${at}-` } : {},
+          });
 
           if (response.redirected) throw new Error('signed out');
           if (!response.ok || !response.body) throw new Error('unreadable');
+
+          // A server that ignored the range and sent the whole file would have this write the film
+          // from its start on top of the part already there. 206 is the only answer that means the
+          // body begins where it was asked to.
+          if (at > 0 && response.status !== 206) throw new Error('no-resume');
 
           if (!header || !contentKey) {
             const reader = response.body.getReader();
@@ -199,7 +238,8 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
 
           // Verified a segment at a time and written as it goes, so a four-gigabyte film costs a
           // megabyte of memory rather than four gigabytes of it. Nothing unverified is ever written.
-          const result = await decryptInto(response.body, contentKey, header, write);
+          const result = await decryptInto(
+            response.body, contentKey, header, write, undefined, segment);
 
           if (!result.ok) throw new Error(result.reason);
         },
@@ -218,12 +258,25 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
         ? el.dataset.playerKeepStopped ?? ''
         : el.dataset.playerKeepFailed ?? '');
 
+      // What is on the disk is worth carrying on from, so the button says so. Reading the record
+      // rather than assuming: a failure before the first checkpoint leaves nothing to resume.
+      const unfinished = (await savedList()).find((e) => e.key === contentUrl && e.partial);
+
+      if (unfinished) {
+        keep.textContent = el.dataset.playerContinue ?? '';
+        keep.setAttribute('data-resuming', 'true');
+        showProgress(unfinished.written);
+
+        if (progress) progress.hidden = false;
+        if (forget) forget.hidden = false;
+      }
+
       void error;
       return;
     }
 
     endProgress();
-    keep.textContent = el.dataset.playerKeepText ?? '';
+    clearResuming();
     keep.disabled = false;
 
     // Straight onto the saved copy, so the thing that plays from here on is the one on the disk.
@@ -262,6 +315,12 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
 
     if (progress) progress.hidden = true;
     if (stop) stop.hidden = true;
+  }
+
+  /** Back to Save, for when a finished copy means there is nothing left to carry on. */
+  function clearResuming(): void {
+    keep?.removeAttribute('data-resuming');
+    if (keep) keep.textContent = el.dataset.playerKeepText ?? '';
   }
 
   /**
@@ -328,7 +387,23 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     // Now that there is a key, keeping a copy is possible. The control is hidden until here for a
     // locked file rather than shown and refusing, which would be a button whose only behaviour on
     // first press is to tell you to do something else first.
-    if (keep && supported()) keep.hidden = false;
+    //
+    // showSavedCopy ran before the passphrase existed and could not offer anything for a locked
+    // file, so this is also where a half-finished one gets its Continue.
+    if (keep && supported()) {
+      keep.hidden = false;
+
+      const unfinished = (await savedList()).find((e) => e.key === contentUrl && e.partial);
+
+      if (unfinished) {
+        keep.textContent = el.dataset.playerContinue ?? '';
+        keep.setAttribute('data-resuming', 'true');
+        showProgress(unfinished.written);
+
+        if (progress) progress.hidden = false;
+        if (forget) forget.hidden = false;
+      }
+    }
 
     streamId = crypto.randomUUID();
 

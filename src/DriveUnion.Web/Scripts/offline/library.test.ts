@@ -31,22 +31,37 @@ class FakeFile {
 class FakeFileHandle {
   bytes = new Uint8Array(0);
 
+  /** Writes of film bytes seen by this handle, across every writable opened on it. */
+  dataWrites = 0;
+
   constructor(readonly name: string) {}
 
   getFile() {
     return Promise.resolve(new FakeFile(this.bytes, this.name));
   }
 
-  createWritable() {
-    const chunks: Uint8Array[] = [];
+  createWritable(options?: { keepExistingData?: boolean }) {
+    // Seeded from what is on the file when the caller asked to keep it, so a resume that seeks and
+    // appends produces one whole film rather than only its tail.
+    const chunks: Uint8Array[] = options?.keepExistingData ? [this.bytes.slice()] : [];
 
     return Promise.resolve({
+      seek: async (_at: number) => {
+        // The module only ever seeks to the end of what it kept, which is where writes already land.
+      },
       // A real FileSystemWritableFileStream takes a string as readily as it takes bytes, and the
       // manifest is written as one. A fake that only accepted bytes wrote a run of zeros instead,
       // which parsed as nothing and made every list come back empty.
       write: async (chunk: Uint8Array | string) => {
-        if (writeThrowsAfter !== null && chunks.length >= writeThrowsAfter) {
-          throw new Error('quota');
+        // Counted on the handle rather than on this writable: a save now closes and reopens one per
+        // checkpoint, and a per-writable counter would reset every time and never fail at all.
+        // Only the film's own bytes count — the manifest is written through this same fake.
+        if (this.name !== 'index.json') {
+          if (writeThrowsAfter !== null && this.dataWrites >= writeThrowsAfter) {
+            throw new Error('quota');
+          }
+
+          this.dataWrites++;
         }
 
         chunks.push(typeof chunk === 'string' ? new TextEncoder().encode(chunk) : chunk);
@@ -144,19 +159,11 @@ const entryFor = (bytes: number): SavedFile => ({
   bytes,
   savedAt: 1_700_000_000_000,
   watchUrl: '/d/film2026/watch',
+  written: 0,
 });
 
-/** Writes the manifest the way the module does, for the tests that stage a half-finished save. */
-async function writeManifest(dir: FakeDirectory, entries: unknown[]) {
-  const handle = await dir.getFileHandle('index.json', { create: true });
-  const writable = await handle.createWritable();
-
-  await writable.write(JSON.stringify(entries));
-  await writable.close();
-}
-
 /** Fills the writer with `chunks` megabyte-ish blocks. */
-const producing = (chunks: number) => async (write: (c: Bytes) => Promise<void>) => {
+const producing = (chunks: number) => async (write: (c: Bytes) => Promise<void>, _from = 0) => {
   for (let i = 0; i < chunks; i++) await write(new Uint8Array(16).fill(i) as Bytes);
 };
 
@@ -228,16 +235,24 @@ describe('keeping a film', () => {
   });
 
   /**
-   * <b>A half-written film is not a shorter film.</b> It is a file the player would open, start and
-   * stop in the middle of, having said nothing was wrong.
+   * <b>What a failure leaves is an unfinished save, not nothing.</b>
+   *
+   * <p>This used to delete everything it had written, and the argument was that a film 40% there is
+   * worse than nothing. That is true of playing one and false of keeping one — 40% of a six-gigabyte
+   * film is hours of somebody's connection — so what is left is recorded as unfinished and can be
+   * carried on. Nothing plays it: the screens read <c>partial</c> and offer Continue rather than a
+   * player.</p>
    */
-  it('throws away what it wrote when the write fails part-way', async () => {
+  it('leaves what it wrote as an unfinished save when the write fails part-way', async () => {
     writeThrowsAfter = 2;
 
-    await expect(save(entryFor(64), producing(4))).rejects.toThrow();
+    await expect(save(entryFor(64), producing(4), { checkpointEvery: 16 })).rejects.toThrow();
 
-    expect(await open('/d/film2026/file')).toBeNull();
-    expect(await list()).toEqual([]);
+    const left = await list();
+
+    expect(left).toHaveLength(1);
+    expect(left[0].partial).toBe(true);
+    expect(left[0].written).toBe(32);
   });
 
   /**
@@ -254,20 +269,31 @@ describe('keeping a film', () => {
     expect(seen).toEqual([16, 32, 48, 64]);
   });
 
-  /** Stopping it is the other half of showing progress: a number with no exit is just a number. */
-  it('can be stopped part-way, and leaves nothing behind', async () => {
+  /**
+   * Stopping it is the other half of showing progress: a number with no exit is just a number.
+   *
+   * <p>And stopping keeps what it had, for the reason above — somebody who stops a download at 80%
+   * to get on a train has not asked for those four gigabytes to be thrown away.</p>
+   */
+  it('can be stopped part-way, and keeps what it had', async () => {
     const controller = new AbortController();
 
     const produce = async (write: (c: Bytes) => Promise<void>) => {
+      await write(new Uint8Array(16) as Bytes);
       await write(new Uint8Array(16) as Bytes);
       controller.abort();
       await write(new Uint8Array(16) as Bytes);
     };
 
-    await expect(save(entryFor(64), produce, { signal: controller.signal })).rejects.toThrow();
+    await expect(
+      save(entryFor(64), produce, { signal: controller.signal, checkpointEvery: 16 }),
+    ).rejects.toThrow();
 
-    expect(await open('/d/film2026/file')).toBeNull();
-    expect(await list()).toEqual([]);
+    const left = await list();
+
+    expect(left).toHaveLength(1);
+    expect(left[0].partial).toBe(true);
+    expect(left[0].written).toBe(32);
   });
 
   /**
@@ -298,25 +324,76 @@ describe('keeping a film', () => {
   });
 
   /**
-   * <b>The tab closed mid-save.</b> Nothing runs — no catch, no finally — so the bytes are left on
-   * the disk and the only thing that can find them later is a record written <i>before</i> they were
-   * started. Without one they are gigabytes nobody can see, account for, or remove.
+   * <b>An unfinished save is kept, not swept.</b>
+   *
+   * <p>It used to be thrown away on the next visit, on the argument that a film 40% there is worse
+   * than nothing. That is true of <i>playing</i> it and false of keeping it: 40% of a six-gigabyte
+   * film is two and a half gigabytes somebody has already waited for, and deleting it silently
+   * because they took a call is the expensive answer. It stays, it is listed as unfinished, and it
+   * can be carried on or removed — but by the person, not by us.</p>
    */
-  it('clears away a save the browser was closed in the middle of', async () => {
-    // A save that stops the way a closed tab stops it: the writer never throws and nothing after it
-    // runs, so what is left is a partial file and the record written before it began.
+  it('keeps an unfinished save and says how far it got', async () => {
     writeThrowsAfter = 2;
-    await save(entryFor(64), producing(4)).catch(() => {});
+    await save(entryFor(64), producing(4), { checkpointEvery: 16 }).catch(() => {});
 
-    // Put the partial file back, which is the state a killed tab leaves and a thrown write does not.
-    const dir = await root.getDirectoryHandle('offline', { create: true });
-    const handle = await dir.getFileHandle('_2Fd_2Ffilm2026_2Ffile.bin', { create: true });
-    handle.bytes = new Uint8Array(32);
-    await writeManifest(dir, [{ ...entryFor(64), partial: true }]);
+    const kept = await list();
 
-    // The next time anything asks, it is gone — from the list and from the disk.
-    expect(await list()).toEqual([]);
-    expect(dir.files.has('_2Fd_2Ffilm2026_2Ffile.bin')).toBe(false);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].partial).toBe(true);
+
+    // Two chunks were written and checkpointed before the third threw.
+    expect(kept[0].written).toBe(32);
+    expect(kept[0].bytes).toBe(64);
+  });
+
+  /**
+   * <b>Carrying one on.</b> The producer is told where to start, so the second attempt asks the
+   * server for the part that is missing rather than the whole film again.
+   */
+  it('resumes from where it stopped rather than starting again', async () => {
+    writeThrowsAfter = 2;
+    await save(entryFor(64), producing(4), { checkpointEvery: 16 }).catch(() => {});
+
+    writeThrowsAfter = null;
+    const askedFor: number[] = [];
+
+    const result = await save(
+      entryFor(64),
+      async (write, from) => {
+        askedFor.push(from);
+        // Only what is missing: the caller ranges its request from here.
+        for (let at = from; at < 64; at += 16) await write(new Uint8Array(16) as Bytes);
+      },
+      { checkpointEvery: 16 },
+    );
+
+    expect(askedFor).toEqual([32]);
+    expect(result.ok).toBe(true);
+
+    const file = await open('/d/film2026/file');
+
+    // The two halves make one whole film, not one and a bit.
+    expect(file?.size).toBe(64);
+    expect((await list())[0].partial).toBeUndefined();
+  });
+
+  /** Progress on a resumed save counts what is already there, or the bar would restart at zero. */
+  it('counts what is already on the disk when it carries on', async () => {
+    writeThrowsAfter = 2;
+    await save(entryFor(64), producing(4), { checkpointEvery: 16 }).catch(() => {});
+
+    writeThrowsAfter = null;
+    const seen: number[] = [];
+
+    await save(
+      entryFor(64),
+      async (write, from) => {
+        for (let at = from; at < 64; at += 16) await write(new Uint8Array(16) as Bytes);
+      },
+      { checkpointEvery: 16, onProgress: (n) => seen.push(n) },
+    );
+
+    expect(seen).toEqual([48, 64]);
   });
 
   /**

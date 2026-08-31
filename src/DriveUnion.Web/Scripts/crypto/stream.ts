@@ -105,16 +105,29 @@ export async function decryptInto(
   header: EncryptionHeader,
   write: (plain: Bytes) => Promise<void> | void,
   onProgress?: (plainBytes: number) => void,
+
+  /**
+   * Which segment `body` begins at, for carrying on a download that stopped.
+   *
+   * <p>Zero for an ordinary read. Anything else means the caller has ranged its request to that
+   * segment's ciphertext offset — <c>segmentSpan(firstSegment, …).start</c> — because this cannot
+   * skip bytes it was never given. Segments are the only place a resume can begin: each one carries
+   * its own index in its nonce and its tag covers the whole of it, so half of one is not decryptable
+   * and starting anywhere else would fail verification rather than produce a wrong film.</p>
+   */
+  firstSegment = 0,
 ): Promise<DecryptResult> {
   const segments = segmentCount(header.plaintextLength, header.segmentSize);
   const reader = body.getReader();
   const held = new Queue();
 
   let done = false;
-  let written = 0;
+
+  // What is already on the disk, so a resumed save's progress counts the film rather than this run.
+  let written = firstSegment * header.segmentSize;
 
   try {
-    for (let index = 0; index < segments; index++) {
+    for (let index = firstSegment; index < segments; index++) {
       const need = segmentSpan(index, header.plaintextLength, header.segmentSize).length;
 
       while (held.length < need && !done) {

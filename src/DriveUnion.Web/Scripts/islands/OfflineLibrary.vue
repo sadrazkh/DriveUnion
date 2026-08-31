@@ -25,6 +25,8 @@ const props = defineProps<{
     watch: string;
     usage: string;
     cannot: string;
+    unfinished: string;
+    resume: string;
   };
 }>();
 
@@ -32,7 +34,17 @@ const saved = ref<SavedFile[]>([]);
 const free = ref(0);
 const loaded = ref(false);
 
-const total = computed(() => saved.value.reduce((sum, e) => sum + e.bytes, 0));
+/**
+ * What these are actually taking, which is `written` and not `bytes`.
+ *
+ * <p>An unfinished save has some of a film on the disk and the size of all of it in its record.
+ * Adding the second would tell somebody looking for space to clear that they had six gigabytes when
+ * they had two — which is the one number this screen exists to get right.</p>
+ */
+const total = computed(() => saved.value.reduce((sum, e) => sum + e.written, 0));
+
+const percentOf = (entry: SavedFile) =>
+  entry.bytes > 0 ? Math.min(100, Math.round((entry.written / entry.bytes) * 100)) : 0;
 
 const fa = computed(() => props.lang !== 'en');
 
@@ -97,14 +109,42 @@ function when(at: number): string {
           <div class="offline-head">
             <!-- dir="auto": the name is whatever the file's owner called it, in whichever script. -->
             <span class="offline-name" dir="auto" :title="entry.name">{{ entry.name }}</span>
+            <span v-if="entry.partial" class="badge">{{ props.text.unfinished }}</span>
+          </div>
+
+          <!--
+            Only for the unfinished ones. A full bar against every finished film would be a row of
+            identical decorations, and the one place a bar means something is where it is not full.
+          -->
+          <div
+            v-if="entry.partial"
+            class="bar"
+            role="progressbar"
+            :aria-valuenow="percentOf(entry)"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <span class="bar-fill" :style="{ inlineSize: `${percentOf(entry)}%` }"></span>
           </div>
 
           <div class="offline-meta">
-            <span class="mono" dir="ltr">{{ formatBytes(entry.bytes) }}</span>
+            <span v-if="entry.partial" class="mono" dir="ltr">
+              {{ formatBytes(entry.written) }} / {{ formatBytes(entry.bytes) }}
+            </span>
+            <span v-else class="mono" dir="ltr">{{ formatBytes(entry.bytes) }}</span>
+
             <span>{{ when(entry.savedAt) }}</span>
 
             <span class="push-end offline-actions">
-              <a class="btn btn--sm" :href="entry.watchUrl">{{ props.text.watch }}</a>
+              <!--
+                Both go to the same page, and that is the point rather than an economy: carrying on a
+                locked film needs the passphrase, and the watch page is where the passphrase is
+                asked. A Continue button here that could not finish the job for half the files on the
+                list would be worse than one that takes you where it can.
+              -->
+              <a class="btn btn--sm" :href="entry.watchUrl">
+                {{ entry.partial ? props.text.resume : props.text.watch }}
+              </a>
               <button type="button" class="btn btn--sm btn--danger" @click="forget(entry.key)">
                 {{ props.text.remove }}
               </button>

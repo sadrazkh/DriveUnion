@@ -83,17 +83,30 @@ public static partial class UiText
         /// What the browser asks before a page with a save running is closed.
         ///
         /// <para>Most browsers show their own wording and ignore this one; it is here because the
-        /// ones that do not are the ones where it matters. Either way what is being protected is a
-        /// download that has to start again from nothing.</para>
+        /// ones that do not are the ones where it matters. What it protects is no longer the whole
+        /// download — a save resumes from its last checkpoint now — but the run since that
+        /// checkpoint, which is up to thirty-two megabytes of somebody's connection.</para>
         /// </summary>
         public static string LeavingStopsIt => Pick(
-            "ذخیره‌سازی هنوز تمام نشده و با بستن این صفحه از اول شروع می‌شود.",
-            "Saving is not finished, and closing this page starts it again from nothing.");
+            "ذخیره‌سازی تمام نشده. با بستن این صفحه متوقف می‌شود و بعداً از همین‌جا ادامه می‌دهید.",
+            "Saving is not finished. Closing this page stops it; you can carry on from here later.");
 
-        /// <summary>Said when a save was stopped, so the screen does not simply blink back.</summary>
+        /// <summary>
+        /// Said when a save was stopped. What it stopped with is kept, so the sentence says so.
+        ///
+        /// <para>It used to end «and nothing was left on the device», which was true when a stop
+        /// deleted what it had. It does not any more: somebody who stops a download at 80% to get on
+        /// a train has not asked for those four gigabytes to be thrown away.</para>
+        /// </summary>
         public static string KeepStopped => Pick(
-            "ذخیره‌سازی متوقف شد و چیزی روی دستگاه نماند.",
-            "Saving was stopped, and nothing was left on the device.");
+            "متوقف شد. آنچه گرفته شده روی دستگاه مانده و می‌توانید ادامه بدهید.",
+            "Stopped. What has been fetched is on the device, and you can carry on from there.");
+
+        /// <summary>Carrying on a save that stopped. The same button, saying what it will do now.</summary>
+        public static string Continue => Pick("ادامه", "Continue");
+
+        /// <summary>How an unfinished one is labelled in the list, beside how far it got.</summary>
+        public static string Unfinished => Pick("ناتمام", "Unfinished");
 
         /// <summary>
         /// Why a saved copy plays without asking, said <b>before</b> it is saved rather than after.

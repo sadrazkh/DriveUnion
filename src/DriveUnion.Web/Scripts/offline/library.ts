@@ -69,21 +69,49 @@ export interface SavedFile {
    * can identify the megabytes left on the disk afterwards is a record made before they were
    * written. Without one they are storage nobody can see, account for or remove.</p>
    *
-   * <p><c>list</c> treats an entry still carrying this as an interrupted save: it deletes the file
-   * and the record rather than showing it. A film that is 40% there plays for 40% and stops, which
-   * is a worse thing to offer somebody than nothing.</p>
+   * <p>An entry carrying this is <b>kept and listed</b>, not swept. It used to be thrown away on the
+   * argument that a film 40% there is worse than nothing — which is true of playing it and false of
+   * keeping it. 40% of a six-gigabyte film is two and a half gigabytes somebody has already waited
+   * for, and deleting it because they took a call is the expensive answer. It can be carried on, or
+   * removed, by the person who paid for it.</p>
    */
   readonly partial?: boolean;
+
+  /**
+   * Plaintext bytes actually on the disk.
+   *
+   * <p>Equal to <see cref="bytes"/> once finished. While unfinished it is where a resume starts, and
+   * it is <b>the last checkpoint rather than the last write</b>: OPFS publishes nothing until the
+   * writable is closed, so anything written since the last close is not there to be resumed from.
+   * Measured — a file mid-write reports zero bytes and its real length the moment it closes.</p>
+   */
+  readonly written: number;
 }
 
 /** What a caller wants to know and be able to do while a save is running. */
 export interface SaveOptions {
-  /** Total plaintext bytes written so far — cumulative, because that is what a bar needs. */
+  /**
+   * Total plaintext bytes on the disk, cumulative and counting what a resume started from — a bar
+   * that restarted at zero on the second attempt would be reporting the work rather than the film.
+   */
   readonly onProgress?: (written: number) => void;
 
-  /** Stops it. What was written is removed; see `save`. */
+  /** Stops it. What was written stays, as an unfinished save; see `save`. */
   readonly signal?: AbortSignal;
+
+  /**
+   * How much may be written before the file is closed, recorded and reopened.
+   *
+   * <p>This is the whole of what makes a resume possible across a crash. A writable holds its bytes
+   * in a swap file and publishes them only on close, so without a checkpoint an interrupted save is
+   * worth nothing however far it got. Thirty-two mebibytes is about a second of writing and a
+   * worst-case loss of thirty-two megabytes of somebody's traffic.</p>
+   */
+  readonly checkpointEvery?: number;
 }
+
+/** See SaveOptions.checkpointEvery. */
+const CheckpointEvery = 32 * 1024 * 1024;
 
 export interface Room {
   /** What the browser says this origin may use. Zero when it will not say. */
@@ -191,18 +219,14 @@ export async function list(): Promise<SavedFile[]> {
     const alive: SavedFile[] = [];
 
     for (const entry of recorded) {
-      // An interrupted save. The record was written before the bytes precisely so this pass can
-      // find them; a film that is 40% there plays for 40% and stops, which is worse than nothing.
-      if (entry.partial) {
-        await removeFile(dir, entry.key);
-        continue;
-      }
-
       try {
+        // Unfinished ones are kept and listed, so somebody can carry one on or remove it. What is
+        // not kept is one whose bytes have gone: an entry with no file is a row that offers to play
+        // or resume something that is not there.
         await dir.getFileHandle(fileNameFor(entry.key));
         alive.push(entry);
       } catch {
-        // Evicted, or never finished. Either way there is nothing to play.
+        // Evicted by the browser, or interrupted before a single checkpoint.
       }
     }
 
@@ -228,13 +252,6 @@ export async function list(): Promise<SavedFile[]> {
   }
 }
 
-async function removeFile(dir: FileSystemDirectoryHandle, key: string): Promise<void> {
-  try {
-    await dir.removeEntry(fileNameFor(key));
-  } catch {
-    // Never written, or already gone.
-  }
-}
 
 /** The saved copy, or null. This is what the player asks before it reaches for the network. */
 export async function open(key: string): Promise<File | null> {
@@ -262,18 +279,30 @@ export async function open(key: string): Promise<File | null> {
  * of the three possible behaviours: it spends the workspace's traffic, takes the reader's time, and
  * ends in a failure that looks like ours.</p>
  *
- * <p>A failure part-way through removes the partial file. A half-written film is not a shorter film;
- * it is a file the player would open, start, and stop in the middle of.</p>
+ * <p><b>It resumes.</b> An unfinished record for the same key means the bytes up to its checkpoint
+ * are already on the disk, so <c>produce</c> is told where to start and asks the server only for the
+ * rest. On a six-gigabyte film interrupted at four, that is two gigabytes of traffic rather than
+ * eight.</p>
+ *
+ * <p>A failure part-way through leaves what was checkpointed, as an unfinished save. It used to
+ * delete it; keeping it is what makes the paragraph above worth anything.</p>
  */
 export async function save(
   entry: SavedFile,
-  produce: (write: (chunk: Bytes) => Promise<void>) => Promise<void>,
+  produce: (write: (chunk: Bytes) => Promise<void>, from: number) => Promise<void>,
   options: SaveOptions = {},
 ): Promise<SaveResult> {
   const space = await room();
 
   if (!supported()) return { ok: false, reason: 'unsupported', room: space };
-  if (!(await fits(entry.bytes))) return { ok: false, reason: 'no-room', room: space };
+
+  // What is already on the disk does not need room found for it again.
+  const existing = (await list()).find((e) => e.key === entry.key && e.partial === true);
+  const resumeFrom = existing?.written ?? 0;
+
+  if (!(await fits(entry.bytes - resumeFrom))) {
+    return { ok: false, reason: 'no-room', room: space };
+  }
 
   // Asked for once a save is actually happening. Without it the browser treats this origin's storage
   // as expendable and clears it under pressure — which for a film somebody saved to watch on a plane
@@ -286,17 +315,32 @@ export async function save(
 
   const dir = await directory();
 
+  const handle = await dir.getFileHandle(fileNameFor(entry.key), { create: true });
+  const every = options.checkpointEvery ?? CheckpointEvery;
+
+  let written = resumeFrom;
+
+  /** Records how far the disk has actually got. Only ever called just after a close. */
+  const mark = async (done: boolean) => {
+    const at = await directory();
+
+    await writeIndex(at, [
+      ...(await readIndex(at)).filter((e) => e.key !== entry.key),
+      done ? { ...entry, written } : { ...entry, written, partial: true },
+    ]);
+  };
+
   // The record goes down before the first byte. This is the only thing that can identify what is on
   // the disk if the tab is closed mid-write — see SavedFile.partial.
-  await writeIndex(dir, [
-    ...(await readIndex(dir)).filter((e) => e.key !== entry.key),
-    { ...entry, partial: true },
-  ]);
+  await mark(false);
 
-  const handle = await dir.getFileHandle(fileNameFor(entry.key), { create: true });
-  const writable = await handle.createWritable();
+  // keepExistingData only when there is existing data to keep: on a fresh save it would leave the
+  // tail of whatever was there before if a previous file of the same name had been longer.
+  let writable = await handle.createWritable({ keepExistingData: resumeFrom > 0 });
 
-  let written = 0;
+  if (resumeFrom > 0) await writable.seek(resumeFrom);
+
+  let sinceCheckpoint = 0;
 
   try {
     await produce(async (chunk) => {
@@ -307,30 +351,39 @@ export async function save(
       await writable.write(chunk);
 
       written += chunk.length;
+      sinceCheckpoint += chunk.length;
       options.onProgress?.(written);
-    });
+
+      // Close, record, reopen. A writable holds its bytes in a swap file and publishes them only on
+      // close, so this is the only thing that makes an interrupted save worth anything at all.
+      if (sinceCheckpoint >= every) {
+        await writable.close();
+        await mark(false);
+
+        writable = await handle.createWritable({ keepExistingData: true });
+        await writable.seek(written);
+        sinceCheckpoint = 0;
+      }
+    }, resumeFrom);
 
     await writable.close();
   } catch (error) {
-    // close() on an aborted writable throws in some browsers; the removal below is what matters.
+    // close() publishes what this run wrote, which is what makes it resumable. On an aborted
+    // writable it throws in some browsers, and then the last checkpoint is what survives — which is
+    // the same guarantee, one checkpoint further back.
     try {
       await writable.close();
     } catch {
-      // Already closed, or never opened far enough to close.
+      written -= sinceCheckpoint;
     }
 
-    await remove(entry.key);
+    await mark(false);
     throw error;
   }
 
-  // Rewritten without the flag, which is what «finished» means here.
-  const dirAgain = await directory();
-  const entries = (await readIndex(dirAgain)).filter((e) => e.key !== entry.key);
+  await mark(true);
 
-  entries.push(entry);
-  await writeIndex(dirAgain, entries);
-
-  return { ok: true, saved: entry };
+  return { ok: true, saved: { ...entry, written } };
 }
 
 /** Removes one copy and its manifest entry. Silent about a key that was never saved. */
