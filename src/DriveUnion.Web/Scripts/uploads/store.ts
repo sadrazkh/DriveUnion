@@ -1,4 +1,5 @@
 import { computed, markRaw, reactive, ref, watch, type Ref } from 'vue';
+import { createScreenLock } from '../screenLock';
 import { deriveWrapping, sealWith, type Secret, type Wrapping } from '../crypto/envelope';
 import { cipherLength, type EncryptionHeader } from '../crypto/format';
 import { cipherSource, plainSource, type ByteSource } from '../crypto/stream';
@@ -428,57 +429,11 @@ export function createUploadStore(readConfig: () => UploadConfig) {
    * older phone, a battery-saver policy, a document that went hidden mid-request — is not a failure
    * of the upload and is not reported as one.</p>
    */
-  let screenLock: WakeLockSentinel | null = null;
-  let asking = false;
+  const screen = createScreenLock(() => busy.value);
 
-  async function keepScreenAwake() {
-    // The browser takes the lock away by itself when the page is hidden, and hands back a sentinel
-    // that says so rather than a null. Forgetting a spent one is what makes the next return to
-    // visible ask again instead of holding a reference to a lock that stopped existing.
-    if (screenLock?.released === true) screenLock = null;
+  const keepScreenAwake = () => screen.take();
+  const letScreenSleep = () => screen.release();
 
-    // Asked on every return to visible, including the ones where nothing is uploading. A lock taken
-    // then is a screen that will not dim on a screen nobody is transferring anything from.
-    if (!busy.value || screenLock !== null || asking) return;
-
-    if (!('wakeLock' in navigator)) return;
-
-    // request() rejects outright on a hidden document, so this is not a precaution — it is the
-    // difference between asking and throwing.
-    if (document.visibilityState !== 'visible') return;
-
-    asking = true;
-
-    try {
-      const sentinel = await navigator.wakeLock.request('screen');
-
-      // The queue may have emptied while the request was in flight. A lock nobody is waiting on is
-      // a screen that never dims again.
-      if (!busy.value) {
-        void sentinel.release().catch(() => undefined);
-        return;
-      }
-
-      screenLock = sentinel;
-    } catch {
-      // Refused, or unavailable. Either way the upload is unaffected and the screen behaves as it
-      // did before this feature existed.
-    } finally {
-      asking = false;
-    }
-  }
-
-  function letScreenSleep() {
-    const sentinel = screenLock;
-    if (sentinel === null) return;
-
-    screenLock = null;
-    void sentinel.release().catch(() => undefined);
-  }
-
-  // Synchronous, so the lock is taken in the same turn the first chunk starts rather than a tick
-  // later. `busy` is a boolean over the whole queue and changes only when the queue starts or stops
-  // moving, so «sync» here is a handful of calls per upload rather than one per progress event.
   watch(busy, (moving) => (moving ? void keepScreenAwake() : letScreenSleep()), { flush: 'sync' });
 
   /**

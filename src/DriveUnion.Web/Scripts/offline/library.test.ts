@@ -347,6 +347,53 @@ describe('keeping a film', () => {
   });
 
   /**
+   * <b>Who stopped it, recorded.</b>
+   *
+   * <p>An unfinished save the network ended is picked back up when the app returns; one a person
+   * ended is not, and nothing downstream can tell them apart by looking — both leave an identical
+   * half-written file. This flag is the only difference, and it is written where the difference is
+   * known.</p>
+   */
+  it('remembers whether a person stopped it or something else did', async () => {
+    const controller = new AbortController();
+
+    await expect(save(entryFor(64), async (write) => {
+      await write(new Uint8Array(16) as Bytes);
+      controller.abort();
+      await write(new Uint8Array(16) as Bytes);
+    }, { signal: controller.signal, checkpointEvery: 16 })).rejects.toThrow();
+
+    expect((await list())[0].stoppedByHand).toBe(true);
+
+    // The other way: a write that failed on its own is not somebody's decision.
+    await clear();
+    writeThrowsAfter = 1;
+
+    await expect(save(entryFor(64), producing(4), { checkpointEvery: 16 })).rejects.toThrow();
+
+    expect((await list())[0].stoppedByHand).toBeUndefined();
+  });
+
+  /** Pressing Continue is asking for it again, so the flag must not outlive that. */
+  it('clears the stopped-by-hand mark when it is asked for again', async () => {
+    const controller = new AbortController();
+
+    await expect(save(entryFor(64), async (write) => {
+      await write(new Uint8Array(16) as Bytes);
+      controller.abort();
+      await write(new Uint8Array(16) as Bytes);
+    }, { signal: controller.signal, checkpointEvery: 16 })).rejects.toThrow();
+
+    writeThrowsAfter = null;
+
+    await save(entryFor(64), async (write, from) => {
+      for (let at = from; at < 64; at += 16) await write(new Uint8Array(16) as Bytes);
+    }, { checkpointEvery: 16 });
+
+    expect((await list())[0].stoppedByHand).toBeUndefined();
+  });
+
+  /**
    * <b>Carrying one on.</b> The producer is told where to start, so the second attempt asks the
    * server for the part that is missing rather than the whole film again.
    */

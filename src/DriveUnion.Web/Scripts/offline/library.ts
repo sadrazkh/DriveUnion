@@ -86,6 +86,19 @@ export interface SavedFile {
    * Measured — a file mid-write reports zero bytes and its real length the moment it closes.</p>
    */
   readonly written: number;
+
+  /**
+   * True when the save stopped because somebody pressed Stop.
+   *
+   * <p><b>Not the same thing as unfinished, and the difference is the whole of whether it may be
+   * picked back up on its own.</b> A save the network or the phone ended is one to carry on with
+   * when the app comes back; a save a person ended is one they meant to end. Resuming that on their
+   * mobile data would be, in the upload queue's words about the same distinction, the worst bug in
+   * the product.</p>
+   *
+   * <p>Cleared by the next <c>save</c>, because pressing Continue is asking for it again.</p>
+   */
+  readonly stoppedByHand?: boolean;
 }
 
 /** What a caller wants to know and be able to do while a save is running. */
@@ -321,12 +334,14 @@ export async function save(
   let written = resumeFrom;
 
   /** Records how far the disk has actually got. Only ever called just after a close. */
-  const mark = async (done: boolean) => {
+  const mark = async (done: boolean, byHand = false) => {
     const at = await directory();
 
     await writeIndex(at, [
       ...(await readIndex(at)).filter((e) => e.key !== entry.key),
-      done ? { ...entry, written } : { ...entry, written, partial: true },
+      done
+        ? { ...entry, written }
+        : { ...entry, written, partial: true, ...(byHand ? { stoppedByHand: true } : {}) },
     ]);
   };
 
@@ -377,7 +392,10 @@ export async function save(
       written -= sinceCheckpoint;
     }
 
-    await mark(false);
+    // Whether a person stopped this is recorded here and nowhere else, because here is the only
+    // place that knows: the signal is the caller's own, and everything downstream sees an identical
+    // half-written file either way.
+    await mark(false, options.signal?.aborted === true);
     throw error;
   }
 

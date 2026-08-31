@@ -4,6 +4,7 @@ import { segmentSpan, type Bytes, type EncryptionHeader } from './crypto/format'
 import { closeStream, openStream } from './crypto/play';
 import { list as savedList, open as openSaved, remove as removeSaved, room, save, supported } from './offline/library';
 import { bytes as formatBytes, duration } from './uploads/store';
+import { createScreenLock } from './screenLock';
 
 /**
  * Watching a file from the panel, without downloading it.
@@ -65,6 +66,17 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
    * for the same reason.</p>
    */
   let samples: { at: number; bytes: number }[] = [];
+
+  /**
+   * Holds the screen on while a save runs.
+   *
+   * <p>A phone that dims and then sleeps suspends the page, and a suspended page is a download that
+   * has stopped. This is the only thing a page can do about that, and it is half a measure by
+   * construction — the browser revokes the lock the moment the app is backgrounded, which is exactly
+   * the case it cannot help with. It covers the other one: a film downloading while the customer
+   * watches it happen, on a phone that would otherwise sleep in thirty seconds.</p>
+   */
+  const screen = createScreenLock(() => saving !== null);
 
   if (!media || !contentUrl) return { stop: () => {} };
 
@@ -197,6 +209,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     saving = new AbortController();
     samples = [];
     showProgress(0);
+    void screen.take();
 
     try {
       await save(
@@ -352,10 +365,52 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
 
   function endProgress(): void {
     saving = null;
+    screen.release();
 
     if (progress) progress.hidden = true;
     if (stop) stop.hidden = true;
   }
+
+  /**
+   * Carrying on by itself when the app comes back.
+   *
+   * <p><b>This is the answer to a phone, and it is the only one there is.</b> iOS suspends a web app
+   * the moment it is backgrounded or the screen locks; no web API keeps a download running through
+   * that, and none will. What can be fixed is the other half — that coming back left the customer
+   * looking at a stopped bar with a button to press. It resumes from the last checkpoint, which is
+   * the same machinery the Continue button uses.</p>
+   *
+   * <p>Only where it can actually finish. A locked film needs its content key, and the key lives in
+   * this page's memory: it survives being backgrounded and does not survive a reload. So a phone that
+   * was merely locked resumes on its own, and one that dropped the tab asks for the passphrase again
+   * — which is the truth of where the key is rather than a limitation of this function.</p>
+   *
+   * <p>`visibilitychange` and not a timer, because it is the one signal WebKit gives for «the app is
+   * in front again». `online` too, for the tunnel.</p>
+   */
+  async function resumeIfInterrupted(): Promise<void> {
+    if (saving !== null || !supported()) return;
+    if (document.visibilityState !== 'visible') return;
+
+    // A locked film with no key in hand cannot be finished without asking, and asking is what the
+    // gate is for. Resuming into a failure would replace a Continue button with an error.
+    if (header && !contentKey) return;
+
+    const unfinished = (await savedList()).find((e) => e.key === contentUrl && e.partial);
+    if (!unfinished) return;
+
+    // Somebody pressed Stop. Starting it again because they came back to the app would be doing the
+    // opposite of what they asked, on their mobile data. Continue is still there for when they mean
+    // it — see SavedFile.stoppedByHand.
+    if (unfinished.stoppedByHand) return;
+
+    await keepOnDevice();
+  }
+
+  const onWake = () => void resumeIfInterrupted();
+
+  document.addEventListener('visibilitychange', onWake);
+  addEventListener('online', onWake);
 
   /** Back to Save, for when a finished copy means there is nothing left to carry on. */
   function clearResuming(): void {
@@ -498,7 +553,11 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
       // running against a torn-down element is what makes the partial file get swept: the library
       // removes what it wrote when the write throws.
       saving?.abort();
+      screen.release();
+
       removeEventListener('beforeunload', warnOnLeaving);
+      document.removeEventListener('visibilitychange', onWake);
+      removeEventListener('online', onWake);
 
       if (streamId) closeStream(streamId);
     },
