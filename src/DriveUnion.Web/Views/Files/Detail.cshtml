@@ -1,0 +1,30 @@
+@using DriveUnion.Web.Models
+@model FilesPageViewModel
+@{
+    ViewData["Title"] = Model.Selected?.Name ?? UiText.Files.Title;
+}
+
+@*
+    One file, on a page of its own.
+
+    The panel on «فایل‌ها» draws exactly this — it is the same partial — and that is the point. What
+    the panel could not do is be somewhere: pressing a file scrolled a column into view off to one
+    side, so watching a film meant remembering to press the name, then scroll, then find the tile.
+    Three steps and a memory for the one thing this product is for.
+
+    A page has an address, so it can be linked, bookmarked, opened in a tab and gone back from.
+*@
+<div class="stack" style="gap: 14px;">
+    @*
+        Back to where the reader came from, with their search and folder intact. Losing those on the
+        way back is what makes a list of two hundred files unusable — you find one, look at it, and
+        are returned to the top of everything.
+    *@
+    <a class="btn btn--sm" href="@Url.Action("Index", "Files", new { q = Model.Query, folder = Model.Folder, tag = Model.Tag })">
+        @UiText.Files.BackToFiles
+    </a>
+
+    <div class="file-page">
+        @await Html.PartialAsync("_FileDetail", Model)
+    </div>
+</div>

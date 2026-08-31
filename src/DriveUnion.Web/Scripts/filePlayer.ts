@@ -3,7 +3,7 @@ import { decryptInto } from './crypto/stream';
 import { segmentSpan, type Bytes, type EncryptionHeader } from './crypto/format';
 import { closeStream, openStream } from './crypto/play';
 import { list as savedList, open as openSaved, remove as removeSaved, room, save, supported } from './offline/library';
-import { bytes as formatBytes } from './uploads/store';
+import { bytes as formatBytes, duration } from './uploads/store';
 
 /**
  * Watching a file from the panel, without downloading it.
@@ -36,6 +36,8 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   const barFill = el.querySelector<HTMLElement>('[data-player-bar-fill]');
   const percentOut = el.querySelector<HTMLElement>('[data-player-percent]');
   const soFarOut = el.querySelector<HTMLElement>('[data-player-sofar]');
+  const speedOut = el.querySelector<HTMLElement>('[data-player-speed]');
+  const leftOut = el.querySelector<HTMLElement>('[data-player-left]');
 
   const contentUrl = el.dataset.playerUrl ?? '';
   const mime = el.dataset.playerMime ?? '';
@@ -53,6 +55,16 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
 
   /** Non-null exactly while a save is running, which is what Stop and beforeunload both ask. */
   let saving: AbortController | null = null;
+
+  /**
+   * Recent progress, for a rate.
+   *
+   * <p>Over a window rather than since the start: a download that spent its first minute stalled and
+   * has been at full speed since would report the average of the two for ever, which is the figure
+   * least useful to somebody deciding whether to wait. The same window the upload queue uses, and
+   * for the same reason.</p>
+   */
+  let samples: { at: number; bytes: number }[] = [];
 
   if (!media || !contentUrl) return { stop: () => {} };
 
@@ -183,6 +195,7 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     if (stop) stop.hidden = false;
 
     saving = new AbortController();
+    samples = [];
     showProgress(0);
 
     try {
@@ -308,6 +321,33 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
         ? `${formatBytes(written)} / ${formatBytes(sizeBytes)}`
         : formatBytes(written);
     }
+
+    const rate = speedFrom(written);
+
+    // Both, or neither is much use. A rate says whether the connection is working; a time says
+    // whether to wait for it — and «14 MB/s» on a six-gigabyte film still leaves arithmetic to do.
+    if (speedOut) speedOut.textContent = rate > 0 ? `${formatBytes(rate)}/s` : '';
+
+    if (leftOut) {
+      const remaining = sizeBytes > written && rate > 0 ? (sizeBytes - written) / rate : 0;
+
+      leftOut.textContent = remaining > 0 ? duration(remaining) : '';
+    }
+  }
+
+  /** Bytes per second over the recent window, or zero until there is enough to divide by. */
+  function speedFrom(written: number): number {
+    const now = performance.now();
+
+    samples.push({ at: now, bytes: written });
+
+    while (samples.length > 2 && now - samples[0].at > 5000) samples.shift();
+
+    const first = samples[0];
+    const span = (now - first.at) / 1000;
+
+    // Under a fifth of a second is one checkpoint's worth of noise, not a rate.
+    return span > 0.2 ? Math.max(0, (written - first.bytes) / span) : 0;
   }
 
   function endProgress(): void {

@@ -146,9 +146,20 @@
                     <span class="bar-fill" data-player-bar-fill style="inline-size: 0%;"></span>
                 </div>
 
+                @*
+                    Four figures, and each answers a different question: how far (percent), how much
+                    (bytes), whether the connection is working (rate) and whether to wait for it
+                    (time left). «14 MB/s» on a six-gigabyte film still leaves arithmetic to do, so
+                    the last one is not a decoration.
+
+                    The rate and the time are empty until there is a window to measure over, rather
+                    than showing a wild first figure and settling down.
+                *@
                 <p class="watch-keep-figures">
                     <span class="mono" dir="ltr" data-player-percent>0%</span>
                     <span class="mono" dir="ltr" data-player-sofar></span>
+                    <span class="mono" dir="ltr" data-player-speed></span>
+                    <span class="mono" dir="ltr" data-player-left></span>
                 </p>
             </div>
 

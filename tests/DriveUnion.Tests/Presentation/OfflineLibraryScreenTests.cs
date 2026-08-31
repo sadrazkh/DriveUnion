@@ -81,6 +81,51 @@ public class OfflineLibraryScreenTests
             "a key on one side and not the other is a control that renders as an empty string");
     }
 
+    /// <summary>
+    /// A file has a page, and it draws the same partial the list's panel does.
+    ///
+    /// <para>The panel could not be anywhere. Pressing a file scrolled a column into view off to one
+    /// side, so watching a film meant remembering to press the name, then scroll, then find the tile
+    /// — and the page is the answer to that. What this holds is that the two cannot drift: one
+    /// partial, so a control added to one is a control on both.</para>
+    /// </summary>
+    [Fact]
+    public async Task A_file_has_a_page_of_its_own_carrying_the_same_detail_as_the_panel()
+    {
+        using var harness = new PanelPageHarness();
+        var tenant = harness.SeedTenant("Acme", "Q3-Report-Final.pdf", "kx91mzq4");
+
+        using var client = harness.NewClient(tenant.Id);
+
+        var list = await client.GetStringAsync(new Uri("/files", UriKind.Relative));
+
+        var id = Regex.Match(list, @"/files/(?<id>[0-9a-f-]{36})\b", RegexOptions.None, TimeSpan.FromSeconds(5));
+
+        id.Success.Should().BeTrue("the list links each row to that file's own page");
+
+        var page = await client.GetStringAsync(
+            new Uri($"/files/{id.Groups["id"].Value}", UriKind.Relative));
+
+        page.Should().Contain("Q3-Report-Final.pdf");
+
+        // Back to the list rather than into it: a page nobody can leave is a dead end on a phone.
+        page.Should().Contain("/files");
+    }
+
+    [Fact]
+    public async Task A_file_that_is_not_this_workspaces_is_not_found()
+    {
+        using var harness = new PanelPageHarness();
+        var tenant = harness.SeedTenant("Acme", "Q3-Report-Final.pdf", "kx91mzq4");
+
+        using var response = await harness.NewClient(tenant.Id)
+            .GetAsync(new Uri($"/files/{Guid.NewGuid()}", UriKind.Relative));
+
+        // 404 and not an empty page, which is the rule every other file-by-id read here keeps: a
+        // page that rendered would say whether the id was real.
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.NotFound);
+    }
+
     /// <summary>Repo-relative, because a test runs out of bin and the .vue does not go there.</summary>
     private static string Read(string relativePath) =>
         File.ReadAllText(Path.Combine(RepositoryRoot().FullName, relativePath));

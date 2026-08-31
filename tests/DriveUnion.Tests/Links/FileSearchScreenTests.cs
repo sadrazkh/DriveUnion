@@ -53,13 +53,13 @@ public class FileSearchScreenTests
         using var client = harness.NewClient(tenant.Id);
         var markup = await client.GetStringAsync("/files?q=report");
 
-        // Selection is a URL on this screen, so a link without the term is a row that ends the
-        // search the moment it is opened — the reader clicks their result and the table refills with
-        // everything.
+        // A row leads to that file's own page now rather than back to this list with a panel open —
+        // but the search still has to travel, and for the same reason it always did: without it,
+        // «back» from the file lands the reader on the unfiltered list and their result is gone.
         //
         // The link is inside the name cell rather than being the row, and that is what multi-select
         // cost: a real checkbox cannot live inside an anchor, because every click on it navigates.
-        markup.Should().MatchRegex(@"<a href=""/files\?q=report&amp;selected=");
+        markup.Should().MatchRegex(@"<a href=""/files/[0-9a-f-]{36}\?q=report""");
     }
 
     [Fact]

@@ -82,6 +82,51 @@ public sealed class FilesController(
 
         SetShell();
 
+        return View(await PageAsync(tenantId, q, folder, tag, selected, cancellationToken));
+    }
+
+    /// <summary>
+    /// One file, on a page of its own.
+    ///
+    /// <para>The panel on the list draws the same partial, so there is one description of a file and
+    /// not two. What the panel could not do is <i>be somewhere</i>: pressing a file scrolled a column
+    /// into view off to one side, so watching a film meant remembering to press the name, then
+    /// scroll, then find the tile — three steps and a memory, for the thing the product is for.</para>
+    ///
+    /// <para>The search and folder ride along so «back» returns the reader to the list they were
+    /// reading rather than to the top of everything.</para>
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> Detail(
+        Guid id,
+        string? q,
+        Guid? folder,
+        Guid? tag,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        SetShell();
+
+        var page = await PageAsync(tenantId, q, folder, tag, id, cancellationToken);
+
+        // 404 and not an empty page: another workspace's id and a deleted file are the same answer,
+        // which is the rule every other file-by-id read here keeps.
+        if (page.Selected is null) return NotFound();
+
+        return View(page);
+    }
+
+    /// <summary>The list screen's whole model, shared by the list and by one file's page.</summary>
+    private async Task<FilesPageViewModel> PageAsync(
+        Guid tenantId,
+        string? q,
+        Guid? folder,
+        Guid? tag,
+        Guid? selected,
+        CancellationToken cancellationToken)
+    {
+
         var query = q?.Trim() is { Length: > 0 } typed ? typed : null;
         var everywhere = query is not null || tag is not null;
 
@@ -193,7 +238,7 @@ public sealed class FilesController(
         // quietly becoming unreadable.
         var locking = await locks.ListAsync(tenantId, cancellationToken);
 
-        return View(new FilesPageViewModel(
+        return new FilesPageViewModel(
             rows,
             detail,
             Tokens(),
@@ -213,7 +258,7 @@ public sealed class FilesController(
             // shows a padlock, which is the durable record. This is the transient one.
             [.. locking
                 .Where(l => l.Status is not FileLockStatus.Completed)
-                .Select(ToLockRow)]));
+                .Select(ToLockRow)]);
     }
 
     /// <summary>
