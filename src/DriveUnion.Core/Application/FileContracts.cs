@@ -66,6 +66,18 @@ public sealed record FileListFilter(
 /// Nothing returned here mentions a Google account. The customer must not learn which one holds
 /// their file.
 /// </summary>
+/// <summary>What a rename did, which is three answers rather than a bool.</summary>
+public enum RenameOutcome
+{
+    Renamed,
+
+    /// <summary>Not this tenant's, or deleted. Indistinguishable on purpose — see the API's rule.</summary>
+    NotFound,
+
+    /// <summary>Nothing usable was left after <see cref="FileNames.Safe"/> had its say.</summary>
+    NoName,
+}
+
 public interface IFileCatalog
 {
     /// <param name="nameQuery">
@@ -88,4 +100,18 @@ public interface IFileCatalog
 
     /// <summary>Soft delete. Returns false when the file is not this tenant's, or is already gone.</summary>
     Task<bool> DeleteAsync(Guid tenantId, Guid fileId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gives the file a different name, and answers what happened.
+    ///
+    /// <para><b>The catalogue only.</b> The name in Drive is a pool account's filing detail that no
+    /// customer ever sees — it is an opaque id in a folder they cannot open — so renaming there
+    /// would be a round trip per rename, buying nothing and adding a way for the rename to fail
+    /// while Drive is unwell. What the customer named is what this row says.</para>
+    /// </summary>
+    Task<RenameOutcome> RenameAsync(
+        Guid tenantId,
+        Guid fileId,
+        string? name,
+        CancellationToken cancellationToken);
 }

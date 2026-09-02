@@ -877,6 +877,35 @@ public sealed class FilesController(
     /// Base64, the raw content key. It is used for this job and held in memory for its duration —
     /// never written to a row, never logged. See <c>ContentKeyring</c>.
     /// </param>
+    /// <summary>
+    /// Gives a file a different name.
+    ///
+    /// <para>The catalogue only — see <c>IFileCatalog.RenameAsync</c> for why Drive is left alone.
+    /// The search and folder ride along so the redirect returns the reader to the list they were
+    /// reading rather than to the top of everything.</para>
+    /// </summary>
+    [HttpPost("{id:guid}/rename")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Rename(
+        Guid id,
+        string? name,
+        string? q,
+        Guid? folder,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var outcome = await catalog.RenameAsync(tenantId, id, name, cancellationToken);
+
+        // NotFound is silent rather than a message: another workspace's id and a deleted file are the
+        // same answer here as everywhere else, and a notice saying which would be the oracle that
+        // rule exists to close.
+        if (outcome is RenameOutcome.Renamed) TempData["Notice"] = UiText.Renaming.Done;
+        else if (outcome is RenameOutcome.NoName) TempData["Notice"] = UiText.Renaming.NothingLeft;
+
+        return RedirectToAction(nameof(Detail), new { id, q, folder });
+    }
+
     [HttpPost("{id:guid}/lock")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Lock(

@@ -1,4 +1,5 @@
 using DriveUnion.Core.Application;
+using DriveUnion.Core.Storage;
 using DriveUnion.Infrastructure.Trash;
 using Microsoft.EntityFrameworkCore;
 
@@ -141,6 +142,7 @@ public sealed class FileCatalog(
     /// Drive itself does, so it is the model the customer already has. A customer who wants the
     /// space now empties the trash now, which is a button that really frees it.</para>
     /// </summary>
+
     public async Task<bool> DeleteAsync(
         Guid tenantId,
         Guid fileId,
@@ -223,5 +225,30 @@ public sealed class FileCatalog(
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         return true;
+    }
+
+    public async Task<RenameOutcome> RenameAsync(
+        Guid tenantId,
+        Guid fileId,
+        string? name,
+        CancellationToken cancellationToken)
+    {
+        // The same rule a fetched filename goes through, and deliberately the same function: the
+        // interesting half of it is a traversal guard, and a second spelling of a security rule is a
+        // second place for something to get through. See FileNames.
+        if (FileNames.Safe(name) is not { } cleaned) return RenameOutcome.NoName;
+
+        // Both predicates in the UPDATE rather than a read first. Another tenant's id and a deleted
+        // file both match nothing and both answer NotFound, which is the rule every file-by-id write
+        // here keeps: the difference between «forbidden» and «absent» is an oracle for walking ids.
+        var affected = await db.StoredFiles
+            .Where(f => f.Id == fileId && f.TenantId == tenantId && f.DeletedAt == null)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(f => f.Name, cleaned)
+                    .SetProperty(f => f.ModifiedAt, clock.GetUtcNow()),
+                cancellationToken);
+
+        return affected > 0 ? RenameOutcome.Renamed : RenameOutcome.NotFound;
     }
 }

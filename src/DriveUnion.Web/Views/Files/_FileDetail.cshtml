@@ -137,6 +137,28 @@
                     }
                 }
 
+                @*
+                    Renaming, behind a disclosure so the ordinary case — reading the file's facts —
+                    is not a form. It is the catalogue's name that changes and not Drive's: see
+                    IFileCatalog.RenameAsync.
+                *@
+                <details class="rename">
+                    <summary>@UiText.Renaming.Heading</summary>
+                    <form method="post" class="row" style="gap: 8px; margin-top: 8px;"
+                          action="@Url.Action("Rename", "Files", new { id = Model.Selected.Id, q = Model.Query, folder = Model.Folder })">
+                        @Html.AntiForgeryToken()
+                        <label class="visually-hidden" for="rename-@Model.Selected.Id">@UiText.Renaming.Heading</label>
+                        <input id="rename-@Model.Selected.Id"
+                               name="name"
+                               class="control"
+                               style="flex: 1;"
+                               dir="auto"
+                               value="@Model.Selected.Name"
+                               autocomplete="off" />
+                        <button type="submit" class="btn btn--sm">@UiText.Renaming.Save</button>
+                    </form>
+                </details>
+
                 @if (Model.Selected.ActiveLink is { } link)
                 {
                     <div class="subcard" style="margin-bottom: 14px;">

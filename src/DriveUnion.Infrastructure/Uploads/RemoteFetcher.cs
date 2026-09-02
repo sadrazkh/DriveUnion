@@ -525,22 +525,12 @@ public sealed class RemoteFetcher(
         return WebUtility.UrlDecode(segment);
     }
 
-    private static string? Sanitise(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return null;
-
-        // Quotes are how the header carries it and are not part of the name.
-        var trimmed = name.Trim().Trim('"');
-
-        // Directory separators and the traversal they enable, then anything a filesystem refuses.
-        var cleaned = new string([.. trimmed
-            .Where(c => c is not ('/' or '\\' or ':'))
-            .Where(c => !char.IsControl(c))]);
-
-        cleaned = cleaned.Replace("..", string.Empty, StringComparison.Ordinal).Trim();
-
-        return cleaned.Length > 0 ? cleaned : null;
-    }
+    /// <summary>
+    /// Now <see cref="FileNames.Safe"/>, because the rename box needs the same rule, and two
+    /// spellings of a rule whose interesting half is a security boundary is two places for a
+    /// traversal to get through.
+    /// </summary>
+    private static string? Sanitise(string? name) => FileNames.Safe(name);
 
     private static async Task<int> ReadExactlyAsync(
         Stream source,
