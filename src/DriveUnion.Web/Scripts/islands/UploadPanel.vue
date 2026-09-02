@@ -240,6 +240,9 @@ function text() {
         linkSend: 'Fetch it',
         linkSending: 'Asking…',
         linkFailed: 'That could not be started.',
+        linkPlaceholder: 'https://…\nOne address per line',
+        linkSome: (taken: number, refused: number) =>
+          `Started ${taken}. ${refused} could not be started and are still in the box.`,
         linkLockNote:
           'On a link the encryption happens on our server, because our server is the one fetching the file — so it sees the contents while it does. That protects it from Google and from a stolen database, and not from us. A file you send from this machine is locked before it leaves it.',
         arriving: 'Arriving',
@@ -304,6 +307,9 @@ function text() {
         linkSend: 'بیاورش',
         linkSending: 'در حال پرسیدن…',
         linkFailed: 'شروع نشد.',
+        linkPlaceholder: 'https://…\nهر نشانی در یک خط',
+        linkSome: (taken: number, refused: number) =>
+          `${taken} تا شروع شد. ${refused} تا شروع نشد و در کادر مانده‌اند.`,
         linkLockNote:
           'در حالت لینک، رمزگذاری روی سرور ما انجام می‌شود — چون خودِ سرور فایل را می‌آورد و در همان لحظه محتوایش را می‌بیند. این در برابر گوگل و پایگاه‌داده‌ی دزدیده‌شده محافظت می‌کند، و در برابر ما نه. فایلی که از همین دستگاه می‌فرستید پیش از رفتن قفل می‌شود.',
         arriving: 'در راه',
@@ -346,8 +352,8 @@ function headers(extra: Record<string, string> = {}): Record<string, string> {
  * until it has fetched it, and the finished header takes the real length from the bytes that
  * arrived. Only the four custody fields mean anything here.</p>
  */
-async function linkBody(): Promise<URLSearchParams> {
-  const body = new URLSearchParams({ url: url.value.trim() });
+async function linkBody(address: string): Promise<URLSearchParams> {
+  const body = new URLSearchParams({ url: address });
 
   const chosen = secret();
   if (!chosen) return body;
@@ -367,35 +373,92 @@ async function linkBody(): Promise<URLSearchParams> {
   return body;
 }
 
-async function sendLink() {
-  if (!ready.value || url.value.trim().length === 0) return;
+/**
+ * The addresses in the box, one per line, blank lines and stray spaces gone.
+ *
+ * <p>One line was the whole feature and is the wrong unit: somebody with a season of a series has
+ * twenty links on their clipboard, and pasting them one at a time is twenty round trips through a
+ * form. What they paste is a block of text; this is that block read the way it was written.</p>
+ */
+function addresses(): string[] {
+  return url.value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
 
-  linkError.value = '';
+/**
+ * Starts a fetch for every address in the box.
+ *
+ * <p><b>One at a time, and each with its own custody.</b> <c>linkBody</c> seals a fresh content key
+ * per call, and that is not incidental — two files under one key is one key that opens both, which
+ * is not what «locked per file» means anywhere else in this product. Batching them into a single
+ * request would have had to invent a shared one.</p>
+ *
+ * <p>Sequential rather than parallel, because the server counts what is in flight per workspace and
+ * twenty simultaneous requests would race that cap into refusing an arbitrary subset. In order, each
+ * one gets a straight answer.</p>
+ *
+ * <p><b>What was accepted disappears and what was refused stays.</b> A box emptied on partial
+ * success loses the addresses that still need fixing; a box left full makes somebody find the three
+ * that failed among twenty. What is left in it is exactly the work remaining, which is also what
+ * makes pressing the button again the right thing to do.</p>
+ */
+async function sendLink() {
+  const lines = addresses();
+
+  if (!ready.value || lines.length === 0) return;
+
+  linkError.value = "";
   sending.value = true;
 
+  const refused: string[] = [];
+  let taken = 0;
+  let firstReason = "";
+
   try {
-    const response = await fetch('/files/fetch', {
-      method: 'POST',
-      headers: headers({
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
-      }),
-      body: await linkBody(),
-    });
+    for (const one of lines) {
+      try {
+        const response = await fetch("/files/fetch", {
+          method: "POST",
+          headers: headers({
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          }),
+          body: await linkBody(one),
+        });
 
-    const answer = (await response.json()) as { started: boolean; error: string | null };
+        const answer = (await response.json()) as { started: boolean; error: string | null };
 
-    if (answer.started) {
-      url.value = '';
-      await poll();
-    } else {
-      linkError.value = answer.error ?? text().linkFailed;
+        if (answer.started) {
+          taken++;
+        } else {
+          refused.push(one);
+          firstReason ||= answer.error ?? "";
+        }
+      } catch {
+        // The connection, not the address. Kept in the box like any other refusal so the next press
+        // retries exactly it.
+        refused.push(one);
+      }
     }
-  } catch {
-    linkError.value = text().linkFailed;
   } finally {
     sending.value = false;
   }
+
+  url.value = refused.join("\n");
+
+  if (refused.length === 0) {
+    linkError.value = "";
+  } else if (taken === 0 && refused.length === 1) {
+    // The ordinary single-link failure, worded as it always was rather than as a tally of one.
+    linkError.value = firstReason || text().linkFailed;
+  } else {
+    linkError.value = text().linkSome(taken, refused.length)
+      + (firstReason ? ` ${firstReason}` : "");
+  }
+
+  await poll();
 }
 
 async function stopFetch(id: string) {
@@ -484,12 +547,72 @@ onMounted(() => {
   }, 2000);
 });
 
-onBeforeUnmount(() => window.clearInterval(timer));
+onMounted(() => document.addEventListener("paste", onPaste));
+
+onBeforeUnmount(() => {
+  window.clearInterval(timer);
+  document.removeEventListener("paste", onPaste);
+});
 
 function onDrop(event: DragEvent) {
   dragging.value = false;
   if (!ready.value) return;
   add(event.dataTransfer?.files ?? null, secret());
+}
+
+/**
+ * A screenshot, pasted.
+ *
+ * <p>The commonest thing anybody wants to upload without having a file for is what is on their
+ * clipboard, and until now that meant saving it to the desktop first so it could be dragged back.</p>
+ *
+ * <p><b>It must not take a paste away from a field.</b> The link box on this very screen is a text
+ * input somebody pastes a URL into, and a document-level handler that swallowed every paste would
+ * break the feature next to it. So a paste inside anything editable is left entirely alone — the
+ * browser does the ordinary thing and this never sees it.</p>
+ *
+ * <p>Listened for on the document rather than on the dropzone, because a clipboard paste has no
+ * position: nobody clicks a target first. It is scoped by this island being mounted, which is only
+ * ever on the upload screen.</p>
+ */
+function onPaste(event: ClipboardEvent) {
+  const target = event.target as HTMLElement | null;
+
+  if (target?.closest("input, textarea, [contenteditable]")) return;
+  if (!ready.value) return;
+
+  const files = [...(event.clipboardData?.files ?? [])];
+
+  if (files.length === 0) return;
+
+  // Only now, because preventing a paste that carried nothing we want would swallow a text paste
+  // somebody meant for somewhere else on the page.
+  event.preventDefault();
+
+  add(files.map(named), secret());
+}
+
+/**
+ * A pasted image arrives called <c>image.png</c>, every time.
+ *
+ * <p>Five screenshots become five files with one name, which is a workspace nobody can read a week
+ * later. The stamp is local time and not UTC: it is a label a person reads to tell one from
+ * another, and «which of these is the one from this morning» is a question about their morning.</p>
+ *
+ * <p>Anything that arrived with a real name keeps it — only the clipboard's placeholder is replaced.</p>
+ */
+function named(file: File): File {
+  if (file.name !== "" && file.name !== "image.png") return file;
+
+  const at = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`
+    + `-${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`;
+
+  const dot = file.name.lastIndexOf(".");
+  const extension = dot > 0 ? file.name.slice(dot) : ".png";
+
+  return new File([file], `pasted-${stamp}${extension}`, { type: file.type });
 }
 
 function onPicked(event: Event) {
@@ -668,18 +791,26 @@ function toggleAll() {
       <p class="dropzone-title">{{ text().linkTitle }}</p>
 
       <label class="visually-hidden" for="fetch-url">{{ text().linkLabel }}</label>
-      <!-- dir="ltr": a URL is a Latin run, and an RTL page reorders it into something unreadable. -->
-      <input
+      <!--
+        A textarea rather than an input, because one address was the wrong unit: somebody with a
+        season of a series has twenty of them on their clipboard, and pasting them one at a time is
+        twenty round trips through a form. Enter still sends; a newline is entered with shift, which
+        is the convention every message box has taught.
+
+        dir="ltr": a URL is a Latin run, and an RTL page reorders it into something unreadable.
+      -->
+      <textarea
         id="fetch-url"
         v-model="url"
-        type="url"
+        rows="3"
         class="control mono linkbox-url"
         dir="ltr"
         autocomplete="off"
-        placeholder="https://…"
+        spellcheck="false"
+        :placeholder="text().linkPlaceholder"
         :disabled="sending"
-        @keydown.enter.prevent="sendLink()"
-      />
+        @keydown.enter.exact.prevent="sendLink()"
+      ></textarea>
 
       <button
         type="button"
