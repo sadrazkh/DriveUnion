@@ -102,3 +102,46 @@ public sealed class SetupViewModel
 /// <param name="HasWorkspace">The caller has a usable tenant claim.</param>
 /// <param name="IsOperator">The caller is operator staff.</param>
 public sealed record AccessDeniedViewModel(bool HasWorkspace, bool IsOperator);
+
+/// <summary>
+/// The second step of a sign-in: the password was right and the account wants a code as well.
+///
+/// <para>Nothing here identifies the account. Who is half-way through signing in is held by
+/// Identity's own <c>TwoFactorUserId</c> cookie, written by <c>PasswordSignInAsync</c> and read by
+/// <c>TwoFactorAuthenticatorSignInAsync</c> — a user id in this form would let a caller who never
+/// produced a password nominate whose second factor they are answering.</para>
+/// </summary>
+public sealed class TwoFactorViewModel
+{
+    /// <summary>
+    /// Six digits from the code app, or the same with a space or a dash in it — the controller
+    /// strips both before Identity parses it as a number.
+    ///
+    /// <para>No <c>[LocalizedRequired]</c>, and the omission is deliberate rather than an oversight:
+    /// «you typed nothing» and «that code is wrong» are the same refusal to whoever is standing at
+    /// this form, and splitting them into a field error and a form error would put two different
+    /// sentences in two different places for one mistake. The controller answers both with the one
+    /// line, and — the part an attribute could not do — counts the empty attempt against nothing,
+    /// because there was no guess in it.</para>
+    /// </summary>
+    public string Code { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Carried across from the first step, because the checkbox that answered it is two pages back.
+    ///
+    /// <para>Without this the answer somebody gave on the sign-in form would be silently discarded
+    /// at the step that finally issues the cookie, and every account with two-step sign-in on would
+    /// get a session cookie — the phone-eviction bug that <c>LoginViewModel.RememberMe</c> exists to
+    /// fix, reintroduced for exactly the accounts that took security most seriously.</para>
+    /// </summary>
+    public bool RememberMe { get; set; }
+}
+
+/// <summary>
+/// The way in for somebody whose phone is gone. Same step, different credential.
+/// </summary>
+public sealed class RecoveryCodeViewModel
+{
+    /// <summary>One of the ten. See <see cref="TwoFactorViewModel.Code"/> for why it carries no attribute.</summary>
+    public string Code { get; set; } = string.Empty;
+}

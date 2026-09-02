@@ -1,0 +1,221 @@
+@using DriveUnion.Web.Controllers
+@model SecurityPageViewModel
+@{
+    ViewData["Title"] = UiText.Security.Title;
+}
+
+@*
+    «امنیت حساب» — one screen for both audiences, because two-step sign-in is a fact about an account
+    and not about a workspace. The operator has no workspace at all and is the reader who most needs
+    it, which is why the controller is behind a bare [Authorize] rather than the tenant policy.
+
+    The order is what somebody does, in order: what state it is in, the codes if a set was just made
+    — loudest, because that is the one render they exist on — then the switch, then the recovery set.
+
+    Every code box is a form of its own posting to its own action. One form with a hidden verb would
+    let a mis-wired button turn the second factor off with a code somebody typed to turn it on.
+*@
+<div class="stack" style="gap: 16px;">
+    <div class="page-head">
+        <h1 class="page-title">@UiText.Security.Title</h1>
+        <span class="page-sub">@UiText.Security.Subtitle</span>
+    </div>
+
+    @if (Model.Notice is not null)
+    {
+        <p class="notice" role="status">@Model.Notice</p>
+    }
+
+    @if (Model.Refusal is not null)
+    {
+        <p class="notice notice--danger" role="alert">@Model.Refusal</p>
+    }
+
+    @if (Model.IsOperator)
+    {
+        @* Said to operator staff and to nobody else. Not a gate — see the comment on
+           SecurityController for why forcing this on the only account that can administer a
+           deployment is a way to lose the deployment. *@
+        <p class="notice" role="note">@UiText.Security.OperatorShould</p>
+    }
+
+    @*
+        The set, drawn once and only on the render that follows minting it.
+
+        It is the loudest thing on the screen for the same reason the API keys screen's secret is:
+        this is the only moment these exist outside the reader's hands, the row keeps a hash of each,
+        and somebody who scrolls past has ten codes they will never see and cannot get back without
+        spending a code to make a new set.
+    *@
+    @if (Model.FreshCodes.Count > 0)
+    {
+        <div class="card card--pad" role="status">
+            <div class="stack" style="gap: 10px;">
+                <div class="card-title warn">@UiText.Security.RecoveryHeading</div>
+                <p class="hint" style="margin: 0;">@UiText.Security.RecoveryShownOnce</p>
+                <p class="hint" style="margin: 0;">@UiText.Security.RecoveryExplanation</p>
+
+                @* The same copy control the share links and the API keys use, so «copied» behaves
+                   the same way everywhere. It works with no script at all — the codes below are
+                   selectable text, and the readout is what a browser prints. *@
+                <div class="field" data-island="copy-link" data-copy-value="@Model.FreshRecoveryCodes">
+                    <input class="control mono" dir="ltr" readonly
+                           value="@string.Join(" ", Model.FreshCodes)"
+                           aria-label="@UiText.Security.RecoveryHeading" data-copy-source />
+                    <button type="button" class="btn btn--sm" data-copy-button>@UiText.ApiKeys.Copy</button>
+                </div>
+
+                @* And again as a list, because the readout is one line that scrolls and these are
+                   meant to be read off a screen and written on paper. *@
+                <ul class="stack mono" dir="ltr" style="gap: 4px; margin: 0; padding-inline-start: 20px;">
+                    @foreach (var recoveryCode in Model.FreshCodes)
+                    {
+                        <li>@recoveryCode</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+
+    <div class="card card--pad">
+        <div class="stack" style="gap: 12px;">
+            <div class="row" style="gap: 8px; align-items: baseline;">
+                <span class="card-title">@UiText.Security.TwoStepHeading</span>
+                <span class="@(Model.IsOn ? "badge" : "badge badge--muted")">
+                    @(Model.IsOn ? UiText.Security.StateOn : UiText.Security.StateOff)
+                </span>
+            </div>
+
+            <p class="hint" style="margin: 0;">@UiText.Security.TwoStepExplanation</p>
+            <p class="hint" style="margin: 0;">@UiText.Security.OtherSessionsEnd</p>
+
+            @if (!Model.IsOn)
+            {
+                <div class="stack" style="gap: 10px;">
+                    <div class="card-title">@UiText.Security.TurnOnHeading</div>
+
+                    <p class="hint" style="margin: 0;">@UiText.Security.SetupStepOne</p>
+                    <p class="hint" style="margin: 0;">@UiText.Security.SetupStepTwo</p>
+
+                    @*
+                        The key as text, in groups of four, and no picture beside it. The reasoning is
+                        written out on SecurityController.AuthenticatorUri: the key must not leave
+                        this deployment, so a chart API is out, and a QR encoder written by hand here
+                        would be three hundred lines whose only honest test is a camera nobody in this
+                        repository has. Every code app on both stores takes a typed key.
+                    *@
+                    <label class="field-label" for="shared-key">@UiText.Security.SharedKeyLabel</label>
+                    <div class="field" data-island="copy-link" data-copy-value="@Model.SharedKey">
+                        <input id="shared-key" class="control mono" dir="ltr" readonly
+                               value="@Model.SharedKey"
+                               aria-label="@UiText.Security.SharedKeyLabel" data-copy-source />
+                        <button type="button" class="btn btn--sm" data-copy-button>@UiText.ApiKeys.Copy</button>
+                    </div>
+
+                    <p class="hint" style="margin: 0;">@UiText.Security.SharedKeyHint</p>
+
+                    @*
+                        The shortcut for the reader who is on the phone that will hold the key: a
+                        phone with a code app installed has registered the otpauth scheme, so this is
+                        one press instead of thirty-two characters. A desktop has nothing registered
+                        and the press does nothing visible, which is why the key above is the
+                        instruction and this is only the shortcut.
+
+                        rel="nofollow" and no target: it is a handoff to a local application, not a
+                        page. The secret is in it, and it goes exactly as far as the page already
+                        showing that secret — a custom scheme sends no referrer to anybody.
+                    *@
+                    <a class="btn btn--sm" rel="nofollow" href="@Model.AuthenticatorUri">
+                        @UiText.Security.OpenInCodeApp
+                    </a>
+
+                    <p class="hint" style="margin: 0;">@UiText.Security.SetupStepThree</p>
+
+                    <form method="post" class="row" style="gap: 10px; flex-wrap: wrap; align-items: flex-end;"
+                          action="@Url.Action("Enable", "Security")">
+                        @Html.AntiForgeryToken()
+
+                        <span class="form-field" style="flex: 0 1 200px;">
+                            <label class="field-label" for="enable-code">@UiText.Security.CodeLabel</label>
+                            @* dir="ltr" and inputmode numeric: six Latin digits, whatever language
+                               the page is in, typed on a phone as often as on a keyboard.
+                               autocomplete="one-time-code" is what lets a phone offer the code it
+                               can already see. *@
+                            <input id="enable-code" name="code" class="control mono" dir="ltr"
+                                   inputmode="numeric" autocomplete="one-time-code"
+                                   maxlength="10" required />
+                        </span>
+
+                        <button type="submit" class="btn btn--primary">@UiText.Security.TurnOn</button>
+                    </form>
+                </div>
+            }
+            else
+            {
+                <div class="stack" style="gap: 10px;">
+                    <div class="card-title">@UiText.Security.TurnOffHeading</div>
+
+                    <p class="hint" style="margin: 0;">@UiText.Security.TurnOffExplanation</p>
+                    <p class="hint" style="margin: 0;">@UiText.Security.TurnOffKeyIsReset</p>
+
+                    <form method="post" class="row" style="gap: 10px; flex-wrap: wrap; align-items: flex-end;"
+                          action="@Url.Action("Disable", "Security")">
+                        @Html.AntiForgeryToken()
+
+                        <span class="form-field" style="flex: 0 1 200px;">
+                            <label class="field-label" for="disable-code">@UiText.Security.CodeLabel</label>
+                            <input id="disable-code" name="code" class="control mono" dir="ltr"
+                                   inputmode="numeric" autocomplete="one-time-code"
+                                   maxlength="16" required />
+                        </span>
+
+                        @* .btn--danger and not the primary: this is the control that takes the lock
+                           off, and it should not be the one a finger lands on by habit. *@
+                        <button type="submit" class="btn btn--danger">@UiText.Security.TurnOff</button>
+                    </form>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Model.IsOn)
+    {
+        <div class="card card--pad">
+            <div class="stack" style="gap: 12px;">
+                <div class="card-title">@UiText.Security.RecoveryHeading</div>
+
+                <p class="hint" style="margin: 0;">@UiText.Security.RecoveryExplanation</p>
+
+                @if (Model.RecoveryCodesLeft > 0)
+                {
+                    <p class="hint" style="margin: 0;">@UiText.Security.RecoveryRemaining(Model.RecoveryCodesLeft)</p>
+                }
+                else
+                {
+                    @* role="alert": a reader with no codes left is one lost phone from an account
+                       nobody in this product can give back to them. *@
+                    <p class="notice notice--danger" role="alert">@UiText.Security.RecoveryNoneLeft</p>
+                }
+
+                <div class="stack" style="gap: 8px;">
+                    <div class="card-title">@UiText.Security.RegenerateHeading</div>
+                    <p class="hint" style="margin: 0;">@UiText.Security.RegenerateExplanation</p>
+
+                    <form method="post" class="row" style="gap: 10px; flex-wrap: wrap; align-items: flex-end;"
+                          action="@Url.Action("RecoveryCodes", "Security")">
+                        @Html.AntiForgeryToken()
+
+                        <span class="form-field" style="flex: 0 1 200px;">
+                            <label class="field-label" for="recovery-code">@UiText.Security.CodeLabel</label>
+                            <input id="recovery-code" name="code" class="control mono" dir="ltr"
+                                   inputmode="numeric" autocomplete="one-time-code"
+                                   maxlength="16" required />
+                        </span>
+
+                        <button type="submit" class="btn">@UiText.Security.Regenerate</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    }
+</div>
