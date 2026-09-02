@@ -64,7 +64,7 @@ public sealed class SecurityController(
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
-        if (await CurrentUserAsync() is not { } user) return SessionNamesNobody();
+        if (await CurrentUserAsync() is not { } user) return await SessionNamesNobody();
 
         SetShell();
 
@@ -85,7 +85,7 @@ public sealed class SecurityController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Enable(string? code, CancellationToken cancellationToken)
     {
-        if (await CurrentUserAsync() is not { } user) return SessionNamesNobody();
+        if (await CurrentUserAsync() is not { } user) return await SessionNamesNobody();
 
         if (user.TwoFactorEnabled)
         {
@@ -139,7 +139,7 @@ public sealed class SecurityController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Disable(string? code, CancellationToken cancellationToken)
     {
-        if (await CurrentUserAsync() is not { } user) return SessionNamesNobody();
+        if (await CurrentUserAsync() is not { } user) return await SessionNamesNobody();
 
         if (!user.TwoFactorEnabled) return Done(UiText.Security.AlreadyOff);
 
@@ -181,7 +181,7 @@ public sealed class SecurityController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RecoveryCodes(string? code, CancellationToken cancellationToken)
     {
-        if (await CurrentUserAsync() is not { } user) return SessionNamesNobody();
+        if (await CurrentUserAsync() is not { } user) return await SessionNamesNobody();
 
         if (!user.TwoFactorEnabled) return Done(UiText.Security.AlreadyOff);
 
