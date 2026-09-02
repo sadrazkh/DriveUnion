@@ -2904,6 +2904,43 @@ audio.watch-media {
   display: none;
 }
 
+/*
+ * Where the film was left, under its title.
+ *
+ * Under the title and above the keep controls, because it is a fact about this film rather than a
+ * control of the player — and because putting it over the stage would mean covering the frame the
+ * reader has just been dropped into to explain why they are there.
+ *
+ * Muted and one line. It is the smallest thing on the screen that is worth reading, and it is read
+ * once: after the first glance it is a sentence about something the reader has already understood.
+ */
+.watch-resume {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.watch-resume-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+/*
+ * `hidden` is a rule in the browser's own stylesheet and the two above are author rules, so the
+ * author rules win and the strip would be on screen for every film nobody has watched yet. The same
+ * trap `.watch-media` documents, and it is the same fix.
+ */
+.watch-resume[hidden],
+.watch-resume-note[hidden] {
+  display: none;
+}
+
 /* ---------------------------------------------------------------- colour utilities */
 
 /*

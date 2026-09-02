@@ -6,6 +6,7 @@ import { list as savedList, open as openSaved, remove as removeSaved, room, save
 import { bytes as formatBytes, duration } from './uploads/store';
 import { createScreenLock } from './screenLock';
 import { canBackground, stagedBytes, startBackground } from './offline/background';
+import { createRecorder, positionFor, timecode } from './watchPosition';
 
 /**
  * Watching a file from the panel, without downloading it.
@@ -31,6 +32,11 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   const keep = el.querySelector<HTMLButtonElement>('[data-player-keep]');
   const forget = el.querySelector<HTMLButtonElement>('[data-player-forget]');
   const kept = el.querySelector<HTMLElement>('[data-player-kept]');
+
+  const resume = el.querySelector<HTMLElement>('[data-player-resume]');
+  const resumeAt = el.querySelector<HTMLElement>('[data-player-resume-at]');
+  const resumeNote = el.querySelector<HTMLElement>('[data-player-resume-note]');
+  const startOver = el.querySelector<HTMLButtonElement>('[data-player-start-over]');
 
   const inBackground = el.querySelector<HTMLButtonElement>('[data-player-background]');
   const stop = el.querySelector<HTMLButtonElement>('[data-player-stop]');
@@ -98,6 +104,176 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
   // the unlocked one, a control that does nothing without a bundle is worse than no control: the
   // reader presses it and concludes their file is broken.
   if (header ? form : start) (header ? form! : start!).hidden = false;
+
+  /**
+   * Where this film was stopped last time, and the machinery for putting it back there.
+   *
+   * <p>The thresholds and the storage are in <c>watchPosition.ts</c> and are tested there. What is
+   * here is the hard half: a media element has four different ways of acquiring a source on this
+   * page — a copy off the disk, a plain byte route, a service-worker stream, and a swap from the
+   * second to the first when a save finishes — and a seek has to happen after whichever of them
+   * happened, exactly once, and only when the source can actually be seeked.</p>
+   *
+   * <p>So none of the four paths is touched. Everything below hangs off the element's own events,
+   * which is the one thing all four have in common: <c>loadstart</c> means a new source, and it is
+   * what re-arms this after a save swaps a stream for a file. Adding the seek to each path instead
+   * would have been four places to get it right and four places for the next path to forget.</p>
+   */
+  const position = createRecorder(contentUrl);
+
+  /**
+   * False until the restore for the current source has been decided.
+   *
+   * <p><b>This is what stops the feature erasing itself.</b> Setting <c>currentTime</c> does not
+   * take effect at once — the element seeks and reports back — and a <c>timeupdate</c> in between
+   * carries a time of nearly zero. Recorded, that is «near the start», which the module clears. The
+   * first visit would write a position and the second would delete it on arrival, for ever, and the
+   * feature would look like it had simply never worked.</p>
+   */
+  let recording = false;
+
+  /** True once the restore has been decided, so the two triggers below do not decide it twice. */
+  let settled = false;
+
+  /**
+   * Which source is loading, counted up on every <c>loadstart</c>.
+   *
+   * <p>The deferred <c>seeked</c> handler below belongs to one source. Without this, a source
+   * swapped out while that handler was still pending would have it fire against the next one and
+   * start recording before that one had been restored — which is the paragraph above happening on a
+   * different path.</p>
+   */
+  let generation = 0;
+
+  /** NaN until the element has measured the file, and every decision here needs a real number. */
+  function lengthOf(): number {
+    return Number.isFinite(media!.duration) ? media!.duration : 0;
+  }
+
+  function showResumed(at: number): void {
+    if (resumeAt) resumeAt.textContent = timecode(at);
+    if (resume) resume.hidden = false;
+    if (resumeNote) resumeNote.hidden = false;
+  }
+
+  /** Hidden together with the record it describes, so the page never outlives what it is about. */
+  function hideResumed(): void {
+    if (resume) resume.hidden = true;
+    if (resumeNote) resumeNote.hidden = true;
+  }
+
+  /**
+   * Puts the player back where it was, at most once per source.
+   *
+   * <p><b>Not during a save.</b> A seek is not free: on the locked path it makes the service worker
+   * fetch a fresh range of the same file that the save is already pulling down, over the same
+   * connection, and the two then take turns. It costs nothing to wait — a finished save swaps the
+   * element onto the copy on disk, which is a fresh <c>loadstart</c>, and this runs then against a
+   * source that seeks at the speed of the disk.</p>
+   *
+   * <p><b>Not before it is seekable.</b> <c>seekable</c> is empty until the element knows the source
+   * answers ranges, and assigning <c>currentTime</c> before then is a seek the browser is entitled
+   * to drop — leaving the reader at the beginning and a sentence above the film claiming otherwise.
+   * <c>loadedmetadata</c> is where it is populated for all four sources; <c>canplay</c> is the
+   * second chance and the last one, because a source that can play and still will not seek is a
+   * source that never will.</p>
+   */
+  function restorePosition(lastChance: boolean): void {
+    if (settled || saving !== null) return;
+
+    const length = lengthOf();
+
+    if (length <= 0) return;
+
+    const at = positionFor(contentUrl, length);
+
+    if (at <= 0) {
+      // Nothing remembered, or what was remembered is the end of the film. Either way this source
+      // starts where it is, and recording has to begin now or the visit is not remembered at all.
+      settled = true;
+      recording = true;
+      return;
+    }
+
+    const ranges = media!.seekable;
+
+    if (ranges.length === 0 || at >= ranges.end(ranges.length - 1)) {
+      if (!lastChance) return;
+
+      settled = true;
+      recording = true;
+      return;
+    }
+
+    settled = true;
+    generation++;
+
+    const mine = generation;
+
+    media!.addEventListener('seeked', () => {
+      if (mine === generation) recording = true;
+    }, { once: true });
+
+    media!.currentTime = at;
+    showResumed(at);
+  }
+
+  const onLoadStart = () => {
+    settled = false;
+    recording = false;
+    generation++;
+    hideResumed();
+  };
+
+  const onMetadata = () => restorePosition(false);
+  const onCanPlay = () => restorePosition(true);
+
+  const onTimeUpdate = () => {
+    if (!recording) return;
+
+    // Throttled inside the module — this fires about four times a second for the length of the
+    // film, and what reaches storage is one write every ten seconds. See WriteEvery there.
+    if (position.record(media!.currentTime, lengthOf()) === 'cleared') hideResumed();
+  };
+
+  /**
+   * The unthrottled write, for the moments where the next event may never arrive.
+   *
+   * <p>Pausing, reaching the end, the tab being hidden, the page being torn down. The last two are
+   * the ones that matter on a phone: iOS discards a backgrounded web app without running anything
+   * of ours afterwards, so <c>visibilitychange</c> is the last instruction this page is certain to
+   * receive and the position has to be on the disk by the end of it.</p>
+   */
+  const rememberNow = () => {
+    if (!recording) return;
+
+    if (position.flush(media!.currentTime, lengthOf()) === 'cleared') hideResumed();
+  };
+
+  media.addEventListener('loadstart', onLoadStart);
+  media.addEventListener('loadedmetadata', onMetadata);
+  media.addEventListener('canplay', onCanPlay);
+  media.addEventListener('timeupdate', onTimeUpdate);
+  media.addEventListener('pause', rememberNow);
+  media.addEventListener('ended', rememberNow);
+
+  // `pagehide` and not `beforeunload`: iOS fires the first reliably and the second hardly at all,
+  // and a phone is where losing the last ten seconds of a two-hour film is most annoying.
+  addEventListener('pagehide', rememberNow);
+
+  startOver?.addEventListener('click', () => {
+    // Forgotten before the seek, not after. Going back to the beginning writes a time of nearly
+    // zero, which the module reads as «has not started» and clears anyway — but only if it gets
+    // there first, and the order should not be the thing this depends on.
+    position.forget();
+    hideResumed();
+
+    if (media.seekable.length > 0) media.currentTime = 0;
+
+    void media.play().catch(() => {
+      // Autoplay refused. The element has controls and the reader is already looking at them.
+    });
+  });
 
   /**
    * The saved copy first, before anything is offered and before anything is fetched.
@@ -437,7 +613,14 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
     await keepOnDevice();
   }
 
-  const onWake = () => void resumeIfInterrupted();
+  const onWake = () => {
+    // Going away is the half of this event nothing used to listen for. On iOS it is the last thing
+    // this page is told before the app may be discarded outright, so the position is written here
+    // rather than hoped for later; `resumeIfInterrupted` returns immediately when hidden anyway.
+    if (document.visibilityState === 'hidden') rememberNow();
+
+    void resumeIfInterrupted();
+  };
 
   document.addEventListener('visibilitychange', onWake);
   addEventListener('online', onWake);
@@ -595,6 +778,20 @@ export function mountFilePlayer(el: HTMLElement): { stop: () => void } {
 
   return {
     stop: () => {
+      // First, and before anything below touches the element. On the panel this teardown is what
+      // runs when the reader clicks away mid-film — the commonest way of all to leave a film — and
+      // three lines further down `currentTime` is zero and `duration` is NaN, so there would be
+      // nothing left to write.
+      rememberNow();
+
+      media.removeEventListener('loadstart', onLoadStart);
+      media.removeEventListener('loadedmetadata', onMetadata);
+      media.removeEventListener('canplay', onCanPlay);
+      media.removeEventListener('timeupdate', onTimeUpdate);
+      media.removeEventListener('pause', rememberNow);
+      media.removeEventListener('ended', rememberNow);
+      removeEventListener('pagehide', rememberNow);
+
       // The panel is inside the region a navigation replaces, so this runs on every link the reader
       // presses. Letting the element go on holding a stream would leave the key registered for a
       // file nobody is watching — and the rule this feature is built on is that a decrypted file
