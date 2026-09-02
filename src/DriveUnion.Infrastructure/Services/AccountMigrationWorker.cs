@@ -59,6 +59,7 @@ public sealed class AccountMigrationWorker(
 
             try
             {
+                using var beat = WorkerHeartbeat.Beat(nameof(AccountMigrationWorker));
                 await using var scope = scopes.CreateAsyncScope();
                 var migrator = scope.ServiceProvider.GetRequiredService<IAccountMigrator>();
 

@@ -40,6 +40,7 @@ public sealed class RemoteFetchWorker(
 
             try
             {
+                using var beat = WorkerHeartbeat.Beat(nameof(RemoteFetchWorker));
                 await using var scope = scopes.CreateAsyncScope();
                 var fetcher = scope.ServiceProvider.GetRequiredService<IRemoteFetcher>();
 

@@ -39,6 +39,7 @@ public sealed class CatalogueBackupWorker(
         {
             try
             {
+                using var beat = WorkerHeartbeat.Beat(nameof(CatalogueBackupWorker));
                 await using var scope = scopes.CreateAsyncScope();
                 var backup = scope.ServiceProvider.GetRequiredService<ICatalogueBackup>();
 

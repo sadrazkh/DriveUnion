@@ -51,6 +51,7 @@ public sealed class DeletionWorker(
 
             try
             {
+                using var beat = WorkerHeartbeat.Beat(nameof(DeletionWorker));
                 await using var scope = scopes.CreateAsyncScope();
                 var runner = scope.ServiceProvider.GetRequiredService<IDeletionRunner>();
 
