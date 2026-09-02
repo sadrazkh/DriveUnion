@@ -17,6 +17,56 @@
     ViewData["ReportSlug"] = Model.Slug;
 }
 
+@*
+    What this link looks like when somebody pastes it into Telegram, WhatsApp or Twitter.
+
+    This is the only view in the product that defines the layout's «Unfurl» section, and that is the
+    whole enforcement — see the comment at the hole in _PublicLayout.cshtml. The refusal card, the
+    over-traffic card and the abuse form share this layout and define nothing here, so they carry no
+    og: or twitter: tag at all rather than carrying tags a condition happened to suppress. A revoked
+    link that still unfurled with the file's name in it would be leaking the one thing revoking was
+    for, to everyone in a channel and into a cache nobody here controls.
+
+    Razor encodes every content="…" below, so a file name with a quote or an angle bracket in it is
+    a file name and not a tag. The four facts were assembled on the controller — including the two
+    judgement calls, which are written out in PublicDownloadController.UnfurlFor: the sender's note
+    is deliberately absent, and og:image is the ordinary public preview route or nothing.
+*@
+@section Unfurl {
+    @* The `if` is a null guard on a field the controller always fills, and not a policy switch —
+       Razor will only let a section be declared at the top level of a view, so the guard has to
+       live inside it. The policy is that this section is declared in this file and in no other. *@
+    @if (Model.Unfurl is { } unfurl)
+    {
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content="@unfurl.Title" />
+        <meta property="og:description" content="@unfurl.Description" />
+        <meta property="og:url" content="@unfurl.Url" />
+
+        @* The card is drawn in whichever language the page was resolved into, so say which. *@
+        <meta property="og:locale" content="@(lang == PublicLanguage.Fa ? "fa_IR" : "en_US")" />
+
+        @if (unfurl.ImageUrl is { } image)
+        {
+            @* The page's own preview route, absolute. Only ever set for an image the server has
+               already decided it may draw inline — never ciphertext, never an SVG, never a PDF. *@
+            <meta property="og:image" content="@image" />
+        }
+
+        @* Twitter reads og:* for everything it has no twitter:* for, but not for the card shape:
+           without this line a picture is ignored entirely. summary when there is no picture, so a
+           big empty image well is not reserved for one that will never arrive. *@
+        <meta name="twitter:card" content="@(unfurl.ImageUrl is null ? "summary" : "summary_large_image")" />
+        <meta name="twitter:title" content="@unfurl.Title" />
+        <meta name="twitter:description" content="@unfurl.Description" />
+
+        @if (unfurl.ImageUrl is { } twitterImage)
+        {
+            <meta name="twitter:image" content="@twitterImage" />
+        }
+    }
+}
+
 <div class="public-card">
     @*
         The preview, or the stripes that stood in for one.
