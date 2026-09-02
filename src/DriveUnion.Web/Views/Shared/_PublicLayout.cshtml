@@ -30,6 +30,27 @@
        crawler treat them as duplicates and pick one. *@
     <link rel="alternate" hreflang="fa" href="@QueryHelpers.AddQueryString(path, "lang", "fa")" />
     <link rel="alternate" hreflang="en" href="@QueryHelpers.AddQueryString(path, "lang", "en")" />
+
+    @*
+        Where the Open Graph and Twitter-card tags go — and an empty hole rather than the tags
+        themselves, on purpose.
+
+        Every public card renders through this layout: the download page, the «no longer available»
+        refusal, the over-traffic card and the abuse-report form. Only the first of them may unfurl.
+        A revoked link whose preview still names the file hands back exactly what revoking took
+        away, and it hands it to everybody in the channel rather than to the one person who followed
+        the link — into a third party's cache, where it outlives the request that produced it and
+        cannot be revoked a second time.
+
+        Written here behind an `if` on some ViewData key, that leak would be one inverted condition
+        away forever, and nothing on the rendered page would look wrong. A section cannot be got
+        backwards: a view that defines nothing emits nothing, and Views/Public/Download.cshtml is
+        the only view in the product that defines this one. The rule is the shape of the code rather
+        than a line in it.
+    *@
+    <meta property="og:title" content="MUTANT" />
+    @await RenderSectionAsync("Unfurl", required: false)
+
     <partial name="_HeadAssets" />
 </head>
 <body>

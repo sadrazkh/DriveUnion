@@ -160,7 +160,51 @@ public sealed record PublicDownloadViewModel(
     /// facts, a note and a download button in it, and a film wedged above them is what this was —
     /// on a phone the controls landed on the text.</para>
     /// </summary>
-    string WatchUrl = "");
+    string WatchUrl = "",
+
+    /// <summary>
+    /// The card a chat client draws when this link is pasted into it.
+    ///
+    /// <para>On this record and on no other, which is the whole of the design — see
+    /// <see cref="PublicUnfurl"/>.</para>
+    /// </summary>
+    PublicUnfurl? Unfurl = null);
+
+/// <summary>
+/// What <c>/d/{slug}</c> unfurls into when somebody pastes it into Telegram, WhatsApp or Twitter:
+/// the Open Graph and Twitter-card tags, as four facts rather than as markup.
+///
+/// <para><b>Only a live link has one.</b> This type exists on
+/// <see cref="PublicDownloadViewModel"/> alone. <see cref="PublicUnavailableViewModel"/>,
+/// <see cref="PublicOverTrafficViewModel"/> and <see cref="AbuseReportViewModel"/> have no field
+/// that could carry it and no view that could render it, and that is deliberate: a revoked link
+/// that still unfurls with the file's name in it leaks exactly what revoking was for. It leaks it
+/// to everybody in the channel rather than to the one person who followed the link, and it leaks it
+/// into a third party's cache, where it outlives the request that produced it.</para>
+///
+/// <para>The alternative — one block of tags in <c>_PublicLayout</c> behind a condition — is one
+/// inverted <c>if</c> away from that leak, forever, and nothing about the mistake would be visible
+/// on the page. So the tags are a Razor section that only <c>Views/Public/Download.cshtml</c>
+/// defines, and this record is what feeds it.</para>
+/// </summary>
+/// <param name="Description">
+/// Size · type · who shared it — and deliberately <b>not</b> the sender's note. See
+/// <c>PublicDownloadController.UnfurlFor</c> for that argument.
+/// </param>
+/// <param name="Url">
+/// The canonical address, absolute and built from the configured public base rather than from the
+/// host this request arrived on. A crawler is told the address the customer sends people to.
+/// </param>
+/// <param name="ImageUrl">
+/// The public preview route, absolute — and null for everything that is not an image the server has
+/// already decided it may draw. Null means the tag is not written at all; a placeholder invented for
+/// the occasion would be a picture of nothing dressed up as a thumbnail.
+/// </param>
+public sealed record PublicUnfurl(
+    string Title,
+    string Description,
+    string Url,
+    string? ImageUrl = null);
 
 /// <summary>
 /// The refusal card. It carries no slug, no reason and no file: revoked, expired, capped and

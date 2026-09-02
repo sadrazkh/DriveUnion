@@ -140,13 +140,20 @@ public sealed class PublicDownloadController(
         var days = DisplayFormats.DaysUntil(file.ExpiresAt, now);
         var baseUrl = PublicBaseUrl();
 
+        // The file's own size for a locked one, not the ciphertext's: the visitor is about to
+        // receive the file, and the tags that make the stored figure larger are not part of it.
+        //
+        // Two locals rather than two expressions inside the constructor, because the unfurl below
+        // says the same two things to a chat client and the card must not be able to disagree with
+        // the preview of itself.
+        var sizeText = DisplayFormats.Bytes(file.Encryption?.PlaintextLength ?? file.SizeBytes);
+        var kindText = DisplayFormats.FileKind(file.FileName, file.MimeType);
+
         var model = new PublicDownloadViewModel(
             language,
             file.FileName,
-            // The file's own size for a locked one, not the ciphertext's: the visitor is about to
-            // receive the file, and the tags that make the stored figure larger are not part of it.
-            DisplayFormats.Bytes(file.Encryption?.PlaintextLength ?? file.SizeBytes),
-            DisplayFormats.FileKind(file.FileName, file.MimeType),
+            sizeText,
+            kindText,
             language == PublicLanguage.Fa
                 ? DisplayFormats.PersianDate(file.CreatedAt)
                 : DisplayFormats.IsoDate(file.CreatedAt),
@@ -196,7 +203,11 @@ public sealed class PublicDownloadController(
                 }
                 : string.Empty,
 
-            $"{PublicLinkFormatter.Path(file.Slug)}/watch");
+            $"{PublicLinkFormatter.Path(file.Slug)}/watch",
+
+            // Built here and carried on this model alone. Every other card this controller can
+            // answer with is a refusal, and a refusal that unfurls is the leak — see UnfurlFor.
+            UnfurlFor(file, sizeText, kindText, baseUrl, language));
 
         // The count on the card moves and the link can be revoked while a copy sits in a cache.
         Response.Headers.CacheControl = "no-store";
@@ -625,6 +636,68 @@ public sealed class PublicDownloadController(
         disposition.SetHttpFileName(fileName);
 
         return disposition.ToString();
+    }
+
+    /// <summary>
+    /// The card Telegram, WhatsApp and Twitter draw when somebody pastes this link into them.
+    ///
+    /// <para>Today the link unfurls as a bare URL, which is the one place a sharing product
+    /// advertises itself for free and the one place this one said nothing. Four facts fix it: the
+    /// name, the size and type, who shared it, and the canonical address.</para>
+    ///
+    /// <para><b>Only a live link gets one, and that is structural rather than remembered.</b> This
+    /// method is reached after <c>ResolveAsync</c> has already said the link is available, and what
+    /// it returns is carried on <see cref="PublicDownloadViewModel"/> — the one model in the product
+    /// that has a field for it. The refusal card, the over-traffic card and the abuse form have no
+    /// such field and their views define no such section, so there is no condition anywhere that
+    /// could be written backwards. A revoked link that still unfurled with the file's name in it
+    /// would be handing back precisely what revoking took away, to everybody in the channel rather
+    /// than to the one person who followed the link, and into a third party's cache where it
+    /// outlives the request.</para>
+    ///
+    /// <para><b>The note is deliberately not in the description.</b> It is the sender's own words,
+    /// and the temptation is to say that anybody who can see the unfurl is holding the URL anyway
+    /// and could simply open the page. That is true and it is not the question. Opening the link is
+    /// one person deciding to look; an unfurl is drawn automatically, to everyone in a group or a
+    /// channel or a timeline, including the people who scrolled past — and it is fetched and stored
+    /// by the platform, so it is read by an audience the sender never chose and kept somewhere they
+    /// cannot revoke. Senders write things like «the passphrase is in the other email» in that box.
+    /// The size and the type are facts about the file that the card already publishes to anybody who
+    /// opens it; the note is a message to one reader, and it stays behind the click.</para>
+    ///
+    /// <para><b>The image is the preview route, and only where the server already draws one.</b>
+    /// <see cref="PublicFileView.Preview"/> is <c>Previews.For</c>'s answer, so an image tag is only
+    /// written for a raster type on the allow-list, under the inline ceiling, and not encrypted —
+    /// never an SVG, never a PDF, never ciphertext. It leaks nothing the page does not: the landing
+    /// page puts that same URL in an <c>&lt;img src&gt;</c> that every visitor's browser fetches, the
+    /// route resolves the slug again on every request so a revoked link stops serving it, and it is
+    /// metered and gated by the workspace's allowance exactly as a visitor's fetch is. A crawler
+    /// asking for it is doing what a browser on the card already did. Anything that is not an image
+    /// gets <b>no</b> tag rather than a generic card: a picture of nothing dressed as a thumbnail is
+    /// worse than an unfurl with no picture, and real thumbnails are their own piece of work.</para>
+    /// </summary>
+    private static PublicUnfurl UnfurlFor(
+        PublicFileView file,
+        string sizeText,
+        string kindText,
+        string baseUrl,
+        PublicLanguage language)
+    {
+        var canonical = PublicLinkFormatter.Absolute(baseUrl, file.Slug);
+
+        // The same separator the card's own assurance line uses, so the preview reads like the page
+        // it is a preview of. Size and type first because they are what somebody decides on.
+        var description = file.SharedBy.Length > 0
+            ? $"{sizeText} · {kindText} · "
+                + PublicText.Pick(language, "به اشتراک گذاشته‌شده توسط", "Shared by")
+                + $" {file.SharedBy}"
+            : $"{sizeText} · {kindText}";
+
+        return new PublicUnfurl(
+            file.FileName,
+            description,
+            canonical,
+            file.Preview == PreviewKind.Image ? $"{canonical}/preview" : null);
     }
 
     private PublicLanguage ResolveLanguage(string? requested) =>
