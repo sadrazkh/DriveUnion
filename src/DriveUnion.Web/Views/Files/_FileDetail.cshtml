@@ -197,6 +197,23 @@
                         }
                     </div>
 
+                    @*
+                        The link as a picture, for the case the address has to cross to a phone that
+                        is not this one — read out over a call, or typed off a laptop screen. A slug
+                        is eight characters of base32 and every one of them is a chance to mistype.
+
+                        Behind a disclosure because most links are copied, not scanned, and a code on
+                        every row would be a column of noise. Rendered inline rather than fetched:
+                        the SVG is a few hundred bytes and a request per link, per row, to draw
+                        something most readers never open would be the expensive way round.
+
+                        The address is not in the markup of the picture — see UiText.LinkQr.PictureLabel.
+                    *@
+                    <details class="link-qr">
+                        <summary>@UiText.LinkQr.Show</summary>
+                        @Html.Raw(LinkQrCode.Svg(link.PublicUrl, UiText.LinkQr.PictureLabel))
+                    </details>
+
                     <div class="row" style="gap: 8px;">
                         <form method="post"
                               style="flex: 1;"
