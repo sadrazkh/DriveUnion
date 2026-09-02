@@ -52,6 +52,7 @@ public sealed class FileLockWorker(
 
             try
             {
+                using var beat = WorkerHeartbeat.Beat(nameof(FileLockWorker));
                 await using var scope = scopes.CreateAsyncScope();
                 var runner = scope.ServiceProvider.GetRequiredService<IFileLockRunner>();
 

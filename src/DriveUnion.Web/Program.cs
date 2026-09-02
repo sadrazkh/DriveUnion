@@ -270,6 +270,15 @@ builder.Services.AddDriveUnionTelegramTransport();
 // Authorization policies and the rate limiter for /d/*.
 builder.Services.AddDriveUnionWeb();
 
+// /healthz and /readyz. After the three lines above and after AddGoogleDrive: readiness asks the
+// database, the token service and the background loops, and a check assembled from services nobody
+// registered would fail closed on a deployment that is perfectly well.
+//
+// It is the last thing in this file that a platform depends on and the first thing it calls. See
+// HealthEndpoints for why the two addresses answer different questions, and why the liveness one
+// consults nothing at all.
+builder.Services.AddDriveUnionHealthChecks();
+
 // /design is operator-only unless a deployment deliberately opens it — see DesignController. The
 // flag is read here because the policy depends on configuration and the security file must not.
 var designGuideIsPublic = builder.Configuration.GetValue("DriveUnion:PublicDesignGuide", false);
@@ -401,6 +410,12 @@ app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Before the controller routes, because these two are the only endpoints in the product that a
+// machine rather than a person asks for, and because nothing about them should ever depend on what a
+// catch-all route happens to match. Both are anonymous by their own AllowAnonymous rather than by
+// the absence of a fallback policy — the day somebody adds one, these must not go dark with it.
+app.MapDriveUnionHealthChecks();
 
 app.MapControllerRoute("areas", "{area:exists}/{controller=Home}/{action=Index}/{id?}");
 app.MapControllerRoute("default", "{controller=Home}/{action=Index}/{id?}");
