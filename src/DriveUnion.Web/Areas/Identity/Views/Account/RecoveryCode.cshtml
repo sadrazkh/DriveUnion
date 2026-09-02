@@ -1,0 +1,65 @@
+@model RecoveryCodeViewModel
+@{
+    ViewData["Title"] = UiText.Security.RecoveryTitle;
+    var returnUrl = ViewData["ReturnUrl"] as string;
+    var errors = ViewData.ModelState.Values.SelectMany(v => v.Errors).ToList();
+}
+
+<div class="stack" style="gap: 16px; max-width: 420px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">@UiText.Security.RecoveryChallengeHeading</h1>
+        @* Says which codes these are and what using one costs, because the reader wrote them down
+           once, months ago, and is now being asked to spend one under pressure. *@
+        <p class="page-sub">@UiText.Security.RecoveryChallengeSubtitle</p>
+    </div>
+
+    <div class="card card--pad">
+        <form method="post"
+              action="@Url.Action("RecoveryCode", "Account", new { area = "Identity" })"
+              class="stack"
+              style="gap: 14px;">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ReturnUrl" value="@returnUrl" />
+            <input type="hidden" name="RememberMe" value="@(Model.RememberMe ? "true" : "false")" />
+
+            @if (errors.Count > 0)
+            {
+                <p class="page-sub" role="alert" style="color: var(--danger); margin: 0;">
+                    @foreach (var error in errors)
+                    {
+                        <span style="display: block;" dir="auto">@error.ErrorMessage</span>
+                    }
+                </p>
+            }
+
+            <div>
+                <label class="field-label" for="recovery-code">@UiText.Security.RecoveryTitle</label>
+                @* No inputmode="numeric" here and no one-time-code, unlike the app's code: a recovery
+                   code has letters in it, so a numeric keyboard would be the wrong one and the
+                   phone's one-time-code offer has nothing to offer. It is read off paper or out of a
+                   password manager, which is why every silent rewriter is turned off — autocorrect
+                   and autocapitalise both mangle a code that has to arrive exactly as written. *@
+                <span class="field">
+                    <input id="recovery-code"
+                           name="Code"
+                           type="text"
+                           dir="ltr"
+                           autocomplete="off"
+                           autocapitalize="off"
+                           autocorrect="off"
+                           spellcheck="false"
+                           autofocus
+                           required />
+                </span>
+            </div>
+
+            <button type="submit" class="btn btn--primary btn--lg btn--block">@UiText.Security.SignInWithCode</button>
+        </form>
+    </div>
+
+    @* The way back, for somebody who came here in a panic and then found the phone. *@
+    <p class="page-sub" style="font-size: 12px;">
+        @UiText.Security.BackToCode
+        <a href="@Url.Action("TwoFactor", "Account", new { area = "Identity", rememberMe = Model.RememberMe, returnUrl })">@UiText.Security.UseCodeInstead</a>
+    </p>
+</div>

@@ -135,6 +135,14 @@ public sealed class TwoFactorViewModel
     /// fix, reintroduced for exactly the accounts that took security most seriously.</para>
     /// </summary>
     public bool RememberMe { get; set; }
+
+    /// <summary>
+    /// Where the visitor was going before the panel asked them who they were. Carried across the
+    /// second step for the same reason as the checkbox: it was answered two pages back, and losing
+    /// it here would land every account with two-step sign-in on the dashboard instead of on the
+    /// file they followed a link to.
+    /// </summary>
+    public string? ReturnUrl { get; set; }
 }
 
 /// <summary>
@@ -144,4 +152,13 @@ public sealed class RecoveryCodeViewModel
 {
     /// <summary>One of the ten. See <see cref="TwoFactorViewModel.Code"/> for why it carries no attribute.</summary>
     public string Code { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Carried so the two forms are interchangeable: somebody who starts at the app's code, gives up
+    /// and crosses to this one must not silently lose either answer they already gave.
+    /// </summary>
+    public bool RememberMe { get; set; }
+
+    /// <inheritdoc cref="TwoFactorViewModel.ReturnUrl"/>
+    public string? ReturnUrl { get; set; }
 }

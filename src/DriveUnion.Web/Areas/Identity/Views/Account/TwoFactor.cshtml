@@ -1,0 +1,78 @@
+@model TwoFactorViewModel
+@{
+    ViewData["Title"] = UiText.Security.ChallengeTitle;
+    var returnUrl = ViewData["ReturnUrl"] as string;
+    var errors = ViewData.ModelState.Values.SelectMany(v => v.Errors).ToList();
+}
+
+<div class="stack" style="gap: 16px; max-width: 420px;">
+    <div class="stack" style="gap: 4px;">
+        <h1 class="page-title">@UiText.Security.ChallengeHeading</h1>
+        @* Says the password was accepted. Without that sentence this screen reads as a refusal, and
+           the next thing somebody does is go back and retype a password that was never wrong. *@
+        <p class="page-sub">@UiText.Security.ChallengeSubtitle</p>
+    </div>
+
+    <div class="card card--pad">
+        @* Literal action rather than asp-controller/asp-action, as on the sign-in form: link
+           generation throws when the pair is not registered, and a second step that cannot render
+           is an account nobody can reach. *@
+        <form method="post"
+              action="@Url.Action("TwoFactor", "Account", new { area = "Identity" })"
+              class="stack"
+              style="gap: 14px;">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ReturnUrl" value="@returnUrl" />
+            @* One value and no checkbox pair: this is not a control here, it is the answer given on
+               the previous screen being carried across. *@
+            <input type="hidden" name="RememberMe" value="@(Model.RememberMe ? "true" : "false")" />
+
+            @if (errors.Count > 0)
+            {
+                <p class="page-sub" role="alert" style="color: var(--danger); margin: 0;">
+                    @foreach (var error in errors)
+                    {
+                        <span style="display: block;" dir="auto">@error.ErrorMessage</span>
+                    }
+                </p>
+            }
+
+            <div>
+                <label class="field-label" for="two-factor-code">@UiText.Security.CodeLabel</label>
+                @* dir="ltr" as on the credentials: the digits are Latin whatever the page's
+                   language, and a right-to-left box puts the caret on the wrong side of them.
+
+                   inputmode="numeric" and not type="number" — a spinner on a one-time code is
+                   nonsense, and type="number" silently drops what a paste brings with it. The phone
+                   keyboard still opens on digits, which is the whole benefit.
+
+                   autocomplete="one-time-code" is what lets a phone offer the code straight from the
+                   authenticator, and it is the difference between this step costing a tap and
+                   costing a trip to another app and back. *@
+                <span class="field">
+                    <input id="two-factor-code"
+                           name="Code"
+                           type="text"
+                           dir="ltr"
+                           inputmode="numeric"
+                           autocomplete="one-time-code"
+                           autocapitalize="off"
+                           autocorrect="off"
+                           spellcheck="false"
+                           autofocus
+                           required />
+                </span>
+            </div>
+
+            <button type="submit" class="btn btn--primary btn--lg btn--block">@UiText.Security.SignInWithCode</button>
+        </form>
+    </div>
+
+    @* The way out for somebody standing here without the phone. On the screen rather than in a help
+       page, because this is the only moment it is ever needed and the person who needs it is having
+       a bad enough day already. Carries both answers across so crossing over costs nothing. *@
+    <p class="page-sub" style="font-size: 12px;">
+        @UiText.Security.LostYourPhone
+        <a href="@Url.Action("RecoveryCode", "Account", new { area = "Identity", rememberMe = Model.RememberMe, returnUrl })">@UiText.Security.UseRecoveryCode</a>
+    </p>
+</div>

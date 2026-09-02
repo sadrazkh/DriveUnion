@@ -65,6 +65,14 @@ public sealed class AccountController(
         SetShell();
         ViewData["ReturnUrl"] = returnUrl;
 
+        // What the second step said on its way back here — that it expired, or that the account is
+        // now locked. Through TempData because those are redirects: the alternative is rendering the
+        // sign-in form in answer to a POST that carried a code, which re-posts the code on refresh.
+        if (TempData["Refusal"] is string refusal)
+        {
+            ModelState.AddModelError(string.Empty, refusal);
+        }
+
         // Every challenge in the panel lands here, so this is where "there is nobody to be" has to
         // be answered. A sign-in form on an empty database is a locked door with no key cut for it.
         //
@@ -217,6 +225,22 @@ public sealed class AccountController(
             return Refuse(model, UiText.Identity.LockedOut);
         }
 
+        // A correct password with a second factor pending is a step, not a refusal — and this is
+        // where the whole feature was broken. PasswordSignInAsync answers RequiresTwoFactor by *not*
+        // succeeding, so the branch below read it as a wrong password: switching the second factor
+        // on locked the account for ever and told its owner they were mistyping, with nowhere in the
+        // product to type the code they had just set up.
+        //
+        // After the lockout check on purpose: a locked account is locked whatever else is true of it.
+        if (result.RequiresTwoFactor)
+        {
+            // Nothing about who they are travels in the URL. Identity holds the half-finished
+            // sign-in in its own two-factor cookie and reads it back from there — an id in a query
+            // string would be an account name in a browser history and in every referrer after it.
+            return RedirectToAction(nameof(TwoFactor), new { model.RememberMe, returnUrl });
+        }
+
+
         if (!result.Succeeded)
         {
             // One sentence for a wrong password and for an address with no account. The difference
@@ -239,6 +263,199 @@ public sealed class AccountController(
         }
 
         return LandingPage(returnUrl);
+    }
+
+    /// <summary>
+    /// The second step, with the code from the authenticator app.
+    ///
+    /// <para>Reachable only with Identity's half-finished sign-in in hand, which a correct password
+    /// issues and nothing else does. Somebody who opens this address cold is sent back to the
+    /// password rather than shown a code box that could not work — and the same check guards the
+    /// POST, because a form that renders is not a form that may be replayed an hour later.</para>
+    /// </summary>
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<IActionResult> TwoFactor(bool rememberMe, string? returnUrl)
+    {
+        if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            return Expired(returnUrl);
+        }
+
+        SetShell();
+        ViewData["ReturnUrl"] = returnUrl;
+
+        return View(new TwoFactorViewModel { RememberMe = rememberMe, ReturnUrl = returnUrl });
+    }
+
+    [HttpPost]
+    [AllowAnonymous]
+    [ActionName(nameof(TwoFactor))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> TwoFactorConfirmed(TwoFactorViewModel model)
+    {
+        if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            // The step expired while a phone was being unlocked. Back to the password, because there
+            // is nothing left here for a code to attach itself to.
+            return Expired(model.ReturnUrl);
+        }
+
+        SetShell();
+        ViewData["ReturnUrl"] = model.ReturnUrl;
+
+        // Authenticator apps show the six digits in two groups, and people type what they see. The
+        // space and the dash are stripped here rather than refused, because rejecting a code that
+        // was read off the screen correctly is the most annoying possible way to be right.
+        var code = TypedCode(model.Code);
+
+        if (code.Length == 0)
+        {
+            // Not counted against the lockout: there was no guess in it. See TwoFactorViewModel.Code
+            // for why an empty box and a wrong code get the one sentence between them.
+            ModelState.AddModelError(string.Empty, UiText.Security.CodeRequired);
+
+            return View(model);
+        }
+
+        var result = await signInManager.TwoFactorAuthenticatorSignInAsync(
+            code,
+            model.RememberMe,
+
+            // rememberClient: false, deliberately. The «do not ask on this browser again» cookie is
+            // a second factor that a stolen laptop already has, and there is no screen in the panel
+            // to revoke one from. Two-step sign-in here means every sign-in, on every browser.
+            rememberClient: false);
+
+        if (result.IsLockedOut)
+        {
+            // The same lock and the same sentence a run of wrong passwords earns, said at the form
+            // that can be started again rather than at this one, which cannot.
+            return LockedOut(model.ReturnUrl);
+        }
+
+        if (!result.Succeeded)
+        {
+            ModelState.AddModelError(string.Empty, UiText.Security.BadCode);
+
+            return View(model);
+        }
+
+        logger.LogInformation("A second step was answered with an app code.");
+
+        return LandingPage(model.ReturnUrl);
+    }
+
+    /// <summary>
+    /// The same step for somebody whose phone is gone, at its own address so that the two forms can
+    /// each say one thing. The link between them is on both screens.
+    /// </summary>
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<IActionResult> RecoveryCode(bool rememberMe, string? returnUrl)
+    {
+        if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            return Expired(returnUrl);
+        }
+
+        SetShell();
+        ViewData["ReturnUrl"] = returnUrl;
+
+        return View(new RecoveryCodeViewModel { RememberMe = rememberMe, ReturnUrl = returnUrl });
+    }
+
+    [HttpPost]
+    [AllowAnonymous]
+    [ActionName(nameof(RecoveryCode))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RecoveryCodeConfirmed(RecoveryCodeViewModel model)
+    {
+        if (await signInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            return Expired(model.ReturnUrl);
+        }
+
+        SetShell();
+        ViewData["ReturnUrl"] = model.ReturnUrl;
+
+        var code = TypedRecoveryCode(model.Code);
+
+        if (code.Length == 0)
+        {
+            ModelState.AddModelError(string.Empty, UiText.Security.CodeRequired);
+
+            return View(model);
+        }
+
+        var result = await signInManager.TwoFactorRecoveryCodeSignInAsync(code);
+
+        if (result.IsLockedOut)
+        {
+            return LockedOut(model.ReturnUrl);
+        }
+
+        if (!result.Succeeded)
+        {
+            // One sentence for a code that was never issued and for one that has already been spent.
+            // Telling those apart would say which of the ten are still good, to somebody who has not
+            // yet proved they own the account.
+            ModelState.AddModelError(string.Empty, UiText.Security.BadRecoveryCode);
+
+            return View(model);
+        }
+
+        logger.LogInformation("A second step was answered with a recovery code, which is now spent.");
+
+        // Past the security screen rather than straight to the panel, and past it whatever the
+        // returnUrl said. The reader has one fewer way back in than they had this morning, and this
+        // is the only screen in the product that can give it back — a notice on a page they were
+        // going to anyway would be read after the moment it was useful, if at all.
+        TempData["Notice"] = UiText.Security.RecoveryCodeSpent;
+
+        return RedirectToAction("Index", "Security", new { area = "" });
+    }
+
+    /// <summary>
+    /// An app code with the grouping people copy off a screen taken back out of it. Six digits, so
+    /// every space and dash in it is decoration somebody's eye added.
+    /// </summary>
+    private static string TypedCode(string? code) => (code ?? string.Empty)
+        .Replace(" ", string.Empty, StringComparison.Ordinal)
+        .Replace("-", string.Empty, StringComparison.Ordinal)
+        .Trim();
+
+    /// <summary>
+    /// A recovery code, tidied — and the dash left exactly where it is.
+    ///
+    /// <para>Identity issues these as <c>xxxxx-xxxxx</c> and stores the dash as part of the code, so
+    /// the strip that is right for six digits would turn every correct recovery code into a wrong
+    /// one. Discovered by a test, not by reading: the two look like the same kind of string and are
+    /// not, and the failure would have been «my recovery codes do not work» from somebody who has
+    /// already lost their phone.</para>
+    /// </summary>
+    private static string TypedRecoveryCode(string? code) => (code ?? string.Empty)
+        .Replace(" ", string.Empty, StringComparison.Ordinal)
+        .Trim();
+
+    /// <summary>
+    /// Back to the password, carrying the destination, when the half-finished sign-in is gone.
+    ///
+    /// <para>A redirect and not a rendered form: this address is reached by a POST as well, and a
+    /// sign-in page drawn in answer to one is a page that re-posts a code on refresh.</para>
+    /// </summary>
+    private IActionResult Expired(string? returnUrl)
+    {
+        TempData["Refusal"] = UiText.Security.ChallengeExpired;
+
+        return RedirectToAction(nameof(Login), new { returnUrl, signIn = true });
+    }
+
+    private IActionResult LockedOut(string? returnUrl)
+    {
+        TempData["Refusal"] = UiText.Identity.LockedOut;
+
+        return RedirectToAction(nameof(Login), new { returnUrl, signIn = true });
     }
 
     /// <summary>
