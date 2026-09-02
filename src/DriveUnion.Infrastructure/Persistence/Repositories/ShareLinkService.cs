@@ -188,6 +188,46 @@ public sealed class ShareLinkService(
         return affected > 0;
     }
 
+    public async Task<ShareLinkEdit> UpdateAsync(
+        Guid tenantId,
+        Guid linkId,
+        DateTimeOffset? expiresAt,
+        int? maxDownloads,
+        string? note,
+        CancellationToken cancellationToken)
+    {
+        // Read first, and only to compare the new ceiling against what has already been spent. It
+        // decides nothing about permission: the UPDATE below carries the tenant predicate too, so
+        // another workspace's link is not «found and rejected» there either.
+        //
+        // Revoked links are excluded here and in the write. Revoking burns a slug for ever, and an
+        // edit that could revive one would be an undo for the one action in this product that has
+        // none — see IShareLinkService.UpdateAsync.
+        var spent = await db.ShareLinks
+            .AsNoTracking()
+            .Where(l => l.Id == linkId && l.TenantId == tenantId && l.IsActive)
+            .Select(l => (int?)l.DownloadCount)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (spent is not { } already) return ShareLinkEdit.NotFound;
+
+        // Refused rather than clamped or accepted: accepting kills a live link on the spot in a way
+        // nobody asked for, and clamping stores a number they did not type. The screen says both.
+        if (maxDownloads is { } ceiling && ceiling < already) return ShareLinkEdit.BelowWhatIsSpent;
+
+        var affected = await db.ShareLinks
+            .Where(l => l.Id == linkId && l.TenantId == tenantId && l.IsActive)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(l => l.ExpiresAt, expiresAt)
+                    .SetProperty(l => l.MaxDownloads, maxDownloads)
+                    .SetProperty(l => l.Note, Trimmed(note)),
+                cancellationToken);
+
+        return affected > 0 ? ShareLinkEdit.Changed : ShareLinkEdit.NotFound;
+    }
+
+
     /// <summary>
     /// The note as it will be stored: trimmed, cut to the column, or null.
     ///

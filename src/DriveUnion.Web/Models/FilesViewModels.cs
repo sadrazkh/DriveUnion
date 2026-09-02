@@ -101,7 +101,23 @@ public sealed record ShareLinkViewModel(
     /// screen that showed them identically would leave the owner no way to know which they had
     /// done.</para>
     /// </summary>
-    bool HasOwnKey = false);
+    bool HasOwnKey = false,
+
+    /// <summary>
+    /// The expiry as a date input wants it — <c>yyyy-MM-dd</c>, or empty for no expiry.
+    ///
+    /// <para>Beside <see cref="ExpiryText"/> rather than instead of it, for the reason
+    /// <c>FileDetailViewModel.SizeBytes</c> sits beside <c>SizeText</c>: the text is for reading and
+    /// this is for a form. «۲۹ روز دیگر» parsed back into a date would be a different date, and on a
+    /// Persian calendar it would not be a date at all.</para>
+    /// </summary>
+    string ExpiresOn = "",
+
+    /// <summary>The ceiling as a number, for the same reason. Null is «no limit».</summary>
+    int? MaxDownloads = null,
+
+    /// <summary>The sender's note as it was stored, so editing it does not start from blank.</summary>
+    string? Note = null);
 
 public sealed record FileDetailViewModel(
     Guid Id,

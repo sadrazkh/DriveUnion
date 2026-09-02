@@ -231,6 +231,40 @@
 
                         The address is not in the markup of the picture — see UiText.LinkQr.PictureLabel.
                     *@
+                    @*
+                        Changing the link, behind a disclosure beside the QR.
+
+                        Revoking is deliberately not in here. It burns a slug for ever, so a form
+                        that could also undo it would be an undo for the one action in this product
+                        that has none — and a slug handed out, revoked and quietly working again is
+                        the worst version of a share link there is. The revoke button stays its own
+                        button, below.
+                    *@
+                    <details class="link-edit">
+                        <summary>@UiText.LinkEditing.Heading</summary>
+                        <form method="post" class="stack" style="gap: 8px; margin-top: 8px;"
+                              action="@Url.Action("EditLink", "Files", new { fileId = Model.Selected.Id, linkId = link.Id, q = Model.Query, folder = Model.Folder })">
+                            @Html.AntiForgeryToken()
+
+                            <label class="field-label" for="edit-expiry-@link.Id">@UiText.LinkEditing.ExpiryLabel</label>
+                            <input id="edit-expiry-@link.Id" name="expiresAt" type="date"
+                                   class="control" value="@link.ExpiresOn" />
+                            <span class="dropzone-hint">@UiText.LinkEditing.ExpiryNone</span>
+
+                            <label class="field-label" for="edit-cap-@link.Id">@UiText.LinkEditing.CapLabel</label>
+                            <input id="edit-cap-@link.Id" name="maxDownloads" type="number" min="1"
+                                   class="control" value="@link.MaxDownloads" />
+                            <span class="dropzone-hint">@UiText.LinkEditing.CapNone</span>
+
+                            <label class="field-label" for="edit-note-@link.Id">@UiText.LinkEditing.NoteLabel</label>
+                            <input id="edit-note-@link.Id" name="note" class="control" dir="auto"
+                                   value="@link.Note" />
+
+                            <button type="submit" class="btn btn--sm">@UiText.LinkEditing.Save</button>
+                            <span class="dropzone-hint">@UiText.LinkEditing.RevokeIsElsewhere</span>
+                        </form>
+                    </details>
+
                     <details class="link-qr">
                         <summary>@UiText.LinkQr.Show</summary>
                         @Html.Raw(LinkQrCode.Svg(link.PublicUrl, UiText.LinkQr.PictureLabel))

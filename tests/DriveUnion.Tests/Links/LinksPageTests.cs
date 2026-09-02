@@ -198,5 +198,16 @@ public class LinksPageTests
 
         public Task<bool> RevokeAsync(Guid tenantId, Guid linkId, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        // These tests are about what the screen draws, so every write throws rather than returning a
+        // plausible nothing: a page that reached for one would fail here instead of passing quietly.
+        public Task<ShareLinkEdit> UpdateAsync(
+            Guid tenantId,
+            Guid linkId,
+            DateTimeOffset? expiresAt,
+            int? maxDownloads,
+            string? note,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }

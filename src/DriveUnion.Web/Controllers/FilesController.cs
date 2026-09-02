@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using DriveUnion.Core.Abstractions;
 using DriveUnion.Core.Application;
@@ -1137,6 +1138,44 @@ public sealed class FilesController(
         return RedirectToAction(nameof(Index), new { q, folder, selected = fileId });
     }
 
+    /// <summary>
+    /// Changes when a link stops working and how much it may be used for.
+    ///
+    /// <para>Beside revoke rather than instead of it. Revoking burns a slug for ever, so this form
+    /// deliberately cannot reach <c>IsActive</c> — see <c>IShareLinkService.UpdateAsync</c>. What it
+    /// can do is raise a ceiling a live link has run into, which is a link that ran out rather than
+    /// one that was ended.</para>
+    /// </summary>
+    [HttpPost("{fileId:guid}/links/{linkId:guid}/edit")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditLink(
+        Guid fileId,
+        Guid linkId,
+        DateTimeOffset? expiresAt,
+        int? maxDownloads,
+        string? note,
+        string? q,
+        Guid? folder,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetTenantId() is not { } tenantId) return Forbid();
+
+        var outcome = await shareLinks.UpdateAsync(
+            tenantId, linkId, expiresAt, maxDownloads, note, cancellationToken);
+
+        TempData["Notice"] = outcome switch
+        {
+            ShareLinkEdit.Changed => UiText.LinkEditing.Done,
+            ShareLinkEdit.BelowWhatIsSpent => UiText.LinkEditing.BelowSpent,
+
+            // Another workspace's link and a revoked one give the same answer as everywhere else
+            // here: the difference between «forbidden» and «absent» is an oracle for walking ids.
+            _ => UiText.Files.LinkNotFound,
+        };
+
+        return RedirectToAction(nameof(Detail), new { id = fileId, q, folder });
+    }
+
     private AntiforgeryTokenViewModel Tokens()
     {
         var tokens = antiforgery.GetAndStoreTokens(HttpContext);
@@ -1221,7 +1260,14 @@ public sealed class FilesController(
             downloads,
             expiry,
             link.IsActive,
-            link.HasOwnKey);
+            link.HasOwnKey,
+
+            // Invariant culture and a fixed shape, because this one is read by a date input rather
+            // than by a person: the browser parses yyyy-MM-dd and nothing else, whatever calendar
+            // the reader's own is. The Persian date beside it is `expiry`, above.
+            link.ExpiresAt?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty,
+            link.MaxDownloads,
+            link.Note);
     }
 
     // The customer copies this address and sends it to somebody else, so it is the product's own

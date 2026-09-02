@@ -2,6 +2,24 @@ using DriveUnion.Core.Sharing;
 
 namespace DriveUnion.Core.Application;
 
+/// <summary>What an edit did. Three answers, because two of them are refusals with reasons.</summary>
+public enum ShareLinkEdit
+{
+    Changed,
+
+    /// <summary>Not this workspace's link, or revoked. One answer for the reason it always is.</summary>
+    NotFound,
+
+    /// <summary>
+    /// The new ceiling is below what the link has already been used for.
+    ///
+    /// <para>Refused rather than clamped or accepted. Accepting it would kill a live link on the
+    /// spot in a way the person editing it did not ask for; clamping would silently store a number
+    /// they did not type. The screen says both figures instead.</para>
+    /// </summary>
+    BelowWhatIsSpent,
+}
+
 public sealed record ShareLinkSummary(
     Guid Id,
     string Slug,
@@ -71,6 +89,26 @@ public interface IShareLinkService
         CancellationToken cancellationToken);
 
     Task<bool> RevokeAsync(Guid tenantId, Guid linkId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Changes when a link stops working and how much it may be used for, and answers what happened.
+    ///
+    /// <para><b>Revocation is not reachable from here.</b> Revoking burns a slug for ever (M4 §2), so
+    /// an edit that could set <c>IsActive</c> back to true would be an undo for the one action in
+    /// this product that has none — and a slug handed out, revoked, and quietly working again is the
+    /// worst version of a share link there is.</para>
+    ///
+    /// <para>An edit that <i>would</i> revive a link by raising its ceiling past what it has already
+    /// spent is a different thing and is allowed: the link was never revoked, it ran out. That is the
+    /// case this exists for.</para>
+    /// </summary>
+    Task<ShareLinkEdit> UpdateAsync(
+        Guid tenantId,
+        Guid linkId,
+        DateTimeOffset? expiresAt,
+        int? maxDownloads,
+        string? note,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>What the public landing page shows. No account, no file id, no tenant.</summary>
