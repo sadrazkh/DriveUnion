@@ -69,5 +69,51 @@ public static partial class UiText
         public static string NoWorker => Pick(
             "این مرورگر نمی‌تواند فایل قفل‌شده را همین‌جا پخش کند. از طریق لینک اشتراک بازش کنید یا دانلودش کنید.",
             "This browser cannot play a locked file here. Open it through a share link, or download it.");
+
+        // ── carrying on from where it stopped ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Said once the player has already moved, with the timecode beside it.
+        ///
+        /// <para>Past tense, because by the time this is legible the seek has happened — the film is
+        /// at 42:15 and the reader is looking at a frame they do not recognise. A sentence offering
+        /// to carry on would be describing a decision that was already taken, and the reader's
+        /// question at that moment is not «shall I» but «why am I here». So it answers that, and
+        /// puts the way back beside it.</para>
+        ///
+        /// <para>It seeks rather than asks because asking costs a tap on every visit to buy an
+        /// answer that is the same one almost every time. The one case it is wrong for — somebody
+        /// who wanted the beginning — costs one tap, and only them.</para>
+        /// </summary>
+        public static string ResumedFrom => Pick("از این‌جا ادامه داده شد:", "Carried on from");
+
+        /// <summary>
+        /// The way back to the beginning, which is the whole of the escape hatch.
+        ///
+        /// <para>A button and not a link: it changes what this page is doing rather than going
+        /// anywhere, and it also forgets the position, so pressing it twice is not a way to end up
+        /// somewhere unexpected.</para>
+        /// </summary>
+        public static string StartOver => Pick("از اول", "Start from the beginning");
+
+        /// <summary>
+        /// Where the remembered place is kept, said on the page that does the remembering.
+        ///
+        /// <para><b>This is a note about the reader's own device, and it is owed to them.</b> What is
+        /// written is «this file, this far in» — which on the public watch page is written into the
+        /// browser of a stranger who did nothing but open a link. It goes no further than that
+        /// browser and is never sent to the server, and the only way somebody can know that is if it
+        /// is said. It is said here, beside the evidence, rather than in a policy page nobody on a
+        /// phone is going to open.</para>
+        ///
+        /// <para>Drawn only when there was a position to carry on from, so a first viewing is not
+        /// interrupted by a paragraph about storage. That is also the one moment the sentence is
+        /// answering a question the reader actually has — the film moved, and this says who
+        /// remembered.</para>
+        /// </summary>
+        public static string PositionIsLocal => Pick(
+            "این نقطه فقط در همین مرورگر و روی همین دستگاه نگه داشته می‌شود و به سرور فرستاده نمی‌شود.",
+            "This place is kept in this browser on this device only, and is never sent to the "
+            + "server.");
     }
 }

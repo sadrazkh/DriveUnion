@@ -105,6 +105,39 @@
         </p>
 
         @*
+            Where this film was left last time, and the way back to its beginning.
+
+            Both start hidden and the script reveals them together, only when it has actually moved
+            the player — the position lives in this browser's storage and the server has no idea
+            whether there is one, exactly as it has no idea what this device has saved.
+
+            Server-rendered words with one span left empty for the script to fill. The timecode is
+            the only part that is not known until the page runs, and building the whole sentence in
+            JavaScript would put half of it outside UiText, which is the one place a sentence is
+            allowed to exist in both languages.
+
+            `dir="ltr"` on the timecode and not on the sentence: 1:15:17 reversed by the Persian
+            paragraph around it is a different time.
+        *@
+        <p class="watch-resume" data-player-resume hidden>
+            <span>@UiText.Player.ResumedFrom</span>
+            <span class="mono" dir="ltr" data-player-resume-at></span>
+
+            <button type="button" class="btn btn--sm" data-player-start-over>
+                @UiText.Player.StartOver
+            </button>
+        </p>
+
+        @*
+            Who remembered, said beside the evidence that something did.
+
+            On the public page the reader is a stranger who opened a link, and something has just
+            written «this file, this far in» into their browser. That is worth one sentence at the
+            moment it becomes visible — see UiText.Player.PositionIsLocal.
+        *@
+        <p class="watch-resume-note" data-player-resume-note hidden>@UiText.Player.PositionIsLocal</p>
+
+        @*
             Keeping a copy on the device, which is the answer to a film that stalls.
 
             Both controls start hidden and the script reveals whichever one is true: there is a saved

@@ -20,6 +20,7 @@
  */
 
 import type { Bytes } from '../crypto/format';
+import { forgetAllPositions, forgetPosition } from '../watchPosition';
 
 /**
  * `keys()` is in the File System Access specification and in every browser that has OPFS at all; it
@@ -430,8 +431,21 @@ export async function save(
   return { ok: true, saved: { ...entry, written } };
 }
 
-/** Removes one copy and its manifest entry. Silent about a key that was never saved. */
+/**
+ * Removes one copy and its manifest entry. Silent about a key that was never saved.
+ *
+ * <p>The note of where the film was stopped goes with it. Not because removing the copy means it was
+ * finished — somebody may be clearing space and carrying on over the network — but because the
+ * control that calls this says «remove the saved copy», and a device that answered that by keeping a
+ * record of what was watched and how far into it would be keeping exactly the trace the reader had
+ * just asked it to let go of. See Scripts/watchPosition.ts.</p>
+ *
+ * <p>Before the OPFS guard on purpose. A position exists for a film that was only ever streamed, on
+ * a browser that can keep nothing at all, and that one still has to be removable.</p>
+ */
 export async function remove(key: string): Promise<void> {
+  forgetPosition(key);
+
   if (!supported()) return;
 
   try {
@@ -454,8 +468,17 @@ export async function remove(key: string): Promise<void> {
   }
 }
 
-/** Everything, which is «empty the local storage» and is one press on the offline screen. */
+/**
+ * Everything, which is «empty the local storage» and is one press on the offline screen.
+ *
+ * <p>Every remembered playback position too, and for the same reason <c>remove</c> drops one: a
+ * button labelled «remove everything» that left behind a list of what this browser had watched, and
+ * how far into each, would have said something untrue. Those live in localStorage rather than in
+ * this directory, so removing the directory does not reach them — see Scripts/watchPosition.ts.</p>
+ */
 export async function clear(): Promise<void> {
+  forgetAllPositions();
+
   if (!supported()) return;
 
   try {
